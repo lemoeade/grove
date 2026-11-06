@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -235,6 +237,36 @@ func TestConflictGroup(t *testing.T) {
 	wait("全部暂存", func() bool { return idle(repo)() && repo.Status.Conflicts == 0 })
 	if repo.Status.Staged != 3 {
 		t.Errorf("全部暂存后 %+v", repo.Status)
+	}
+}
+
+// 没有冲突时组头的 + 是一条不带路径的 git add -A：改的、删的、未跟踪的（含未跟踪目录里的）全暂存，
+// 已暂存的照旧。
+func TestStageUnstagedNoConflict(t *testing.T) {
+	r := testutil.NewRepo(t, "plain")
+	r.Write("a.txt", "a\n")
+	r.Write("b.txt", "b\n")
+	r.Write("c.txt", "c\n")
+	r.Commit("初始提交")
+	r.Write("a.txt", "a 改了\n")
+	if err := os.Remove(filepath.Join(r.Root, "b.txt")); err != nil {
+		t.Fatal(err)
+	}
+	r.Write("c.txt", "c 改了\n")
+	r.Git("add", "c.txt")
+	r.Write("new.txt", "新\n")
+	r.Write("dir/inner.txt", "目录里的\n")
+	a, wait := newTestApp(t, testutil.Workspace(t, r.Root))
+	repo := a.Current()
+	a.RefreshRepo(repo, WhyManual)
+	wait("状态", idle(repo))
+	if s := repo.Status; s.Conflicts != 0 || s.Unstaged != 2 || s.Untracked != 2 || s.Staged != 1 {
+		t.Fatalf("起始状态不对: %+v", s)
+	}
+	a.StageUnstaged(repo)
+	wait("暂存这一组", func() bool { return idle(repo)() && repo.Status.Unstaged+repo.Status.Untracked == 0 })
+	if repo.Status.Staged != 5 {
+		t.Errorf("应全部暂存（含未跟踪的）: %+v", repo.Status)
 	}
 }
 

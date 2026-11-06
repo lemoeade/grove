@@ -346,7 +346,7 @@ func groupRow(a *app.App, row wui.ListRow, cr app.ChangeRow) {
 			if r.Status.Unstaged > 0 { // 全是未跟踪的时没有可丢弃的（git restore . 不动未跟踪的）
 				rowButton(c, iconUndo, i18n.T("丢弃所有未暂存的改动…"), i18n.T("丢弃所有未暂存的改动…（git restore .，未跟踪的文件不动，会先问）"), func() { a.DiscardAll(r) })
 			}
-			rowButton(c, iconPlus, i18n.T("暂存所有未暂存的改动"), i18n.T("暂存所有未暂存的改动，含未跟踪的文件（git add -- 这些文件，冲突的不动）"), func() { a.StageUnstaged(r) })
+			rowButton(c, iconPlus, i18n.T("暂存所有未暂存的改动"), i18n.T("暂存所有未暂存的改动，含未跟踪的文件（git add -A；有冲突时只暂存这一组的文件，冲突的不动）"), func() { a.StageUnstaged(r) })
 		}
 	})
 }
@@ -865,10 +865,11 @@ func commitRow(a *app.App, row wui.ListRow, r *app.Repo) {
 		if hint != "" {
 			wui.Text(c, hint).FontSize(sideSub).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0)
 		}
-		wui.Row(c).Gap(8).AlignItems(wui.Center).Children(func() {
+		// 侧栏窄时勾选的文字让位（省略号，完整说明在提示里），撤销和提交按钮不缩，右边和输入框对齐。
+		wui.Row(c.Key("commitbar")).Gap(8).AlignItems(wui.Center).MinWidth(0).Children(func() {
 			if r.Extra.Head != "" {
 				amend := r.Amend
-				cb := wui.Checkbox(c, &amend, i18n.T("修改上一次提交")).FontSize(sideSub).Disabled(r.Committing()).
+				cb := shrinkCheckbox(c, &amend, i18n.T("修改上一次提交")).Disabled(r.Committing()).
 					Tooltip(app.Tip(i18n.T("git commit --amend：信息换成上一次的，可以改；已暂存的改动并进去"), "git.amend"))
 				if cb.Changed() {
 					a.SetAmend(r, amend)
@@ -887,12 +888,44 @@ func commitRow(a *app.App, row wui.ListRow, r *app.Repo) {
 			if r.Amend {
 				tip = app.Tip("git commit --amend", "commit")
 			}
-			if wui.PrimaryButton(c, label).Disabled(!r.CanCommit()).Tooltip(tip).Clicked() {
+			if wui.PrimaryButton(c.Key("commitbtn"), label).Shrink(0).Disabled(!r.CanCommit()).Tooltip(tip).Clicked() {
 				a.UseRepo(r)
 				a.Commit(r)
 			}
 		})
 	})
+}
+
+// shrinkCheckbox 是能缩的 wui.Checkbox：样子照它画，但整个勾选可以缩到比文字窄，文字单行、放不下时省略号。
+// wui.Checkbox 的文字不省略、自己也不缩（Shrink(0)），侧栏窄时会把同一行的按钮挤出去。
+func shrinkCheckbox(c *wui.Context, checked *bool, label string) wui.Element {
+	t := c.Theme()
+	on := *checked
+	row := wui.CheckboxBase(c, checked).Label(label).Gap(t.Space(2)).FocusRing(false).AlignItems(wui.Center).Shrink(1).MinWidth(0)
+	row.Children(func() {
+		box := wui.Box(c).Size(t.Space(4), t.Space(4)).Radius(t.Space(1)).Shrink(0)
+		switch {
+		case on:
+			box.Background(t.Accent)
+		case row.Hovered():
+			box.Background(t.Background).Border(1, t.Accent)
+		default:
+			box.Background(t.Background).Border(1, t.Border.Mix(t.Text, 0.25))
+		}
+		box.DrawOver(func(p *wui.Painter, rc wui.Rect) {
+			if on {
+				var path wui.Path
+				path.MoveTo(rc.X+rc.W*0.22, rc.Y+rc.H*0.52).LineTo(rc.X+rc.W*0.42, rc.Y+rc.H*0.71).LineTo(rc.X+rc.W*0.78, rc.Y+rc.H*0.31)
+				p.StrokePath(&path, t.Space(0.5), t.AccentText)
+			}
+			if row.FocusVisible() {
+				r := t.Space(1)
+				p.FocusRing(rc, [4]float32{r, r, r, r})
+			}
+		})
+		wui.Text(c, label).FontSize(sideSub).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+	})
+	return row
 }
 
 // undoButton 是提交框里的"撤销上次提交"（git reset --soft HEAD~1）；why 不空时灰着、提示里带原因。

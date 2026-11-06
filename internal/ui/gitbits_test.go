@@ -479,3 +479,45 @@ func TestUnstagedGroupWithUntracked(t *testing.T) {
 		t.Errorf("行：%s", s)
 	}
 }
+
+// 默认侧栏宽度下，提交框底下那排（修改上一次提交、撤销、提交 N 个文件）不超出输入框：按钮不缩、右边和输入框对齐，
+// 勾选的文字让位。N 是两位数、三位数时也一样。
+func TestCommitBarFits(t *testing.T) {
+	for _, n := range []int{12, 120} {
+		t.Run(strconv.Itoa(n), func(t *testing.T) {
+			repo := testutil.NewRepo(t, "fit")
+			repo.Write("a.txt", "一\n")
+			repo.Commit("初始")
+			for i := range n {
+				repo.Write("f"+strconv.Itoa(i)+".txt", "x\n")
+			}
+			repo.Git("add", "-A")
+			a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")
+			a.St.BottomBar = false
+			r := a.Repos[0]
+			a.RefreshRepo(r, app.WhyManual)
+			wait("git status", func() bool { return idle(r)() && r.Status.Staged == n && r.Extra.Head != "" })
+			a.Exec("view.git")
+			a.OpenCommit(r)
+			tt.Frame()
+			label := "提交 " + strconv.Itoa(n) + " 个文件"
+			wait("提交框", func() bool { return tt.HasText(label) && tt.HasText("修改上一次提交") })
+			msg, ok1 := tt.Find("提交信息")
+			btn, ok2 := tt.Find(label)
+			cb, ok3 := tt.Find("修改上一次提交")
+			side, ok4 := tt.Find("调整侧栏宽度")
+			if !ok1 || !ok2 || !ok3 || !ok4 {
+				t.Fatalf("找不到提交框的部件: %v %v %v %v %q", ok1, ok2, ok3, ok4, tt.Texts())
+			}
+			if right, edge := btn.X+btn.W, msg.X+msg.W; right > edge+0.5 {
+				t.Errorf("提交按钮右边 %.1f 超出输入框右边 %.1f", right, edge)
+			}
+			if btn.X+btn.W > side.X {
+				t.Errorf("提交按钮右边 %.1f 超出侧栏 %.1f", btn.X+btn.W, side.X)
+			}
+			if cb.X+cb.W > btn.X {
+				t.Errorf("勾选 %+v 和按钮 %+v 叠在一起", cb, btn)
+			}
+		})
+	}
+}
