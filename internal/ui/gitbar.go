@@ -824,13 +824,15 @@ func lineTotals(files []git.Change) (add, del int) {
 	return add, del
 }
 
-// 提交框的尺寸：框的圆角、框里的字到边的留白，框里分裂按钮的高和圆角。
+// 提交框的尺寸：框的圆角、框里的字到边的留白，框里分裂按钮的高、圆角和到框边的距离。
+// 按钮的圆角比框小，差不多是框的圆角减去到框边的距离，内外两道弧才贴得顺。
 const (
-	commitRadius = 6
-	commitPadY   = 4
-	commitPadX   = 8
+	commitRadius = 10
+	commitPadY   = 6
+	commitPadX   = 10
 	commitBtnH   = 22
-	commitBtnR   = 5
+	commitBtnR   = 6
+	commitInset  = 5
 )
 
 // commitRow 是仓库段里的提交框（工作树组头下面、改动分组上面）：一个框管到底。平时只有一行，看着就是输入框；
@@ -847,9 +849,13 @@ func commitRow(a *app.App, row wui.ListRow, r *app.Repo) {
 		a.GitHover = row.Index
 	}
 	wrap.Children(func() {
-		box := wui.Column(c.Key("box")).Radius(commitRadius).Background(t.Surface).Border(1, t.Border)
+		// 平时贴着背景，半透明的底、淡边。指针在这一行时列表铺了悬停底色，半透明会透出来发灰，换实底；有键盘时也是实底
+		box := wui.Column(c.Key("box")).Radius(commitRadius).Background(t.Surface.Alpha(0.6)).Border(1, t.Border.Alpha(0.45))
+		if wrap.Hovered() || box.FocusWithin() {
+			box.Background(t.Surface)
+		}
 		if box.FocusWithin() {
-			box.BorderColor(t.Accent)
+			box.BorderColor(t.Accent.Alpha(0.6))
 		}
 		hover := box.Hovered()
 		box.Children(func() {
@@ -861,7 +867,7 @@ func commitRow(a *app.App, row wui.ListRow, r *app.Repo) {
 				}
 				if !foot && hover {
 					more := i18n.T("更多提交操作")
-					b := wui.ButtonBase(c.Key("more")).Size(rowToolSize, rowToolSize).Margin(0, 3, 0, 0).Shrink(0).Label(more)
+					b := wui.ButtonBase(c.Key("more")).Size(rowToolSize, rowToolSize).Margin(0, commitInset, 0, 0).Shrink(0).Label(more)
 					tooltip(c, b, more)
 					fg := toolStyle(c, b, false, false)
 					b.Children(func() {
@@ -973,7 +979,7 @@ func commitHint(r *app.Repo) string {
 // 点了不提交（不调 Disabled，mygo 的 Disabled 不出悬停提示），▾ 一直能开。
 func commitFoot(a *app.App, c *wui.Context, r *app.Repo) {
 	t := c.Theme()
-	wui.Row(c.Key("foot")).Padding(0, 4, 4, commitPadX).Gap(6).AlignItems(wui.Center).Children(func() {
+	wui.Row(c.Key("foot")).Padding(0, commitInset, commitInset, commitPadX).Gap(6).AlignItems(wui.Center).Children(func() {
 		wui.Text(c, commitHint(r)).FontSize(sideSub).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		wui.Spacer(c).Grow(1)
 		why := app.CommitWhy(r)
