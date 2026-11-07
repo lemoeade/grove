@@ -2203,5 +2203,10 @@
   "正在变基": "rebasing",
   "没有要替换的": "nothing to replace",
   "等搜索完成": "wait for the search to finish",
-  "还没改过": "nothing changed yet"
+  "还没改过": "nothing changed yet",
+  "%d 行未修改": "%d unchanged lines",
+  "%d 行未修改|1": "%d unchanged line",
+  "展开 %d 行未修改": "Expand %d unchanged lines",
+  "展开 %d 行未修改|1": "Expand %d unchanged line",
+  "点一下往改动那边展开；按住 ⇧ 一次展开全部": "Click to expand toward the change; hold ⇧ to expand all"
 }
