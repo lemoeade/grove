@@ -59,19 +59,21 @@ func localBody(c *wui.Context, e lhist.Entry, sel bool, muted wui.Color, icon bo
 // localGraph 是圆点模式下本地行的图格：一个小时钟（圈 + 两根针）代替圆点；pass 时上下各一截竖线接到挨着的提交。
 func localGraph(c *wui.Context, pass bool, w float32, sel bool) {
 	wui.Box(c).Width(w).Shrink(0).Draw(func(p *wui.Painter, r wui.Rect) {
-		col := laneColor(p.Theme(), 0, sel)
+		t := p.Theme()
+		col := thinColor(t, false, sel)
 		x, y := r.X+graphX(0), r.Y+graphNodeY
-		const rad = graphRingR - graphStroke/2
+		const rad = graphRingR - thinStroke/2
 		p.Clip(r, 0, func() {
 			if pass {
-				p.Line(x, r.Y, x, y-graphRingR, graphStroke, col)
-				p.Line(x, y+graphRingR, x, r.Y+r.H, graphStroke, col)
+				line := laneColor(t, 0, sel)
+				graphLine(p, x, r.Y, x, y-graphRingR-1, line, 0, true)
+				graphLine(p, x, y+graphRingR+1, x, r.Y+r.H, line, 0, true)
 			}
 			var ring wui.Path
 			ring.Circle(x, y, rad)
-			p.StrokePath(&ring, graphStroke, col)
-			p.Line(x, y, x, y-rad*0.6, graphStroke, col)
-			p.Line(x, y, x+rad*0.5, y+rad*0.3, graphStroke, col)
+			p.StrokePath(&ring, thinStroke, col)
+			p.Line(x, y, x, y-rad*0.6, thinStroke, col)
+			p.Line(x, y, x+rad*0.5, y+rad*0.3, thinStroke, col)
 		})
 	})
 }

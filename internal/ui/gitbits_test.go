@@ -36,8 +36,8 @@ func TestHistNumstat(t *testing.T) {
 	mustClickRow(t, tt, "改三个文件")
 	wait("展开", func() bool { return r.Hist.FilesFor != "" && !r.Hist.FilesLoading })
 	tt.Frame()
-	mustText(t, tt, "3 个文件 · +5 −1")
-	for _, s := range []string{"+2", "−1", "+3", "二进制"} {
+	mustText(t, tt, "3 个文件")
+	for _, s := range []string{"+5", "+2", "−1", "+3", "二进制"} {
 		if !shows(tt, s) {
 			t.Errorf("没有 %q: %q", s, tt.Texts())
 		}
@@ -686,6 +686,7 @@ func TestChangeLetterAtEnd(t *testing.T) {
 	repo.Write("src/a.txt", "1\n")
 	repo.Commit("初始提交")
 	repo.Write("src/a.txt", "1\n2\n")
+	repo.Write("src/b.txt", "1\n2\n") // 卡片上的合计是 +3，"+1" 只有 a.txt 那行
 	repo.Commit("加一行")
 	repo.Write("src/a.txt", "1\n2\n3\n")
 	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")

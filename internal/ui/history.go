@@ -21,13 +21,15 @@ const (
 	histDayH  = 26 // 日期段头
 	histFileH = 24 // 卡片里的一个文件
 	histDotD  = 7  // "所有仓库"每行左边的仓库圆点
+
+	histNarrow = 300 // 右栏比这窄：头部不写分支名，卡片的按钮只留"更多"
 )
 
 // rightBar 是右栏：提交历史。头部一行是仓库名和分支（"所有仓库"时是层叠图标和"全部仓库"），右边是图标开关：
 // 搜索（点开在下面展开搜索框）、所有分支、只看 agent 写的、所有仓库（记进 state.json），竖线后是关闭；
-// 文件历史、工作树、比较的胶囊在头部下面。"当前仓库"第一行固定是"未提交的改动"，然后一个提交一行、按日期分段；
-// "所有仓库"先是有改动的仓库各一行，再是各仓库的提交按时间合并、每行左边一个仓库圆点。
-// 选中的提交下面展开一张卡片：正文、短哈希 / 作者 / agent、几个按钮，和它改的文件（点文件在主区开 Diff 标签）。
+// 文件历史、工作树、比较的胶囊在头部下面。"当前仓库"工作区有改动时第一行是"未提交的改动"，然后一个提交一行、
+// 按日期分段，段头滚动时钉在顶上；"所有仓库"先是有改动的仓库各一行，再是各仓库的提交按时间合并、每行左边一个仓库圆点。
+// 选中的提交展开成一张卡片：标题读全、作者 / agent / 时间、分支、正文、短哈希、几个按钮，和它改的文件（点文件在主区开 Diff 标签）。
 func rightBar(a *app.App, c *wui.Context) {
 	r := a.Current()
 	card(c, wui.Column(c).Width(a.St.RightW).Shrink(0), func() {
@@ -105,6 +107,9 @@ func histTitle(a *app.App, c *wui.Context, r *app.Repo) {
 		wui.Text(c, s).FontSize(14.5).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 	}
 	sub := func(ic *wui.SVG, s, tip string) {
+		if a.St.RightW < histNarrow { // 看工作树 / 标签时下面的胶囊里还写着
+			return
+		}
 		wui.Icon(c, ic).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
 		wui.Text(c, s).FontSize(12).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(2).Tooltip(tip)
 	}
@@ -152,7 +157,7 @@ func histSearch(a *app.App, c *wui.Context) {
 		return
 	}
 	wui.Row(c).Padding(6, 8, 2, 8).Gap(6).AlignItems(wui.Center).Shrink(0).Children(func() {
-		f := wui.SearchField(c.Key("histq"), &a.HistQuery).Label(i18n.T("搜索提交")).Placeholder(i18n.T("提交信息、作者或哈希；author: after: before: path:")).
+		f := wui.SearchField(c.Key("histq"), &a.HistQuery).Label(i18n.T("搜索提交")).Placeholder(i18n.T("提交信息、作者或哈希")).
 			Tooltip(i18n.T("在历史里找提交信息或作者里有这些字的提交，或哈希以它开头的提交")).FontSize(12).Grow(1).MinWidth(0).Bind(&a.HistField)
 		if f.Changed() {
 			a.HistQueryChanged()
@@ -274,6 +279,8 @@ func history(a *app.App, c *wui.Context, r *app.Repo) {
 			return "compare:" + cp.Files[row.File].Path
 		case row.CI == app.LocalRow:
 			return h.Local[row.File].T
+		case row.CI == app.DayRow:
+			return "day:" + h.Commits[row.File].Hash
 		case row.CI < 0:
 			return "uncommitted"
 		case row.File < 0:
@@ -290,6 +297,8 @@ func history(a *app.App, c *wui.Context, r *app.Repo) {
 			return cp.Files[row.File].Path
 		case row.CI == app.LocalRow:
 			return app.LocalTitle(h.Local[row.File]) + " · " + app.LocalMeta(h.Local[row.File])
+		case row.CI == app.DayRow:
+			return dayLabel(h.Commits[row.File].Date, time.Now())
 		case row.CI < 0:
 			return i18n.T("未提交的改动")
 		case row.File < 0:
@@ -297,6 +306,7 @@ func history(a *app.App, c *wui.Context, r *app.Repo) {
 		}
 		return h.Files[row.File].Path
 	}
+	a.HistList.Header = func(i int) bool { return rows[i].CI == app.DayRow }
 	a.HistList.Selected = &h.Sel
 	titleHover := false // 鼠标在比较段的标题上：回车 / 双击带来的 Submitted 不再切（点它时已经切过了）
 	l := newListLook(a, c, 0)
@@ -311,6 +321,8 @@ func history(a *app.App, c *wui.Context, r *app.Repo) {
 					})
 				case hr.CI == app.LocalRow:
 					l.row(row.Context, row.Selected(), row.ListFocused(), func() { localHistRow(a, row, r, rows, row.Index) })
+				case hr.CI == app.DayRow:
+					histDayRow(a, l, row, r, hr.File)
 				case hr.CI < 0:
 					l.row(row.Context, row.Selected(), row.ListFocused(), func() { uncommittedRow(a, row, r) })
 				case hr.File >= 0:
@@ -336,6 +348,7 @@ func history(a *app.App, c *wui.Context, r *app.Repo) {
 				a.OpenDiff(r, h.Compare.Files[hr.File], true)
 			case hr.CI == app.LocalRow:
 				a.OpenLocalCompare(a.LocalAbs(r), h.Local[hr.File], true)
+			case hr.CI == app.DayRow:
 			case hr.File >= 0:
 				a.OpenDiff(r, h.Files[hr.File], true)
 			}
@@ -363,22 +376,18 @@ func moreRow(c *wui.Context, shown int, loading bool, tip string, more func()) {
 	})
 }
 
-// histParts 建历史列表的一行：head（日期段头）在上、tail（展开的提交的卡片）在下，都在选中的底外面；
-// body 在选中的底里面（listLook.row）。实心的选中（设置里关了淡底）由列表铺满整行，分不开。
-func histParts(l *listLook, row wui.ListRow, head, body, tail func()) {
+// histParts 建历史列表的一行：body 在选中的底里面（listLook.row），tail（展开的提交的卡片）在下面、底的外面。
+// 展开着的提交不画选中的底：卡片就是它选中的样子。实心的选中（设置里关了淡底）由列表铺满整行，分不开。
+func histParts(l *listLook, row wui.ListRow, open bool, body, tail func()) {
 	c := row.Context
-	if head == nil && tail == nil {
-		l.row(c, row.Selected(), row.ListFocused(), body)
+	sel := row.Selected() && !open
+	if tail == nil {
+		l.row(c, sel, row.ListFocused(), body)
 		return
 	}
 	wui.Column(c).Shrink(0).Children(func() {
-		if head != nil {
-			withTheme(c, l.real, head)
-		}
-		l.row(c, row.Selected(), row.ListFocused(), body)
-		if tail != nil {
-			withTheme(c, l.real, tail)
-		}
+		l.row(c, sel, row.ListFocused(), body)
+		withTheme(c, l.real, tail)
 	})
 }
 
@@ -407,24 +416,13 @@ func histPass(a *app.App, c *wui.Context, r *app.Repo, ci int) {
 	}
 }
 
-// dayStart 是第 ci 个提交上面要不要一个日期段头：第一个，或和上一个不是同一天。
-func dayStart(cs []git.Commit, ci int) bool {
-	return ci == 0 || !sameDay(cs[ci-1].Date, cs[ci].Date)
-}
-
-// sameDay 是两个时刻在本地时区是同一天。
-func sameDay(x, y time.Time) bool {
-	x, y = x.Local(), y.Local()
-	return x.YearDay() == y.YearDay() && x.Year() == y.Year()
-}
-
 // dayLabel 是日期段头的字："今天""昨天""11 月 3 日"，不是今年的带年份。
 func dayLabel(d, now time.Time) string {
 	d, now = d.Local(), now.Local()
 	switch {
-	case sameDay(d, now):
+	case app.SameDay(d, now):
 		return i18n.T("今天")
-	case sameDay(d, now.AddDate(0, 0, -1)):
+	case app.SameDay(d, now.AddDate(0, 0, -1)):
 		return i18n.T("昨天")
 	case d.Year() == now.Year():
 		return i18n.Tf("%d 月 %d 日", int(d.Month()), d.Day())
@@ -432,10 +430,11 @@ func dayLabel(d, now time.Time) string {
 	return i18n.Tf("%d 年 %d 月 %d 日", d.Year(), int(d.Month()), d.Day())
 }
 
-// dayHead 是日期段头（高 26，11.5 半粗灰字）；graph 画左边的图格（线穿过去），可以为 nil。
+// dayHead 是日期段头（高 26，11.5 半粗灰字）：列表的 Header，滚动时钉在顶上，所以有底色；
+// graph 画左边的图格（线穿过去），可以为 nil。
 func dayHead(c *wui.Context, text string, left float32, graph func()) {
 	t := c.Theme()
-	wui.Row(c).Height(histDayH).AlignItems(wui.Stretch).Shrink(0).Children(func() {
+	wui.Row(c).Height(histDayH).AlignItems(wui.Stretch).Shrink(0).Background(t.Background).Children(func() {
 		if graph != nil {
 			graph()
 		}
@@ -445,7 +444,35 @@ func dayHead(c *wui.Context, text string, left float32, graph func()) {
 	})
 }
 
-// histCommitRow 是"当前仓库"视图的一个提交：（一天的第一个上面有日期段头）一行 30 高，展开着下面是卡片。
+// histLeft 是"当前仓库"视图里标题离图格多远（没有图格时离行左边多远）。
+func histLeft(w float32) float32 {
+	if w == 0 {
+		return 10
+	}
+	return 4
+}
+
+// histDayRow 是"当前仓库"视图的日期段头，下面第一个提交是 ci；左边的图格接着上一行的线。
+func histDayRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ci int) {
+	c := row.Context
+	h := &r.Hist
+	w := histGraphW(a, r)
+	withTheme(c, l.real, func() {
+		dayHead(c, dayLabel(h.Commits[ci].Date, time.Now()), histLeft(w), func() {
+			switch {
+			case a.HistGraph(r):
+				var dirty [2]int
+				dirty[0], dirty[1] = dirtyLine(r)
+				headGraph(c, h, ci, dirty, w)
+			case a.HistDots(r):
+				up, _ := h.DotLinks(ci)
+				dotPass(c, up, w, false)
+			}
+		})
+	})
+}
+
+// histCommitRow 是"当前仓库"视图的一个提交：一行 30 高；展开着标题读全，是下面卡片的第一行。
 func histCommitRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ci int) {
 	c := row.Context
 	h := &r.Hist
@@ -453,39 +480,26 @@ func histCommitRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ci int
 	g, dots := a.HistGraph(r), a.HistDots(r)
 	w := histGraphW(a, r)
 	var dirty [2]int
+	lane := -1
 	if g {
 		dirty[0], dirty[1] = dirtyLine(r)
+		lane = h.Graph[ci].Lane
 	}
 	head, _ := histHead(r)
-	left := float32(4)
-	if w == 0 {
-		left = 10
-	}
-	var top, tail func()
-	if dayStart(h.Commits, ci) {
-		top = func() {
-			dayHead(c, dayLabel(cm.Date, time.Now()), left, func() {
-				switch {
-				case g:
-					headGraph(c, h, ci, dirty, w)
-				case dots:
-					up, _ := h.DotLinks(ci)
-					dotPass(c, up, w, false)
-				}
-			})
-		}
-	}
-	if cm.Hash == h.Expanded {
+	left := histLeft(w)
+	open := cm.Hash == h.Expanded
+	var tail func()
+	if open {
 		tail = func() {
 			wui.Row(c).AlignItems(wui.Stretch).Shrink(0).Children(func() {
 				histPass(a, c, r, ci)
-				commitCard(a, c, r, cm, left)
+				commitCard(a, c, r, cm, left, false, lane)
 			})
 		}
 	}
-	histParts(l, row, top, func() {
+	histParts(l, row, open, func() {
 		sel := onAccent(a, row.Selected())
-		el := wui.Row(c).Height(histRowH).AlignItems(wui.Stretch)
+		el := commitRowBox(c, open)
 		ctxMenuRow(a, c, row, el, menuOwner{"commit", r.Root + "\x00" + cm.Hash}, func(m menu) { commitMenu(a, m, r, cm) })
 		hover := el.Hovered()
 		el.Children(func() {
@@ -496,49 +510,71 @@ func histCommitRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ci int
 				up, down := h.DotLinks(ci)
 				dotGraph(c, cm, head, up, down, w, sel)
 			}
-			commitLine(a, c, r, cm, sel, hover, false, left)
+			if open {
+				commitTitle(c, l, cm, left)
+				return
+			}
+			commitLine(a, c, r, cm, commitLook{sel: sel, hover: hover, left: left, lane: lane})
 		})
 	}, tail)
 }
 
-// commitLine 是提交那一行的内容：（所有仓库时仓库圆点）标题（合并提交次要色），右边依次是 agent 记号、
-// 分支 / 标签、没推送的箭头、（所有仓库时仓库名）、时间（悬停时换成短哈希）。
-func commitLine(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, sel, hover, all bool, left float32) {
+// commitRowBox 是提交那一行的外框：展开着标题可能折行，高度跟着字。
+func commitRowBox(c *wui.Context, open bool) wui.Element {
+	el := wui.Row(c).AlignItems(wui.Stretch)
+	if open {
+		return el.MinHeight(histRowH)
+	}
+	return el.Height(histRowH)
+}
+
+// commitTitle 是展开的提交的标题：卡片的第一行，读全。在选中的行里建，字色要写明（实心的选中默认是强调色上的字）。
+func commitTitle(c *wui.Context, l *listLook, cm git.Commit, left float32) {
+	t := l.real
+	wui.Column(c).Margin(0, 8, 0, left).Padding(7, 10, 5, 10).Grow(1).MinWidth(0).Background(histCardBg(t)).
+		BorderColor(cardLine(t)).BorderWidth(1, 1, 0, 1).Radius(10, 10, 0, 0).Children(func() {
+		wui.Text(c, cm.Subject).FontSize(13).FontWeight(600).TextColor(t.Text).MinWidth(0)
+	})
+}
+
+// commitLook 是 commitLine 怎么画一行提交。
+type commitLook struct {
+	sel, hover bool
+	all        bool    // 所有仓库：左边仓库圆点
+	repoName   bool    // 所有仓库：右边写仓库名（和上一行不是一个仓库时）
+	left       float32 // 标题离行左边 / 图格多远
+	lane       int     // 提交图里的泳道，没有提交图是 -1
+}
+
+// commitLine 是收起的提交那一行：（所有仓库时仓库圆点）标题（合并提交次要色），右边依次是分支 / 标签、
+// 没推送的箭头、（所有仓库时仓库名）、时间（悬停时换成短哈希）。agent 写在展开的卡片里。
+func commitLine(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, k commitLook) {
 	t := c.Theme()
 	muted := t.TextMuted
-	if sel {
+	if k.sel {
 		muted = t.AccentText.Alpha(0.75)
 	}
-	wui.Row(c).Padding(0, 8, 0, left).Gap(6).AlignItems(wui.Center).Grow(1).MinWidth(0).Children(func() {
-		if all {
-			repoDot(a, c, r, sel)
+	wui.Row(c).Padding(0, 8, 0, k.left).Gap(6).AlignItems(wui.Center).Grow(1).MinWidth(0).Children(func() {
+		if k.all {
+			repoDot(a, c, r, k.sel)
 		}
-		s := wui.Text(c, cm.Subject).FontSize(13.5).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		s := wui.Text(c, cm.Subject).FontSize(13).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if len(cm.Parents) > 1 {
 			s.TextColor(muted)
 		}
-		if cm.Agent != "" {
-			commitAgentMark(c, cm.Agent, muted)
-		}
-		for i, ref := range cm.Refs {
-			if i >= 2 {
-				wui.Textf(c, "+%d", len(cm.Refs)-2).FontSize(10.5).TextColor(muted).Shrink(0).Tooltip(strings.Join(cm.Refs[2:], "\n"))
-				break
-			}
-			refChip(c, r, ref, sel)
-		}
+		refChips(c, r, cm, k.lane, k.sel, muted)
 		if r.Extra.Unpushed[cm.Hash] {
 			col := t.Warning
-			if sel {
+			if k.sel {
 				col = muted
 			}
-			wui.Icon(c, iconArrowUp).FontSize(iconInline).TextColor(col).Shrink(0).Label(i18n.T("未推送")).Tooltip(i18n.T("还没推送到任何远程分支"))
+			unpushedMark(c, col)
 		}
-		if all {
+		if k.repoName {
 			wui.Text(c, r.Name).FontSize(11.5).TextColor(muted).SingleLine().Ellipsis("…").MaxWidth(96).Shrink(0).Tooltip(r.Root)
 		}
 		wui.Row(c).Width(48).Justify(wui.End).Shrink(0).Children(func() {
-			if hover {
+			if k.hover {
 				wui.Text(c, cm.Short).Font(mono()).FontSize(11).TextColor(muted).SingleLine()
 				return
 			}
@@ -548,46 +584,100 @@ func commitLine(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, sel, hov
 	})
 }
 
-// commitAgentMark 是 agent 写的提交行右边的灰色四角星；悬停是"Claude · Co-Authored-By"。
-func commitAgentMark(c *wui.Context, agent string, col wui.Color) {
-	wui.Icon(c, iconSparkle).FontSize(iconInline).TextColor(col).Shrink(0).Tooltip(agent + " · Co-Authored-By")
+// unpushedMark 是没推送的箭头。
+func unpushedMark(c *wui.Context, col wui.Color) {
+	wui.Icon(c, iconArrowUp).FontSize(iconInline).TextColor(col).Shrink(0).Label(i18n.T("未推送")).Tooltip(i18n.T("还没推送到任何远程分支"))
 }
 
-// isRemoteRef 是 ref 是远程分支（origin/main 这种，按已有的远程认）。
-func isRemoteRef(r *app.Repo, ref string) bool {
+// remoteBranch 是远程分支 ref（origin/main 这种，按已有的远程认）的分支名；不是远程分支为 false。
+func remoteBranch(r *app.Repo, ref string) (string, bool) {
 	for _, x := range r.Extra.Remotes {
-		if strings.HasPrefix(ref, x.Name+"/") {
-			return true
+		if name, ok := strings.CutPrefix(ref, x.Name+"/"); ok {
+			return name, true
 		}
 	}
-	return false
+	return "", false
 }
 
-// refChip 是提交行右边的一个分支 / 标签标记：本地分支是灰底胶囊（分支图标加名字），当前分支（HEAD）强调色字配
-// 强调色 12% 的底；远程分支只一个云朵图标（名字在悬停提示里）；标签是标签图标加名字。
-func refChip(c *wui.Context, r *app.Repo, ref string, onAccent bool) {
+// commitRef 是提交上的一个分支 / 标签标记；twin 是折进这个本地分支的同名远程分支（几个时一行一个）。
+type commitRef struct{ name, twin string }
+
+// tip 是这个标记的悬停提示。
+func (x commitRef) tip() string {
+	if x.twin == "" {
+		return x.name
+	}
+	return x.name + "\n" + x.twin
+}
+
+// foldRefs 把和本地分支同名的远程分支折进本地分支：main 和 origin/main 在同一个提交上只占一个胶囊。
+func foldRefs(r *app.Repo, refs []string) []commitRef {
+	out := make([]commitRef, 0, len(refs))
+	twins := map[string][]string{}
+	for _, ref := range refs {
+		if name, ok := remoteBranch(r, ref); ok && slices.Contains(refs, name) {
+			twins[name] = append(twins[name], ref)
+			continue
+		}
+		out = append(out, commitRef{name: ref})
+	}
+	for i := range out {
+		out[i].twin = strings.Join(twins[out[i].name], "\n")
+	}
+	return out
+}
+
+// refChips 是提交的分支 / 标签标记：最多两个，多的写 +N、名字在悬停提示里。
+func refChips(c *wui.Context, r *app.Repo, cm git.Commit, lane int, onAccent bool, muted wui.Color) {
+	refs := foldRefs(r, cm.Refs)
+	for i, ref := range refs {
+		if i >= 2 {
+			var rest []string
+			for _, x := range refs[2:] {
+				rest = append(rest, x.tip())
+			}
+			wui.Textf(c, "+%d", len(refs)-2).FontSize(10.5).TextColor(muted).Shrink(0).Tooltip(strings.Join(rest, "\n"))
+			break
+		}
+		refChip(c, r, ref, lane, onAccent)
+	}
+}
+
+// refChip 是一个分支 / 标签标记：本地分支是灰底胶囊（分支图标加名字），当前分支（HEAD）强调色字配强调色 12% 的底，
+// 同名的远程分支在同一个提交上时名字后面一朵云；远程分支只一个云朵图标（名字在悬停提示里）；标签是标签图标加名字。
+// lane > 0（提交图里不在主线上）时胶囊的底和图标用泳道的颜色，一眼对得上是哪条线。
+func refChip(c *wui.Context, r *app.Repo, ref commitRef, lane int, onAccent bool) {
 	t := c.Theme()
-	if isRemoteRef(r, ref) {
+	if _, ok := remoteBranch(r, ref.name); ok {
 		col := t.TextMuted
 		if onAccent {
 			col = t.AccentText
 		}
-		wui.Icon(c, iconCloud).FontSize(iconInline).TextColor(col).Shrink(0).Tooltip(ref)
+		wui.Icon(c, iconCloud).FontSize(iconInline).TextColor(col).Shrink(0).Tooltip(ref.name)
 		return
 	}
+	name := ref.name
 	bg, fg, ic := quietFill(t), t.TextMuted, iconBranch
 	switch {
-	case strings.HasPrefix(ref, "tag: "):
-		ref, ic = strings.TrimPrefix(ref, "tag: "), iconTag
-	case r.Hist.RefKind == app.RefNone && ref == r.Status.Branch:
+	case strings.HasPrefix(name, "tag: "):
+		name, ic = strings.TrimPrefix(name, "tag: "), iconTag
+	case r.Hist.RefKind == app.RefNone && name == r.Status.Branch:
 		bg, fg = t.Accent.Alpha(0.12), t.Accent
 	}
-	if onAccent {
-		bg, fg = t.AccentText.Alpha(0.22), t.AccentText
+	icCol := fg
+	switch {
+	case onAccent:
+		bg, fg, icCol = t.AccentText.Alpha(0.22), t.AccentText, t.AccentText
+	case lane > 0:
+		icCol = laneColor(t, lane, false)
+		bg = icCol.Alpha(0.16)
 	}
-	wui.Row(c).Gap(3).AlignItems(wui.Center).Padding(1, 6).Radius(999).Background(bg).Shrink(1).MinWidth(0).Tooltip(ref).Children(func() {
-		wui.Icon(c, ic).FontSize(iconInline).TextColor(fg)
-		wui.Text(c, ref).FontSize(10.5).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).MaxWidth(110)
+	wui.Row(c).Gap(3).AlignItems(wui.Center).Padding(1, 6).Radius(999).Background(bg).Shrink(1).MinWidth(0).Tooltip(ref.tip()).Children(func() {
+		wui.Icon(c, ic).FontSize(iconInline).TextColor(icCol)
+		wui.Text(c, name).FontSize(10.5).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).MaxWidth(110)
+		if ref.twin != "" {
+			wui.Icon(c, iconCloud).FontSize(iconInline).TextColor(fg).Shrink(0)
+		}
 	})
 }
 
@@ -599,58 +689,58 @@ func histCardBg(t *wui.Theme) wui.Color {
 	return wui.Hex("#ffffff")
 }
 
-// commitCard 是展开的提交下面的卡片（左边和标题对齐，left 是标题离图格的距离）：正文（最多两行）、
-// 一行信息（短哈希胶囊点了复制完整哈希、作者、agent，右边 和 HEAD 比较 / 在网页打开 / 更多），
-// 文件读到了就一条细线，下面的文件行（histFileRow）接着画卡片的两边和底。
-func commitCard(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, left float32) {
+// commitCard 是展开的提交的卡片（commitTitle 是它的第一行；left 同 commitTitle，lane 同 commitLook）：一行作者 / agent / 时间
+// 和分支、正文、一行短哈希（点了复制完整哈希）/ 文件数 / 增删行和按钮，文件读到了就一条细线，
+// 下面的文件行（histFileRow）接着画卡片的两边和底。all 是"所有仓库"视图：信息行开头写仓库名。
+func commitCard(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, left float32, all bool, lane int) {
 	t := c.Theme()
 	h := &r.Hist
 	muted := t.TextMuted
 	files := h.FilesFor == cm.Hash && len(h.Files) > 0
 	el := wui.Column(c).Grow(1).MinWidth(0).Gap(6).Background(histCardBg(t)).BorderColor(cardLine(t))
 	if files {
-		el.Margin(2, 8, 0, left).Padding(9, 10, 0, 10).BorderWidth(1, 1, 0, 1).Radius(10, 10, 0, 0)
+		el.Margin(0, 8, 0, left).Padding(0, 10, 0, 10).BorderWidth(0, 1, 0, 1)
 	} else {
-		el.Margin(2, 8, 8, left).Padding(9, 10, 8, 10).BorderWidth(1).Radius(10)
+		el.Margin(0, 8, 8, left).Padding(0, 10, 8, 10).BorderWidth(0, 1, 1, 1).Radius(0, 0, 10, 10)
 	}
 	el.Children(func() {
-		if cm.Body != "" {
-			wui.Text(c, cm.Body).FontSize(12.5).TextColor(muted).MaxLines(2).Ellipsis("…").MinWidth(0).Tooltip(cm.Body)
-		}
-		wui.Row(c).Gap(8).AlignItems(wui.Center).MinWidth(0).Children(func() {
-			hash := wui.Row(c).Gap(4).AlignItems(wui.Center).Padding(2, 6).Radius(6).Background(quietFill(t)).Shrink(0).
+		commitMeta(c, r, cm, all, lane)
+		commitBody(a, c, r, cm)
+		wui.Row(c).Gap(6).AlignItems(wui.Center).MinWidth(0).Children(func() {
+			hash := wui.Row(c).AlignItems(wui.Center).Padding(2, 0).Shrink(0).
 				Cursor(wui.CursorPointer).Label(i18n.T("复制提交哈希")).Tooltip(i18n.T("复制提交哈希") + "\n" + cm.Hash)
-			hash.Children(func() {
-				wui.Text(c, cm.Short).Font(mono()).FontSize(11).TextColor(t.Text).SingleLine()
-				wui.Icon(c, iconCopy).FontSize(iconInline).TextColor(muted)
-			})
+			hash.Children(func() { wui.Text(c, cm.Short).Font(mono()).FontSize(11).TextColor(muted).SingleLine() })
 			if hash.Clicked() {
 				copyText(cm.Hash)
 				a.Toast = i18n.T("已复制提交哈希")
 			}
-			wui.Row(c).Gap(4).AlignItems(wui.Center).MinWidth(0).Shrink(1).Tooltip(cm.Email).Children(func() {
-				wui.Icon(c, iconUser).FontSize(iconInline).TextColor(muted)
-				wui.Text(c, cm.Author).FontSize(12).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0)
-			})
-			if cm.Agent != "" {
-				wui.Row(c).Gap(4).AlignItems(wui.Center).Shrink(0).Tooltip(cm.Agent + " · Co-Authored-By").Children(func() {
-					wui.Icon(c, iconSparkle).FontSize(iconInline).TextColor(muted)
-					wui.Text(c, cm.Agent).FontSize(12).TextColor(muted).SingleLine()
-				})
+			if files {
+				add, del := lineTotals(h.Files)
+				wui.Text(c, i18n.Tn("%d 个文件", len(h.Files))).FontSize(11).TextColor(muted).Shrink(0)
+				if add > 0 {
+					wui.Textf(c, "+%d", add).FontSize(11).TextColor(t.Success).Shrink(0)
+				}
+				if del > 0 {
+					wui.Textf(c, "−%d", del).FontSize(11).TextColor(t.Danger).Shrink(0)
+				}
 			}
 			wui.Spacer(c).Grow(1)
-			headCm, ok := histHeadCommit(r)
-			same := ok && headCm.Hash == cm.Hash
-			squareButton(c, iconDiff, i18n.T("和 HEAD 比较"), i18n.T("和 HEAD 比较：在历史上面一段列出这个提交到 HEAD 改了的文件"),
-				24, iconRow, !ok || same, func() { a.CompareCommits(r, cm, headCm) })
-			w := a.WebOf(r)
-			web := i18n.T("在网页打开")
-			if w.OK() {
-				web = i18n.Tf("在 %s 打开", w.Site())
-			}
-			squareButton(c, iconExternal, web, web, 24, iconRow, !w.OK() || !r.Extra.Pushed(cm.Hash), func() { a.OpenWeb(w.Commit(cm.Hash)) })
-			more := squareButton(c, iconMore, i18n.T("更多"), i18n.T("更多：完整哈希、邮箱、时间、父提交和提交的操作"), 24, iconRow, false, func() {})
-			menuButton(a, c, more, menuOwner{"commitMore", r.Root + "\x00" + cm.Hash}, func(m menu) { commitMoreMenu(a, m, r, cm) })
+			wui.Row(c).AlignItems(wui.Center).Shrink(0).Children(func() {
+				if a.St.RightW >= histNarrow { // 窄了放不下，它们都在"更多"里
+					headCm, ok := histHeadCommit(r)
+					same := ok && headCm.Hash == cm.Hash
+					squareButton(c, iconDiff, i18n.T("和 HEAD 比较"), i18n.T("和 HEAD 比较：在历史上面一段列出这个提交到 HEAD 改了的文件"),
+						24, iconRow, !ok || same, func() { a.CompareCommits(r, cm, headCm) })
+					w := a.WebOf(r)
+					web := i18n.T("在网页打开")
+					if w.OK() {
+						web = i18n.Tf("在 %s 打开", w.Site())
+					}
+					squareButton(c, iconExternal, web, web, 24, iconRow, !w.OK() || !r.Extra.Pushed(cm.Hash), func() { a.OpenWeb(w.Commit(cm.Hash)) })
+				}
+				more := squareButton(c, iconMore, i18n.T("更多"), i18n.T("更多：完整哈希、邮箱、时间、父提交和提交的操作"), 24, iconRow, false, func() {})
+				menuButton(a, c, more, menuOwner{"commitMore", r.Root + "\x00" + cm.Hash}, func(m menu) { commitMoreMenu(a, m, r, cm) })
+			})
 		})
 		switch {
 		case h.FilesLoading:
@@ -658,10 +748,142 @@ func commitCard(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, left flo
 		case h.FilesFor == cm.Hash && len(h.Files) == 0:
 			wui.Text(c, i18n.T("没有改动文件")).FontSize(11).TextColor(muted)
 		case files:
-			wui.Text(c, fileCount(h.Files)).FontSize(11).TextColor(muted)
 			wui.Box(c).Height(1).Margin(0, 0, 2, 0).Background(cardLine(t))
 		}
 	})
+}
+
+// commitMeta 是卡片的信息行："作者 · agent · 今天 08:32"（悬停是邮箱、agent 和完整时间），右边是分支 / 标签和没推送的箭头。
+func commitMeta(c *wui.Context, r *app.Repo, cm git.Commit, all bool, lane int) {
+	t := c.Theme()
+	muted := t.TextMuted
+	var meta, tip []string
+	if all {
+		meta = append(meta, r.Name)
+	}
+	meta = append(meta, cm.Author)
+	if cm.Email != "" {
+		tip = append(tip, cm.Email)
+	}
+	if cm.Agent != "" {
+		meta = append(meta, cm.Agent)
+		tip = append(tip, cm.Agent+" · Co-Authored-By")
+	}
+	d := cm.Date.Local()
+	meta = append(meta, dayLabel(cm.Date, time.Now())+" "+d.Format("15:04"))
+	tip = append(tip, d.Format("2006-01-02 15:04"))
+	wui.Row(c).Gap(6).AlignItems(wui.Center).MinWidth(0).Children(func() {
+		wui.Text(c, strings.Join(meta, " · ")).FontSize(11.5).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1).
+			Tooltip(strings.Join(tip, "\n"))
+		wui.Spacer(c).Grow(1)
+		wui.Row(c).Gap(4).AlignItems(wui.Center).Shrink(0).MaxWidth(150).Children(func() {
+			refChips(c, r, cm, lane, false, muted)
+			if r.Extra.Unpushed[cm.Hash] {
+				unpushedMark(c, t.Warning)
+			}
+		})
+	})
+}
+
+// bodyItems 把提交正文拆成一条条：一个"- "/"* "开头的列表项或一段是一条，折行的接回去；末尾的
+// Co-Authored-By、Signed-off-by 不要（信息行写了 agent）。
+func bodyItems(body string) []string {
+	ls := strings.Split(strings.TrimSpace(body), "\n")
+	for len(ls) > 0 {
+		l := strings.ToLower(strings.TrimSpace(ls[len(ls)-1]))
+		if l != "" && !strings.HasPrefix(l, "co-authored-by:") && !strings.HasPrefix(l, "signed-off-by:") {
+			break
+		}
+		ls = ls[:len(ls)-1]
+	}
+	var items []string
+	gap := true
+	for _, l := range ls {
+		l = strings.TrimSpace(l)
+		switch {
+		case l == "":
+			gap = true
+			continue
+		case gap, strings.HasPrefix(l, "- "), strings.HasPrefix(l, "* "):
+			items = append(items, l)
+		default:
+			items[len(items)-1] += " " + l
+		}
+		gap = false
+	}
+	return items
+}
+
+// bodyFits 是 items 收起时放不放得下：最多三条，一条时三行，别的一条一行。列表里量不了字，按字宽估：
+// 一个汉字算 1，ASCII 算 0.55，右栏宽减去图格和卡片的边是能放的字数。
+func bodyFits(items []string, rightW float32) bool {
+	if len(items) > 3 {
+		return false
+	}
+	room := (rightW - 70) / 12.5
+	if len(items) == 1 {
+		room *= 3
+	}
+	for _, it := range items {
+		var w float32
+		for _, ch := range it {
+			if ch < 0x80 {
+				w += 0.55
+			} else {
+				w++
+			}
+		}
+		if w > room {
+			return false
+		}
+	}
+	return true
+}
+
+// commitBody 是卡片里的正文：列表项是悬挂缩进的小圆点。收起时最多三条，放不下有"展开全文"。
+func commitBody(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit) {
+	items := bodyItems(cm.Body)
+	if len(items) == 0 {
+		return
+	}
+	t := c.Theme()
+	muted := t.TextMuted
+	open := r.Hist.BodyOpen == cm.Hash
+	fits := bodyFits(items, a.St.RightW)
+	shown, lines := items, 1
+	if !open {
+		shown = items[:min(len(items), 3)]
+		if len(items) == 1 {
+			lines = 3
+		}
+	}
+	wui.Column(c).Gap(3).MinWidth(0).Children(func() {
+		for _, it := range shown {
+			wui.Row(c).Gap(6).AlignItems(wui.Start).MinWidth(0).Children(func() {
+				text := it
+				if strings.HasPrefix(it, "- ") || strings.HasPrefix(it, "* ") {
+					text = it[2:]
+					wui.Box(c).Width(3).Height(3).Margin(7, 0, 0, 1).Radius(2).Background(muted.Alpha(0.7)).Shrink(0)
+				}
+				b := wui.Text(c, text).FontSize(12.5).TextColor(muted).Grow(1).MinWidth(0)
+				if !open {
+					b.MaxLines(lines).Ellipsis("…")
+				}
+			})
+		}
+	})
+	if fits {
+		return
+	}
+	s := i18n.T("展开全文")
+	if open {
+		s = i18n.T("收起")
+	}
+	b := wui.ButtonBase(c).Label(s).AlignSelf(wui.Start).Shrink(0)
+	b.Children(func() { wui.Text(c, s).FontSize(11.5).FontWeight(500).TextColor(t.Accent).SingleLine() })
+	if b.Clicked() {
+		a.ToggleCommitBody(r, cm)
+	}
 }
 
 // histHeadCommit 是读到的历史里 HEAD 那个提交（看工作树 / 标签时是它们的），没读到为 false。
@@ -697,16 +919,18 @@ func commitMoreMenu(a *app.App, m menu, r *app.Repo, cm git.Commit) {
 		copyItem(i18n.Tf("父提交 %s", strings.Join(ps, " ")), strings.Join(cm.Parents, " "))
 	}
 	m.Separator()
+	headCm, ok := histHeadCommit(r)
+	if m.Item(i18n.T("和 HEAD 比较")).Disabled(!ok || headCm.Hash == cm.Hash).Chosen() {
+		a.CompareCommits(r, cm, headCm)
+	}
 	commitMenu(a, m, r, cm)
 }
 
-// fileCount 是"N 个文件 · +A −D"，都没有行数（只有二进制）时只写个数。
-func fileCount(files []git.Change) string {
-	add, del := lineTotals(files)
-	if add == 0 && del == 0 {
-		return i18n.Tn("%d 个文件", len(files))
-	}
-	return i18n.Tn("%d 个文件 · +%d −%d", len(files), add, del)
+// histFileLabel 是历史里的一个文件：commitFileLabel 的小一号，行数不加粗，让文件名先被看到。
+func histFileLabel(a *app.App, c *wui.Context, ch git.Change, sel bool, muted wui.Color) {
+	changeLabel(a, c, ch, sel, muted, 12.5)
+	lineCounts(c, ch, sel, muted, 400)
+	codeLetter(c, c.Theme(), ch.Code, sel)
 }
 
 // histFileRow 是展开的提交改的一个文件：接着画卡片的两边（last 时还有底和下面的圆角），里面一行高 24：
@@ -736,15 +960,15 @@ func histFileRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ch git.C
 					if el.RowDoubleClicked() {
 						a.OpenDiff(r, ch, true)
 					}
-					el.Children(func() { commitFileLabel(a, c, ch, sel, muted) })
+					el.Children(func() { histFileLabel(a, c, ch, sel, muted) })
 				})
 			})
 		})
 	})
 }
 
-// uncommittedRow 是历史列表的第一行：工作区里还没提交的改动。不写字（读屏念列表的"未提交的改动"），
-// 是橙色的铅笔加改动数；有提交图时左边是虚线圈，连到 HEAD。
+// uncommittedRow 是历史列表的第一行：工作区里还没提交的改动，字加改动数；有提交图时左边是虚线圈，连到 HEAD。
+// 工作区干净时没有这一行，看工作树 / 标签时还在（圈是空的）。
 func uncommittedRow(a *app.App, row wui.ListRow, r *app.Repo) {
 	c := row.Context
 	t := c.Theme()
@@ -754,14 +978,7 @@ func uncommittedRow(a *app.App, row wui.ListRow, r *app.Repo) {
 	body := func() {
 		_, n := histHead(r)
 		ref := r.Hist.RefKind != app.RefNone
-		col := t.Warning
-		switch {
-		case sel:
-			col = t.AccentText
-		case n <= 0:
-			col = t.TextMuted
-		}
-		wui.Icon(c, iconPencil).FontSize(iconRow).TextColor(col).Shrink(0)
+		wui.Text(c, i18n.T("未提交的改动")).FontSize(13).SingleLine().Shrink(0)
 		switch {
 		case !r.Loaded || n < 0:
 		case n > 0:
@@ -832,7 +1049,7 @@ func allHistory(a *app.App, c *wui.Context) {
 		return
 	}
 	a.AllHist.Key = func(i int) any { return rows[i].Key() }
-	a.AllHist.Header = func(i int) bool { return rows[i].Kind == app.AllHeader }
+	a.AllHist.Header = func(i int) bool { return rows[i].Kind == app.AllHeader || rows[i].Kind == app.AllDay }
 	a.AllHist.Label = func(i int) string {
 		row := rows[i]
 		switch row.Kind {
@@ -842,6 +1059,8 @@ func allHistory(a *app.App, c *wui.Context) {
 			return row.Repo.Name + " " + row.Commit().Subject
 		case app.AllFile:
 			return row.Repo.Hist.Files[row.File].Path
+		case app.AllDay:
+			return dayLabel(row.Commit().Date, time.Now())
 		}
 		return row.Title
 	}
@@ -875,16 +1094,18 @@ func allHistRow(a *app.App, l *listLook, row wui.ListRow, rows []app.AllHistRow)
 	case app.AllHeader:
 		withTheme(c, l.real, func() {
 			t := c.Theme()
-			if hr.Title != i18n.T("未提交的改动") { // "提交"段头：一条细线和上面那段分开（日期段头在提交行里）
+			if hr.Title != i18n.T("未提交的改动") { // "提交"段头：一条细线和上面那段分开
 				wui.Box(c).Height(9).Background(t.Background).Draw(func(p *wui.Painter, rc wui.Rect) {
 					p.Fill(wui.Rect{X: rc.X + 8, Y: rc.Y + 4, W: rc.W - 16, H: 1}, cardLine(t), 0)
 				})
 				return
 			}
-			wui.Row(c).Height(histDayH).Padding(0, 8).AlignItems(wui.Center).Background(t.Background).Tooltip(hr.Title).Children(func() {
-				wui.Icon(c, iconPencil).FontSize(iconRow).TextColor(t.Warning)
+			wui.Row(c).Height(histDayH).Padding(0, 8).AlignItems(wui.Center).Background(t.Background).Children(func() {
+				wui.Text(c, hr.Title).FontSize(11.5).FontWeight(600).TextColor(t.TextMuted).SingleLine()
 			})
 		})
+	case app.AllDay:
+		withTheme(c, l.real, func() { dayHead(c, dayLabel(hr.Commit().Date, time.Now()), 10, nil) })
 	case app.AllDirty:
 		l.row(c, row.Selected(), row.ListFocused(), func() {
 			t := c.Theme()
@@ -893,7 +1114,7 @@ func allHistRow(a *app.App, l *listLook, row wui.ListRow, rows []app.AllHistRow)
 			ctxMenuRow(a, c, row, repoRow, menuOwner{"histRepo", r.Root}, func(m menu) { repoMenu(a, m, r, false) })
 			repoRow.Children(func() {
 				repoDot(a, c, r, sel)
-				wui.Text(c, r.Name).FontSize(13.5).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Tooltip(changeSummary(r.Status))
+				wui.Text(c, r.Name).FontSize(13).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).Tooltip(changeSummary(r.Status))
 				pill(c, strconv.Itoa(r.Status.Count), t.Warning, sel)
 			})
 		})
@@ -902,7 +1123,6 @@ func allHistRow(a *app.App, l *listLook, row wui.ListRow, rows []app.AllHistRow)
 		histFileRow(a, l, row, r, r.Hist.Files[hr.File], last, allTitleLeft, func() {})
 	default:
 		cm := hr.Commit()
-		var top, tail func()
 		prev := -1
 		for j := row.Index - 1; j >= 0; j-- {
 			if rows[j].Kind == app.AllCommit {
@@ -910,18 +1130,26 @@ func allHistRow(a *app.App, l *listLook, row wui.ListRow, rows []app.AllHistRow)
 				break
 			}
 		}
-		if prev < 0 || !sameDay(rows[prev].Commit().Date, cm.Date) {
-			top = func() { dayHead(c, dayLabel(cm.Date, time.Now()), 10, nil) }
+		open := cm.Hash == r.Hist.Expanded
+		var tail func()
+		if open {
+			tail = func() { commitCard(a, c, r, cm, allTitleLeft, true, -1) }
 		}
-		if cm.Hash == r.Hist.Expanded {
-			tail = func() { commitCard(a, c, r, cm, allTitleLeft) }
-		}
-		histParts(l, row, top, func() {
+		histParts(l, row, open, func() {
 			sel := onAccent(a, row.Selected())
-			el := wui.Row(c).Height(histRowH).AlignItems(wui.Stretch)
+			el := commitRowBox(c, open)
 			ctxMenuRow(a, c, row, el, menuOwner{"commit", r.Root + "\x00" + cm.Hash}, func(m menu) { commitMenu(a, m, r, cm) })
 			hover := el.Hovered()
-			el.Children(func() { commitLine(a, c, r, cm, sel, hover, true, 8) })
+			el.Children(func() {
+				if open { // 圆点还在左边，标题和下面的卡片对齐
+					wui.Row(c).Padding(0, 0, 0, 8).Gap(6).AlignItems(wui.Start).Grow(1).MinWidth(0).Children(func() {
+						wui.Box(c).Margin(11.5, 0, 0, 0).Shrink(0).Children(func() { repoDot(a, c, r, sel) })
+						commitTitle(c, l, cm, 0)
+					})
+					return
+				}
+				commitLine(a, c, r, cm, commitLook{sel: sel, hover: hover, all: true, repoName: prev < 0 || rows[prev].Repo != r, left: 8, lane: -1})
+			})
 		}, tail)
 	}
 }
@@ -958,7 +1186,7 @@ func compareRow(a *app.App, row wui.ListRow, r *app.Repo, cp *app.Compare, hr ap
 		if el.RowDoubleClicked() {
 			a.OpenDiff(r, ch, true)
 		}
-		line(el, [4]float32{3, 8, 3, 28}, func() { commitFileLabel(a, c, ch, sel, muted) })
+		line(el, [4]float32{3, 8, 3, 28}, func() { histFileLabel(a, c, ch, sel, muted) })
 		return false
 	}
 	toggle := func() { a.ToggleCompare(r) }

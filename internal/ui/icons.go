@@ -63,7 +63,6 @@ var (
 	iconColumns   = icon("columns")
 	iconTag       = icon("tag")
 	iconArchive   = icon("archive")
-	iconUser      = icon("user")
 	iconClock     = icon("clock")
 	iconUndo      = icon("arrow-u-up-left")
 	iconTrash     = icon("trash")

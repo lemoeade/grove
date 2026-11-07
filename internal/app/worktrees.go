@@ -405,6 +405,7 @@ func (a *App) ClearRefHistory(r *Repo) {
 	}
 	wt := h.RefPath
 	h.RefKind, h.Ref, h.RefName, h.RefPath = RefNone, "", "", ""
+	h.Sel, h.PrevSel = -1, -1
 	if h.Loaded || h.Loading {
 		a.LoadHistory(r, true)
 	}

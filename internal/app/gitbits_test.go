@@ -177,7 +177,7 @@ func TestCompareCommits(t *testing.T) {
 	if cp == nil || cp.From.Hash != cA.Hash || cp.To.Hash != cC.Hash || !cp.Loading || !cp.Open {
 		t.Fatalf("比较 %+v", cp)
 	}
-	if rows := HistRows(r); rows[1] != (HistRow{CompareRow, -1}) || rows[h.Sel] != (HistRow{0, -1}) {
+	if rows := HistRows(r); rows[0] != (HistRow{CompareRow, -1}) || rows[h.Sel] != (HistRow{0, -1}) {
 		t.Errorf("读的时候: 行 %v 选中 %d", rows, h.Sel)
 	}
 	wait("比较", func() bool { return !cp.Loading })
@@ -195,12 +195,12 @@ func TestCompareCommits(t *testing.T) {
 		t.Errorf("a.txt 的行数 +%d −%d", f.Add, f.Del)
 	}
 	rows := HistRows(r)
-	if len(rows) != 2+3+3 || rows[2] != (HistRow{CompareRow, 0}) || rows[5] != (HistRow{0, -1}) || rows[h.Sel] != (HistRow{0, -1}) {
+	if len(rows) != 1+3+1+3 || rows[1] != (HistRow{CompareRow, 0}) || rows[5] != (HistRow{0, -1}) || rows[h.Sel] != (HistRow{0, -1}) {
 		t.Fatalf("读完: 行 %v 选中 %d", rows, h.Sel)
 	}
 
 	// 点比较里的 a.txt：预览 Diff；再展开 C 点它自己的 a.txt：是另一个标签
-	h.Sel = 2
+	h.Sel = 1
 	a.OnHistSelected(r)
 	d := a.CurrentDoc()
 	if d == nil || d.Kind != docs.Diff || !d.Change.Range || d.Key().Parent != cA.Hash || d.Where() != "a.txt @ "+cA.Short+" → "+cC.Short {
@@ -224,7 +224,7 @@ func TestCompareCommits(t *testing.T) {
 	// 选着比较里的文件时收起：落在标题上；标题只是选中，不切
 	h.Sel = 3
 	a.ToggleCompare(r)
-	if cp.Open || h.Sel != 1 {
+	if cp.Open || h.Sel != 0 {
 		t.Errorf("收起后 open %v 选中 %d", cp.Open, h.Sel)
 	}
 	a.OnHistSelected(r)
@@ -238,7 +238,7 @@ func TestCompareCommits(t *testing.T) {
 	if c := h.Compare; c.From.Hash != cC.Hash || c.To.Hash != cB.Hash {
 		t.Errorf("同一时间应照点的顺序: %s → %s", c.From.Short, c.To.Short)
 	}
-	if h.Sel != 1 {
+	if h.Sel != 0 {
 		t.Errorf("换一次比较，选着比较段的应落在标题上: %d", h.Sel)
 	}
 	wait("比较 C → B", func() bool { return !h.Compare.Loading })
