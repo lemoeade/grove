@@ -98,9 +98,39 @@ func SameDay(x, y time.Time) bool {
 	return x.YearDay() == y.YearDay() && x.Year() == y.Year()
 }
 
-// DayStart 是第 ci 个提交上面要不要一个日期段头：第一个，或和上一个不是同一天。
+// Bucket 是历史里 d 落在哪个日期段（离 now 越远数越大）：0 今天、1 昨天、2 本周（从周一算）、3 上周、4 本月，
+// 再早的一个月一段（10 + 隔了几个月）。start 是这一段的开头（段头的字用）。
+func Bucket(d, now time.Time) (n int, start time.Time) {
+	d, now = d.Local(), now.Local()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	week := today.AddDate(0, 0, -((int(today.Weekday()) + 6) % 7)) // 这周一
+	month := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+	switch {
+	case !d.Before(today):
+		return 0, today
+	case !d.Before(today.AddDate(0, 0, -1)):
+		return 1, today.AddDate(0, 0, -1)
+	case !d.Before(week):
+		return 2, week
+	case !d.Before(week.AddDate(0, 0, -7)):
+		return 3, week.AddDate(0, 0, -7)
+	case !d.Before(month):
+		return 4, month
+	}
+	return 10 + (now.Year()*12 + int(now.Month())) - (d.Year()*12 + int(d.Month())), time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, time.Local)
+}
+
+// sameBucket 是两个提交时间在同一个日期段里（Bucket 一样）。
+func sameBucket(x, y time.Time) bool {
+	now := time.Now()
+	bx, _ := Bucket(x, now)
+	by, _ := Bucket(y, now)
+	return bx == by
+}
+
+// DayStart 是第 ci 个提交上面要不要一个日期段头：第一个，或和上一个不在一个日期段（Bucket）。
 func DayStart(cs []git.Commit, ci int) bool {
-	return ci == 0 || !SameDay(cs[ci-1].Date, cs[ci].Date)
+	return ci == 0 || !sameBucket(cs[ci-1].Date, cs[ci].Date)
 }
 
 // uncommittedRow 是历史列表第一行要不要"未提交的改动"：这个仓库自己的历史、工作区干净时没有这一行。
@@ -445,7 +475,7 @@ func (row AllHistRow) Key() any {
 func (row AllHistRow) Commit() git.Commit { return row.Repo.Hist.Commits[row.CI] }
 
 // AllHistRows 是"所有仓库"视图现在的行：先一段"未提交的改动"（有改动的仓库各一行，都干净就没有这段），
-// 再是各仓库读到的提交按时间合并（每个仓库自己的顺序不变），换一天先是一个日期段头。有仓库读到的那页用完了、后面还有没读的，
+// 再是各仓库读到的提交按时间合并（每个仓库自己的顺序不变），换一个日期段（Bucket）先是一个段头。有仓库读到的那页用完了、后面还有没读的，
 // 就停在那里：再往下的提交可能比它没读的那些早，等"再读"读了下一页再接着排，免得顺序错。
 func (a *App) AllHistRows() []AllHistRow {
 	var rows []AllHistRow
@@ -484,7 +514,7 @@ func (a *App) AllHistRows() []AllHistRow {
 		}
 		r, ci := a.Repos[best], next[best]
 		next[best]++
-		if d := r.Hist.Commits[ci].Date; day.IsZero() || !SameDay(day, d) {
+		if d := r.Hist.Commits[ci].Date; day.IsZero() || !sameBucket(day, d) {
 			rows = append(rows, AllHistRow{Kind: AllDay, Repo: r, CI: ci, File: -1})
 			day = d
 		}

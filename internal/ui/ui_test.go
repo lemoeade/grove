@@ -25,6 +25,7 @@ func newUI(t *testing.T, ws, stateDir string) (*app.App, *wui.Tester, func(what 
 	if stateDir == "" {
 		stateDir = t.TempDir()
 	}
+	bareStartPage = true // 起始页上的字会和侧栏撞；测起始页的自己关
 	a, err := app.New(ws, stateDir)
 	if err != nil {
 		t.Skipf("读不了工作区 %s: %v", ws, err)

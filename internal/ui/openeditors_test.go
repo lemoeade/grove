@@ -157,6 +157,8 @@ func TestHintsFollowKeys(t *testing.T) {
 	r0.Write("a.txt", "a\n")
 	r0.Commit("初始提交")
 	a, tt, wait := newUI(t, testutil.Workspace(t, r0.Root), "")
+	bareStartPage = false // 提示在起始页上（没有改动、没有最近的文件时）
+	t.Cleanup(func() { bareStartPage = true })
 	p := a.KeybindingsPath()
 	t.Cleanup(func() {
 		os.Remove(p)

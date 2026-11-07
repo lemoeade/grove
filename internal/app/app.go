@@ -306,9 +306,10 @@ type App struct {
 	histTimer *time.Timer
 	histTick  int
 
-	FocusDoc  bool     // 下一帧把焦点给当前标签的编辑器（从面板打开文件、跳行之后）
-	FocusTerm bool     // 下一帧把焦点给当前仓库当前终端标签里有键盘的那一格（新建、分屏之后，量内存时的 WORKBENCH_FOCUS=terminal）
-	FocusTab  *TermTab // FocusTerm 给的是哪个终端标签（编辑器区的、或指名的底栏标签）；nil 为底栏当前的
+	FocusDoc   bool     // 下一帧把焦点给当前标签的编辑器（从面板打开文件、跳行之后）
+	StartFocus int      // 起始页（没打开文件时的编辑区）上键盘在第几行（从 1 数，0 为不在起始页上）；↑↓ 改它
+	FocusTerm  bool     // 下一帧把焦点给当前仓库当前终端标签里有键盘的那一格（新建、分屏之后，量内存时的 WORKBENCH_FOCUS=terminal）
+	FocusTab   *TermTab // FocusTerm 给的是哪个终端标签（编辑器区的、或指名的底栏标签）；nil 为底栏当前的
 
 	BottomMax bool // 底栏最大化着（bottommax.go，不持久；底栏关着时不算，看 BottomMaxed）
 

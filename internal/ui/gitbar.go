@@ -197,6 +197,9 @@ func repoHeader(a *app.App, c *wui.Context, r *app.Repo) {
 		} else {
 			chevron(c, iconRow, open, r.Name, t.TextMuted, func() { a.ToggleGitRepo(r) })
 		}
+		if !r.Plain {
+			repoDot(a, c, r, false)
+		}
 		name := wui.Text(c, r.Name).FontSize(repoFont).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		switch {
 		case r.Plain:

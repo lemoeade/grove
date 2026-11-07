@@ -160,14 +160,7 @@ func groupContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 	case d == nil && len(a.Repos) == 0:
 		message(c, iconLayers, i18n.T("没有仓库"), app.KeyHint("repo.add", "用侧栏的 + 或 %s 添加一个 Git 仓库", "用侧栏的 + 添加一个 Git 仓库"), t.TextMuted)
 	case d == nil:
-		wui.Column(c).Grow(1).MinHeight(0).AlignItems(wui.Center).Justify(wui.Center).Gap(10).Padding(16).Children(func() {
-			wui.Icon(c, iconFilePen).FontSize(iconEmpty).TextColor(t.TextMuted.Alpha(0.8))
-			wui.Text(c, i18n.T("没有打开的文件")).FontSize(13).FontWeight(600).TextColor(t.TextMuted)
-			wui.Text(c, app.KeyHint("file.quickOpen", "在侧栏里点一个文件或一项变更，或 %s 按名字找", "在侧栏里点一个文件或一项变更，或用快速打开按名字找")).FontSize(11).TextColor(t.TextMuted.Alpha(0.8)).Center()
-			if wui.Button(c, i18n.T("打开文件…")).Clicked() {
-				a.ChooseFiles()
-			}
-		})
+		startPage(a, c)
 	case d.Kind == docs.Diff:
 		diffContent(a, c, d)
 	case d.Kind == docs.ReplacePreview:

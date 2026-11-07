@@ -103,7 +103,11 @@ func TestGitBarAllRepos(t *testing.T) {
 	}
 
 	// 点 beta 的文件：当前仓库切到 beta，预览 Diff 标签是 beta 的
-	mustClickRow(t, tt, "gamma（仓库）") // 收起 gamma，当前仓库先在 gamma
+	// 收起 gamma，当前仓库先在 gamma；点名字那一截（行正中可能落在分支名上，那是分支菜单）
+	if g, ok := tt.Find("gamma（仓库）"); ok {
+		tt.ClickAt(g.X+48, g.Y+g.H/2)
+		tt.Frame()
+	}
 	mustClickRow(t, tt, "beta.go")
 	wait("beta.go 的 diff", func() bool { return diffDoc(a, "") != nil })
 	if d := diffDoc(a, ""); a.Current() != beta || d.Root != beta.Root || d.Rel != "beta.go" {

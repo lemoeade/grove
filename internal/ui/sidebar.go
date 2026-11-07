@@ -1168,6 +1168,9 @@ func repoLine(a *app.App, c *wui.Context, tr app.TreeRow, sel, filtering, pin bo
 		} else {
 			chevron(c, iconTool, open, r.Name, muted, func() { a.ToggleRepo(r) })
 		}
+		if !r.Plain {
+			repoDot(a, c, r, sel)
+		}
 		name := wui.Text(c, r.Name).FontSize(sideFont).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		if !current && !sel {
 			name.TextColor(t.Text.Alpha(0.85))
