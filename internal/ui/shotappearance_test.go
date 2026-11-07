@@ -15,7 +15,7 @@ import (
 
 // TestScreenshotAppearance 是外观的截图（WORKBENCH_SHOT=目录 时才跑），浅色、深色各一套，临时仓库 shop：
 //
-//	main             默认钢蓝：文件树（文件夹、改动数）、两个标签（文件、Diff）、settings.json 的说明条、右栏历史（引用、短哈希）
+//	main             默认森绿：文件树（文件夹、改动数）、两个标签（文件、Diff）、settings.json 的说明条、右栏历史（引用、短哈希）
 //	git              左栏 Git：改动的仓库行、改动数、行内的增删
 //	image            图片的工具栏：“适应”是当前的
 //	about            关于窗口（新名字、新图标）
@@ -66,8 +66,8 @@ func TestScreenshotAppearance(t *testing.T) {
 	}
 
 	a, tt, wait := fresh()
-	if a.St.Settings.Accent != "" || workspace.DefaultAccent != "steel" {
-		t.Fatalf("强调色 %q / 默认 %q，该是默认的钢蓝", a.St.Settings.Accent, workspace.DefaultAccent)
+	if a.St.Settings.Accent != "" || workspace.DefaultAccent != "forest" {
+		t.Fatalf("强调色 %q / 默认 %q，该是默认的森绿", a.St.Settings.Accent, workspace.DefaultAccent)
 	}
 	r := a.Repos[0]
 	a.ExpandChanged(r)

@@ -181,7 +181,7 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 变更行悬停（或列表有键盘时选中）出的行内按钮（`ui/gitbar.go` 的 `changeActions` / `stageActions`）用 `ActChanges`：指针所在的行在两行以上的多选里时作用于选中的全部，否则只有这一行；按钮的动作经 `gitFrame.do` 留到列表建完再做。列表有焦点时的空格 / ⌘⌫ 是 `changes.toggleStage` / `changes.discard`（上下文 `GitList`，由列表自己接键，命令面板也能用），作用于 `KeyChanges`。暂存 / 取消暂存 / 丢弃会让选中的那行挪走时，`markGitAfter` 先记下它后面（没有就是前面）第一个不在选中里的行，状态重读后 `syncChangeSel` 跟不上当前标签时停在那一行。
 
 提交框每个仓库一个（`CommitOpen` / `CommitMsg`），在段头（和工作树块头）下面、改动分组上面；`ShowCommit` 把段头滚到顶上（`ui.Start`），贴顶的段头不挡它；有已暂存的改动、写了信息、在修改上一次提交、合并的冲突都解决了，或者用户点开了提交框时展开（`CommitShown`）。⌘↩ 提交键盘所在的那个。
-提交框是一个框管到底（`commitRow`）：收着和没写信息时看着就是一行输入框，写了信息（或在修改上一次提交）框底才长出说明和分裂按钮（`commitFoot`）。按钮写后果：“提交 N 个文件”、什么都没暂存时“提交全部 N 个文件”（`CommitsAll`，先 `git add -A` 再提交，含未跟踪的文件；add 失败就不提交；有冲突、进行中操作时不走这条）、“修改提交”。
+提交框是一个框管到底（`commitRow`）：收着和没写信息时看着就是一行输入框，写了信息（或在修改上一次提交）框底才长出说明和分裂按钮（`commitFoot`）。按钮上只有纸飞机（`iconSend`），后果写在读屏名和提示的第一行：“提交 N 个文件”、什么都没暂存时“提交全部 N 个文件”（`CommitsAll`，先 `git add -A` 再提交，含未跟踪的文件；add 失败就不提交；有冲突、进行中操作时不走这条）、“修改提交”。
 按钮的 ▾ 和框的右键是同一个菜单（`commitBoxMenu`）：提交并推送（`CommitPush`，不看自动推送的设置，不能推时 `CommitPushWhy` 写原因）、修改上一次提交、撤销上次提交；没写信息时 ▾ 只在指针移到框上时出现。
 不能提交（`CanCommit`）时按钮画灰、点了不提交，但不调 `Disabled`（mygo 的 `Disabled` 不出悬停提示），提示里写原因（`CommitWhy`）。
 面板里的动作（冲突条、进行中横幅、替换预览条、Diff 选行条和块按钮、搜索的全部替换、变基向导、终端退出浮条）都用同一个 `iconAction`
@@ -634,7 +634,7 @@ shell 按需启动：首次需要显示（底栏开着、当前仓库是它、�
 
 各区域是圆角卡片（`ui/widgets.go` 的 `card`），卡片之间 6 pt 的缝就是拖条（`resizer`）。标题栏 38 pt 高，按红绿灯的位置排（`TitleBarInset`）。
 
-强调色在 `ui/accent.go`：默认 `steel`（`DefaultAccent`），`applyAccent` 换整套；列表选中默认是强调色淡淡的一层加左边一道竖条，列表没有键盘时换成中性的灰、不加竖条，悬停更淡（`listLook` / `softFills`：建列表的主题里 Accent 透明，选中块的底由行自己按 `ListFocused` 画；`SolidSelection` 换成实心块），`onAccent` 是强调色上的字色。尽量减少视觉装饰：横幅、悬停这些用很淡的填充（`quietFill` / `bannerFill`），不加边框。
+强调色在 `ui/accent.go`：默认 `forest` 森绿（`DefaultAccent`），`applyAccent` 换整套；列表选中默认是强调色淡淡的一层加左边一道竖条，列表没有键盘时换成中性的灰、不加竖条，悬停更淡（`listLook` / `softFills`：建列表的主题里 Accent 透明，选中块的底由行自己按 `ListFocused` 在 `Draw` 里画，上下相邻的行也选中时那一边不留圆角、竖条通到行边，连着多选的几行接成一整块；`SolidSelection` 换成实心块），`onAccent` 是强调色上的字色。尽量减少视觉装饰：横幅、悬停这些用很淡的填充（`quietFill` / `bannerFill`），不加边框。
 
 界面缩放（`Settings.Zoom`，按 `ZoomSteps` 一档档走）是每个窗口每帧 `c.SetZoom`，设置窗口、关于窗口也跟着。终端自带的字号键（⌘= ⇧⌘= ⌘- ⌘0）让给界面缩放（`termZoomKeyFor`），终端字号只在设置里改。
 

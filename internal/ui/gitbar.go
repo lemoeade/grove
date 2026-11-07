@@ -991,16 +991,14 @@ func commitFoot(a *app.App, c *wui.Context, r *app.Repo) {
 		case r.CommitsAll():
 			tip = "git add -A && git commit"
 		}
-		full := app.Tip(tip, "commit")
-		if why != "" {
-			full = withWhy(label, why) + "\n" + full
-		}
+		// 按钮上只有纸飞机，所以提示的第一行总是按钮的字（提交 / 提交全部 / 修改上次提交……）
+		full := withWhy(label, why) + "\n" + app.Tip(tip, "commit")
 		wui.Row(c.Key("split")).Height(commitBtnH).Gap(1).Shrink(0).Children(func() {
-			b := wui.ButtonBase(c.Key("commit")).Height(commitBtnH).Padding(0, 8).Radius(commitBtnR, 0, 0, commitBtnR).Label(label).Cursor(wui.CursorPointer)
+			b := wui.ButtonBase(c.Key("commit")).Height(commitBtnH).Padding(0, 10).Radius(commitBtnR, 0, 0, commitBtnR).Label(label).Cursor(wui.CursorPointer)
 			tooltip(c, b, full)
 			fg := splitStyle(c, b, why != "")
 			b.Children(func() {
-				wui.Text(c, label).FontSize(sideSub).TextColor(fg).SingleLine()
+				wui.Icon(c, iconSend).FontSize(iconRow).TextColor(fg)
 			})
 			if b.Clicked() && why == "" {
 				a.UseRepo(r)

@@ -222,7 +222,7 @@ func TestSearchGraphLinks(t *testing.T) {
 		t.Errorf("搜索时图格宽 %.1f，应为一条泳道宽 %.1f", w, graphWidth(1))
 	}
 	x0 := g.find("甲 登录校验").X
-	accent := rgba(laneColor(lightTheme(), 0, false))
+	accent := rgba(lightTheme().Accent) // 单线时 HEAD 的圈是主题的强调色，不是泳道 0 的颜色
 	row := func(s string) wui.Rect { return g.find(s) }
 	// 单线的历史：HEAD 是强调色的圈，别的是淡灰的点
 	bg := rgba(cardBg(lightTheme()))

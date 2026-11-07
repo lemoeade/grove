@@ -331,7 +331,7 @@ func TestStateSessions(t *testing.T) {
 	}
 
 	// 强调色：认识的照读；存成默认那个的、不认识的读回来是 ""（默认）；跟随系统（不是默认）存实名
-	for v, want := range map[string]string{"teal": "teal", "graphite": "graphite", "system": "system", DefaultAccent: "", "blue": "", "": ""} {
+	for v, want := range map[string]string{"teal": "teal", "steel": "steel", "graphite": "graphite", "system": "system", DefaultAccent: "", "blue": "", "": ""} {
 		if err := os.WriteFile(filepath.Join(dir, StateFile), []byte(`{"version":4,"settings":{"accent":"`+v+`"}}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -339,7 +339,7 @@ func TestStateSessions(t *testing.T) {
 			t.Errorf("存的强调色 %q 读成了 %q（%v）", v, st.Settings.Accent, err)
 		}
 	}
-	if DefaultAccent != "steel" || Accents[0] != "system" || Accents[1] != "" || len(Accents) != len(AccentKeys) || slices.Contains(Accents, DefaultAccent) {
+	if DefaultAccent != "forest" || Accents[0] != "system" || Accents[1] != "" || len(Accents) != len(AccentKeys) || slices.Contains(Accents, DefaultAccent) {
 		t.Errorf("强调色的选项 %q（默认 %q）", Accents, DefaultAccent)
 	}
 }
