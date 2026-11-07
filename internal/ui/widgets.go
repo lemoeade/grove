@@ -485,12 +485,15 @@ func sideShift(a *app.App, st *wui.ListState) float32 {
 }
 
 // withTheme 让 fn 里建的元素用主题 nt，建完换回原来的。
-// （SetTheme 会把窗口根的底色重设成主题的底色，所以 root 最后才设根的底色。）
+// SetTheme 会把窗口根的底色重设成主题的底色（卡片里就是卡片色），所以换回来以后把根的底色也设回窗口底：
+// 列表的行可能在布局时才建（root 已经跑完、不会再设一遍），不设回去那一帧整个窗口底变成卡片色，滚动时一闪一闪。
+// root 最后照样再设一遍根的底色和柔和底。
 func withTheme(c *wui.Context, nt *wui.Theme, fn func()) {
 	t := c.Theme()
 	c.SetTheme(nt)
 	fn()
 	c.SetTheme(t)
+	c.Root().Background(rootBg(c, t))
 }
 
 // card 把 e 画成一张卡片：不透明的底、圆角 8、1 px 极淡的描边，浅色再加一点阴影；里面的东西裁在圆角里。

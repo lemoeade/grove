@@ -35,8 +35,10 @@
 - `List` 选中行的圆角取主题的 `Radius`，没有单独的参数：侧栏的列表（圆角 5）在改了 `Radius` 的主题副本下建（`sideList`）。
 - `c.SetTheme` 会重设根节点的底色和文字样式。卡片里用 `withTheme` 换主题副本之后，根节点的背景色会被重置。所以：
   - `root()` 在最后才按 `c.Vibrancy()` 设根的底色（透明 / `windowBg`）。
-  - 列表的行可能在布局时才建（`root()` 已经跑完），行里的 `withTheme` 照样会改掉根的底色。`listLook.row` 建完一行就
-    `c.Root().Background(l.bg)` 恢复背景色，否则柔和 / 纯色窗口底会被主题背景色替换。
+  - 列表的行可能在布局时才建（`root()` 已经跑完），行里换主题照样会改掉根的底色，那一帧整个窗口底变成卡片色：
+    滚动时（尤其往上滚、钉着的段头换了一个）整个窗口一闪一闪。所以 `withTheme` 换回原主题以后自己把根的底色设回
+    `rootBg`。换主题一律走 `withTheme`，别直接 `c.SetTheme`。`TestHistScrollKeepsWindowBg` 每一帧都量窗口底：
+    Tester 一次输入会连推几帧直到不再要帧，只看最后一帧看不出来，要在 `beforeFrame`（ui_test.go）里取上一帧的像素。
   - 新列表沿用此写法：`l := newListLook(a, c, radius)`，`l.build(c, func(){ … wui.List(…).Rows(l.rows(fn)) })`。
   - 强调色的默认值是 `workspace.DefaultAccent`；`applyAccent` 要在每个窗口的根函数开头调（主窗口、设置、关于）。
 - 每帧给卡片建一份主题副本，指针每帧都是新的。编辑器（`DefaultTheme(t)` 按值取色）和终端（只看 `Dark`）不会因此每帧重建；

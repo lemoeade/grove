@@ -15,6 +15,10 @@ import (
 // 界面测试用 Tester 不开窗口画整个界面：后台回调排进队列，由 wait 推帧时在测试 goroutine 上跑掉。
 // 会改仓库的测试只在 testutil.TempRepo 建的临时仓库上做；用户的真实工作区只做只读的 status / diff / log。
 
+// beforeFrame 不是 nil 时每一帧建界面之前先调它：这时 Tester.Image 还是上一帧画出来的，
+// 要看每一帧（不只是 settle 完的最后一帧）的测试在这里取像素。设了的测试自己在 Cleanup 里清掉。
+var beforeFrame func()
+
 // newUI 建一个读 ws 的 App 和画它的 Tester（1440×880）。stateDir 为空就用临时目录。
 func newUI(t *testing.T, ws, stateDir string) (*app.App, *wui.Tester, func(what string, cond func() bool)) {
 	t.Helper()
@@ -35,7 +39,13 @@ func newUI(t *testing.T, ws, stateDir string) (*app.App, *wui.Tester, func(what 
 	app.CopyFiles = func([]string) {}
 	t.Cleanup(func() { app.CopyFiles = keepCopy })
 	t.Cleanup(a.Close)
-	tt := wui.NewTester(View(a), 1440, 880)
+	view := View(a)
+	tt := wui.NewTester(func(c *wui.Context) {
+		if beforeFrame != nil {
+			beforeFrame()
+		}
+		view(c)
+	}, 1440, 880)
 	tt.SetLocale(i18n.Locale())
 	return a, tt, testutil.Waiter(t, tt, q, 20*time.Second)
 }
