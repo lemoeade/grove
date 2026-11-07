@@ -159,12 +159,12 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 
 这是 Grove 的第一原则：文件树、Git 栏、搜索、历史都同时列出工作区里的每个仓库，没有“当前仓库 + 切换器”的视图。新功能也需遵守，不要新增只显示当前仓库的列表。
 
-“当前仓库”（`Current()`）还在，但只用在少数地方：新终端开在哪、右栏历史的“当前仓库”页、标题栏的分支胶囊。点文件树、Git 栏或者切到某个文件标签也会更新当前仓库（`UseRepo` / `SelectRepo`），⌘1–⌘9 跳到第几个仓库（`JumpRepo`）。
+“当前仓库”（`Current()`）还在，但只用在少数地方：新终端开在哪、右栏历史的“当前仓库”页、标题栏的分支胶囊。状态栏左边不写当前仓库，写所有仓库的总况（`reposSummary`：几个仓库、几个有改动 / 要推送、谁在合并，读取失败的红字；悬停是每个仓库一行，点了打开 Git 栏；只有一个仓库时是它自己的改动）。点文件树、Git 栏或者切到某个文件标签也会更新当前仓库（`UseRepo` / `SelectRepo`），⌘1–⌘9 跳到第几个仓库（`JumpRepo`）。
 
 ### Git 栏
 
 `GitRows` 将所有仓库整理为一张表：每个仓库一个段头（`Header`，贴顶），下面依次是进行中操作的横幅（`RowOngoing`）、工作树块头（设置里开了"在 Git 栏显示工作树"才有，默认收着）、提交框（`RowCommit`，在改动上面：文件多时不用滚到段底）、
-各组的标题和每个变更（冲突 / 已暂存 / 未暂存）、说明行，最后是贮藏组头（设置里开了"在 Git 栏显示贮藏"才有，默认收着，和工作树组头一样只有图标和条数）。
+各组的标题和每个变更（冲突 / 已暂存 / 未暂存）、说明行，最后是贮藏组头（设置里开了"在 Git 栏显示贮藏"才有，默认收着）。贮藏组头、工作树组头和已暂存 / 改动两组一样写组名和条数（`foldHeader` 的 `iconOnly` 都是假）。
 两个开关是 `Settings.ShowWorktrees` / `ShowStashes`（零值就是关，老的 state.json 不用迁移）。`Repo` 没有 `App` 指针，`App.newRepo` 给每个仓库接上
 窗口的 `&a.St.Settings`（`Repo.set`，换工作区 `*a = *n` 之后重新指一遍），`Repo.ShowWts` / `ShowStashes` 读它。工作树关着时：`GitRows` 不出工作树块、
 `GitOpen` 的自动展开不算 `HasWorktrees`、段头不画工作树数、`NeedsYou` 是空的、`GoToWorktree` 什么都不做，`WtShown` / `WtTracked` 都是假
@@ -184,7 +184,7 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 提交框是一个框管到底（`commitRow`）：收着和没写信息时看着就是一行输入框，写了信息（或在修改上一次提交）框底才长出说明和分裂按钮（`commitFoot`）。按钮上只有纸飞机（`iconSend`），后果写在读屏名和提示的第一行：“提交 N 个文件”、什么都没暂存时“提交全部 N 个文件”（`CommitsAll`，先 `git add -A` 再提交，含未跟踪的文件；add 失败就不提交；有冲突、进行中操作时不走这条）、“修改提交”。
 按钮的 ▾ 和框的右键是同一个菜单（`commitBoxMenu`）：提交并推送（`CommitPush`，不看自动推送的设置，不能推时 `CommitPushWhy` 写原因）、修改上一次提交、撤销上次提交；没写信息时 ▾ 只在指针移到框上时出现。
 不能提交（`CanCommit`）时按钮画灰、点了不提交，但不调 `Disabled`（mygo 的 `Disabled` 不出悬停提示），提示里写原因（`CommitWhy`）。
-面板里的动作（冲突条、进行中横幅、替换预览条、Diff 选行条和块按钮、搜索的全部替换、变基向导、终端退出浮条）都用同一个 `iconAction`
+进行中横幅（`ongoingRow`）的继续 / 跳过 / 放弃是带字的小按钮（`bannerButton`，继续是强调色底，有冲突时灰着、提示里写原因）。展开的工作树下面那行（`wtSummaryRow`）写“N 个提交 · N 个文件”和 +/−。其余面板里的动作（冲突条、Diff 选行条和块按钮、搜索的全部替换、变基向导、终端退出浮条）都用同一个 `iconAction`
 （`ui/widgets.go`）：只有图标，读屏名是原来按钮上的字，`why` 不空时画灰、提示里写原因、点了没反应。段头只有名字、分支、拉取和推送，改动数只在收起时显示；分组标题上的按钮（`showActions`）要指针移上去才有，右键（`groupMenu`）是同样的动作。最近 30 条提交信息（所有仓库共用）存在 `St.CommitMsgs`，提交框里 ↑↓ 翻。
 
 ### 合并的历史
@@ -221,7 +221,7 @@ git 请求用户名、密码或 SSH 口令时，由 Grove 显示凭据对话框�
 
 ### 暂存、块和行
 
-Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`）每帧设：`Indicators` 是 `DiffNoIndicators`（行首不画竖条），折起来的未修改行由 `RenderSeparator = diffSep`（`ui/diffsep.go`）画成细线上的一颗胶囊，点了走 `expandSep`（开头 / 结尾的展开 `Step` 行，中间的或按住 ⇧ 全部展开）。空出来那边的斜纹和 mygo 自带的折叠条样式在 mygo 里，Grove 不改。
+Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`）每帧设：一边是空的（`oneSided`：新文件、删掉的文件）时不管 `unified` 都画成统一的一栏，标签条上的并排 / 统一按钮灰着；底栏 `compareLabel` 对已暂存 / 未暂存写“已暂存的改动”“未暂存的改动”，`HEAD ↔ 索引` 之类放在悬停提示里；`Indicators` 是 `DiffNoIndicators`（行首不画竖条），折起来的未修改行由 `RenderSeparator = diffSep`（`ui/diffsep.go`）画成细线上的一颗胶囊，点了走 `expandSep`（开头 / 结尾的展开 `Step` 行，中间的或按住 ⇧ 全部展开）。空出来那边的斜纹和 mygo 自带的折叠条样式在 mygo 里，Grove 不改。
 
 Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.go`）。`git.HunkPatch` 从那一块生成补丁，暂存是 `git apply --cached -`，取消暂存是 `--cached -R`，丢弃是工作区上 `-R`。
 
@@ -268,7 +268,7 @@ blame（`app/blame.go`、`git/blame.go`）：`ReadBlame` 读 `blame --porcelain`
 
 `internal/graph` 只负责计算：按显示顺序将提交传给 `Lanes.Next(hash, parents)`，返回该行的泳道及上下连接关系（`Row{Lane, Edges}`）。状态保存在 `Lanes` 中，下一页继续使用。`Reserve` 将 HEAD 固定在第 0 道。log 使用 `--date-order`，避免分支连线过长。
 
-`ui/graph.go` 画：泳道间距 12，最多画 6 道，多出来的并到最右边；颜色是淡的钢蓝、灰绿、灰沙……（不用红色），线宽 1.5，换泳道的线走 `graphBend`（竖、圆角、平、圆角、竖）。节点不描底色的边（行悬停、选中时不出白晕）；只有一条泳道（`GraphW <= 1`）时走 thin：淡灰细线和小点，线在节点前后留缝（`nodeGap`），HEAD 是强调色的细圈。“未提交的改动”那行是橙色虚线圈，用橙色虚线（`dirtyLine`）接到 HEAD 那道。有搜索词、只看 agent 时不连线，只画点（`HistDots` / `dotGraph`）。`histNoGraph`（头部右键菜单里的“提交图”）关掉整个图。
+`ui/graph.go` 画：泳道间距 12，最多画 6 道，多出来的并到最右边；颜色是淡的（不用红色）：第 0 道是强调色往次级字色挪一点（`accentLane`），后面是灰绿、灰沙、灰紫、灰青、灰褐、灰蓝，去掉和第 0 道最像的一个（`laneColors`，按强调色记住一套），线宽 1.5，换泳道的线走 `graphBend`（竖、圆角、平、圆角、竖）。节点不描底色的边（行悬停、选中时不出白晕）；只有一条泳道（`GraphW <= 1`）时走 thin：淡灰细线和小点，线在节点前后留缝（`nodeGap`），HEAD 是强调色的细圈。“未提交的改动”那行是橙色虚线圈，用橙色虚线（`dirtyLine`）接到 HEAD 那道。有搜索词、只看 agent 时不连线，只画点（`HistDots` / `dotGraph`）。`histNoGraph`（头部右键菜单里的“提交图”）关掉整个图。
 
 右栏历史的列表行（`ui/history.go`）：一个提交一行。日期段头是单独的列表行（`HistRow.CI == DayRow`，所有仓库是 `AllDay`），用 `ListState.Header`：滚动时钉在顶上、下一天推走它，键盘和鼠标选不中，要有底色。第一行“未提交的改动”只在工作区有改动（或没读到状态、看工作树 / 标签）时有（`uncommittedRow`），它来去时 `keepRowSel` 把 `Hist.Sel` 挪一行。展开的提交不画选中的底：`commitTitle` 是卡片的第一行，下面的 `commitCard` 在选中的底外面（`histParts`），展开的文件是单独的列表行，接着画卡片的两边和底（`histFileRow`）。正文 `bodyItems` 拆成一条条，`Hist.BodyOpen` 记哪个提交的正文展开着；列表里量不了字，`bodyFits` 按字宽估要不要“展开全文”。分支标记走 `foldRefs`：同名的远程分支折进本地分支。
 
@@ -632,7 +632,7 @@ shell 按需启动：首次需要显示（底栏开着、当前仓库是它、�
 
 ### 窗口底和颜色
 
-窗口底（`Settings.Backdrop`）三种：柔和（默认）、纯色（`flat`）、通透（`vibrancy`，再选系统材质 `material`）。柔和是纯色底上用 `Draw` 画几团很淡的色斑（`paintBackdrop`，Shadow 的模糊），不依赖桌面壁纸；通透在默认壁纸上看起来是平的、HUD 一类材质会把字冲淡，所以不是默认。
+窗口底（`Settings.Backdrop`）三种：柔和（默认）、纯色（`flat`）、通透（`vibrancy`，再选系统材质 `material`）。柔和是纯色底上用 `Draw` 画几团很淡的色斑（`paintBackdrop`，Shadow 的模糊；左上那团的颜色从强调色推出来，`blobColor`），不依赖桌面壁纸；通透在默认壁纸上看起来是平的、HUD 一类材质会把字冲淡，所以不是默认。
 
 各区域是圆角卡片（`ui/widgets.go` 的 `card`），卡片之间 6 pt 的缝就是拖条（`resizer`）。标题栏 38 pt 高，按红绿灯的位置排（`TitleBarInset`）。
 

@@ -223,7 +223,7 @@ func TestScreenshotPreviewSettings(t *testing.T) {
 
 	a.Reveal(r, "src/main.go")
 	wait("展开 src", func() bool { return tt.HasText("main.go") })
-	mustClick(t, tt, "main.go")
+	mustClickRow(t, tt, "main.go")
 	wait("选中 main.go", func() bool { row, ok := a.TreeRowAt(a.FileSel); return ok && row.Path == "src/main.go" })
 	tt.Key(0, wui.KeyF2)
 	wait("重命名输入框", func() bool { return tt.Focused("新名字") })
@@ -410,7 +410,7 @@ func TestScreenshotGitBar(t *testing.T) {
 
 	a.SetHistAll(true)
 	wait("所有仓库的历史", func() bool { return tt.HasText("web-client 接口换到 v2") && a.AllHistDone() && !a.AllHistLoading() })
-	mustClick(t, tt, "web-client 接口换到 v2")
+	mustClickRow(t, tt, "web-client 接口换到 v2")
 	w := a.Repos[1]
 	wait("提交的文件", func() bool { return w.Hist.FilesFor != "" && !w.Hist.FilesLoading })
 	// Git 栏里也有 src/api.ts（工作区的改动），按行选右栏里提交的那个
@@ -508,7 +508,7 @@ func TestScreenshotHunksHistory(t *testing.T) {
 	mustClick(t, tt, "搜索历史")
 	tt.Type("接口")
 	wait("搜索", func() bool { return r.Hist.Loaded && !r.Hist.Loading && len(r.Hist.Commits) == 2 })
-	mustClick(t, tt, "加用户列表接口")
+	mustClickRow(t, tt, "加用户列表接口")
 	wait("提交的文件", func() bool { return r.Hist.Expanded != "" && !r.Hist.FilesLoading })
 	mustText(t, tt, "在 GitHub 打开")
 	writeShot(t, tt, dir, "history-filter.png")
@@ -685,7 +685,7 @@ func TestScreenshotHistoryGraph(t *testing.T) {
 		return d != nil && d.Buf != nil && r.Hist.Loaded && !r.Hist.Loading && len(r.Hist.Commits) == 10
 	})
 	tt.Frame()
-	mustClick(t, tt, "合并 feature/login")
+	mustClickRow(t, tt, "合并 feature/login")
 	wait("展开合并", func() bool { return r.Hist.Expanded != "" && r.Hist.FilesFor == r.Hist.Expanded })
 	writeShot(t, tt, dir, "history-graph.png")
 }
@@ -787,10 +787,10 @@ func TestScreenshotTreeMulti(t *testing.T) {
 	a.ToggleDir(a.Repos[0], "handlers")
 	a.ToggleDir(a.Repos[1], "src")
 	wait("目录展开", func() bool { return tt.HasText("order.go") && tt.HasText("api.ts") })
-	mustClick(t, tt, "user.go")
+	mustClickRow(t, tt, "user.go")
 	wait("预览 user.go", func() bool { d := a.CurrentDoc(); return d != nil && d.Buf != nil && a.Repos[0].Hist.Loaded })
 	for _, name := range []string{"order.go", "api.ts", "todo.md"} {
-		if err := tt.ClickWith(wui.Cmd, name); err != nil {
+		if err := clickRowWith(tt, wui.Cmd, name); err != nil {
 			t.Fatal(err)
 		}
 	}

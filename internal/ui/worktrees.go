@@ -16,16 +16,13 @@ import (
 // 每行是 Git 栏列表里能选中的一行：单击或 ↑↓ 停上去在右栏看它的分支历史，双击或回车在工作区中打开，
 // 右键是锁定 / 移除 / 清理之类。
 
-// worktreesHeader 是工作树组头（高 26）：箭头、树形图标（悬停"工作树"）、个数，不写"工作树"三个字；收起时右边放组里
+// worktreesHeader 是工作树组头（高 26）：箭头、"工作树"、个数，和已暂存 / 改动两组一样；收起时右边放组里
 // 最需要你的那一档的符号（等你 / 运行中 / 可合并，没有就不放），右边是新建和更多。
 func worktreesHeader(a *app.App, row wui.ListRow, cr app.ChangeRow) {
 	c := row.Context
-	t := c.Theme()
 	r := cr.Repo
 	open := r.WtShown()
-	foldHeader(a, row, 26, cr.Title, true, strconv.Itoa(cr.Count), open, func() { a.ToggleWorktrees(r) }, func() {
-		wui.Icon(c, iconWorktree).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0).Label(i18n.T("工作树")).Tooltip(i18n.T("工作树"))
-	}, func(bool) {
+	foldHeader(a, row, 26, cr.Title, false, strconv.Itoa(cr.Count), open, func() { a.ToggleWorktrees(r) }, func() {}, func(bool) {
 		if top, ok := a.WtGroupTop(r); ok && !open {
 			wui.Box(c.Key("top")).Size(16, 16).AlignItems(wui.Center).Justify(wui.Center).Shrink(0).Children(func() {
 				wtMark(c, top)

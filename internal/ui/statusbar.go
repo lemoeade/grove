@@ -20,7 +20,7 @@ const (
 	statusPadR = cardGap + 1 + 8
 )
 
-// statusBar 是窗口最底下一行。左：当前仓库、分支图标和分支 ↑↓、变更计数、刷新状态；
+// statusBar 是窗口最底下一行。左：所有仓库的总况（reposSummary，点了打开 Git 栏）、检查的问题、刷新状态；
 // 右：当前标签的行列、语言、换行、大小和状态。高 statusHeight 加上卡片底下那条缝（center 底下不留 padding）：
 // 卡片底边到窗口底边整条带子是同色的，字在这一整条里居中（只在下面 22 里居中的话，上面空 11、下面空 6.5，看着偏下）。
 func statusBar(a *app.App, c *wui.Context) {
@@ -36,35 +36,25 @@ func statusBar(a *app.App, c *wui.Context) {
 				wui.Text(c, i18n.T("没有仓库")).FontSize(10.5).TextColor(muted).SingleLine()
 				return
 			}
-			// 仓库名、分支图标、分支 ↑↓：分支图标用 iconBranch（"⎇" 是回退字体画的，比旁边的字低、细）
-			wui.Row(c).Gap(4).AlignItems(wui.Center).MinWidth(0).Shrink(1).Label(i18n.Tf("当前仓库 %s", r.Name)).Tooltip(r.Root).Children(func() {
-				wui.Text(c, r.Name).FontSize(10.5).FontWeight(500).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-				if !r.Loaded || r.Err != nil || r.Plain {
-					return
+			// 所有仓库的总况（当前仓库和分支在标题栏、右栏头上已经有了）：点了打开 Git 栏
+			if text, bad, tip := reposSummary(a.Repos); text != "" || bad != "" {
+				x := wui.Row(c).Gap(6).AlignItems(wui.Center).MinWidth(0).Shrink(1).Cursor(wui.CursorPointer).
+					Label(i18n.Tf("所有仓库：%s", joinNonEmpty(" · ", text, bad))).Tooltip(tip)
+				fg := muted
+				if x.Hovered() {
+					fg = t.Text
 				}
-				branch := r.Status.Branch
-				if r.Linked {
-					branch += " · " + i18n.T("工作树")
-				}
-				wui.Icon(c, iconBranch).FontSize(iconInline).TextColor(muted).Shrink(0)
-				wui.Text(c, branch).FontSize(10.5).FontWeight(500).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(2)
-				if s := app.UpDown(r.Status); s != "" { // 领先 / 落后：点了同步
-					x := wui.Text(c, s).FontSize(10.5).FontWeight(500).TextColor(muted).SingleLine().Shrink(0).
-						Label(i18n.Tf("同步 %s", s)).Tooltip(app.Tip(i18n.T("同步：拉取再推送"), "git.sync"))
-					if x.Hovered() {
-						x.TextColor(t.Text)
+				x.Children(func() {
+					if text != "" {
+						wui.Text(c, text).FontSize(10.5).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 					}
-					if x.Clicked() {
-						a.Sync(r)
+					if bad != "" {
+						wui.Text(c, bad).FontSize(10.5).FontWeight(500).TextColor(t.Danger).SingleLine().Shrink(0)
 					}
+				})
+				if x.Clicked() {
+					a.ShowSidebar(workspace.ModeGit)
 				}
-			})
-			switch {
-			case r.Err != nil:
-				wui.Text(c, i18n.T("git status 失败")).FontSize(10.5).TextColor(t.Danger).SingleLine().Shrink(0)
-			case r.Loaded && !r.Plain:
-				wui.Text(c, changeSummary(r.Status)).FontSize(10.5).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(2).
-					Tooltip(i18n.Tn("%d 个仓库 · 共 %d 项变更", len(a.Repos), a.TotalChanges()))
 			}
 			problemStatus(a, c) // 检查报的问题（所有仓库一起）
 			state := ""
@@ -129,6 +119,89 @@ func zoomStatus(a *app.App, c *wui.Context) {
 			a.ZoomReset()
 		}
 	})
+}
+
+// reposSummary 是状态栏左边所有仓库的总况：text 如 "4 个仓库 · 2 个有改动 · 1 个要推送 · infra 合并中"，
+// 只有一个仓库时是它的 changeSummary（再加上合并中之类）；bad 是读取失败的（红字，"1 个读取失败"），
+// tip 是每个仓库一行的明细。不是 git 仓库的文件夹不算；一个都没有时三个都空。
+func reposSummary(repos []*app.Repo) (text, bad, tip string) {
+	var rs []*app.Repo
+	for _, r := range repos {
+		if !r.Plain {
+			rs = append(rs, r)
+		}
+	}
+	if len(rs) == 0 {
+		return "", "", ""
+	}
+	var parts, ongoing, lines []string
+	changed, ahead, failed, loaded := 0, 0, 0, 0
+	for _, r := range rs {
+		line := r.Name + "  "
+		switch {
+		case r.Err != nil:
+			failed++
+			line += i18n.T("git status 失败")
+		case !r.Loaded:
+			line += i18n.T("读取中…")
+		default:
+			loaded++
+			if r.Status.Count > 0 {
+				changed++
+			}
+			if r.Status.Ahead > 0 {
+				ahead++
+			}
+			line += changeSummary(r.Status)
+			if s := app.UpDown(r.Status); s != "" {
+				line += " · " + s
+			}
+			if op := r.Extra.Ongoing; op != git.NoOp {
+				ongoing = append(ongoing, i18n.Tf("%s %s中", r.Name, op.String()))
+				line += " · " + i18n.Tf("%s中", op.String())
+			}
+		}
+		lines = append(lines, line)
+	}
+	if len(rs) == 1 {
+		r := rs[0]
+		if r.Loaded && r.Err == nil {
+			parts = append(parts, changeSummary(r.Status))
+			if op := r.Extra.Ongoing; op != git.NoOp {
+				parts = append(parts, i18n.Tf("%s中", op.String()))
+			}
+		}
+	} else {
+		parts = append(parts, i18n.Tn("%d 个仓库", len(rs)))
+		switch {
+		case changed > 0:
+			parts = append(parts, i18n.Tn("%d 个有改动", changed))
+		case loaded == len(rs):
+			parts = append(parts, i18n.T("都干净"))
+		}
+		if ahead > 0 {
+			parts = append(parts, i18n.Tn("%d 个要推送", ahead))
+		}
+		if len(ongoing) > 2 {
+			ongoing = append(ongoing[:2], i18n.Tn("另 %d 个进行中", len(ongoing)-2))
+		}
+		parts = append(parts, ongoing...)
+	}
+	if failed > 0 {
+		bad = i18n.Tn("%d 个读取失败", failed)
+	}
+	return strings.Join(parts, " · "), bad, strings.Join(lines, "\n") + "\n" + app.Tip(i18n.T("点了打开 Git 栏"), "view.git")
+}
+
+// joinNonEmpty 用 sep 接起 parts 里不空的几段。
+func joinNonEmpty(sep string, parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, sep)
 }
 
 // changeSummary 是 "冲突 1 · 已暂存 2 · 未暂存 4"（未暂存含未跟踪的，和 Git 栏的分组一样），没有改动时是 "工作区干净"。

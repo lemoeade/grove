@@ -28,7 +28,7 @@ func TestRepoHeaderSlim(t *testing.T) {
 		a.ToggleGitRepo(r)
 	}
 	tt.Frame()
-	sum := changeSummary(r.Status) // 状态栏上也写着这句，所以比收起前后多没多
+	sum := changeSummary(r.Status) // 别处也可能写着这句，所以比收起前后多没多
 	before := countText(tt, sum)
 	a.ToggleGitRepo(r)
 	tt.Frame()

@@ -2,6 +2,7 @@ package ui
 
 import (
 	wui "github.com/egoist/mygo/ui"
+	"math"
 
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/git"
@@ -46,24 +47,64 @@ func graphX(lane int) float32 {
 	return graphLeft + float32(lane)*graphLane + graphLane/2
 }
 
-// 泳道的颜色按泳道号循环，都是淡的：钢蓝（强调色那一档）打头，再灰绿、灰沙、灰紫、灰青、灰褐；不用红色。
+// 泳道的颜色按泳道号循环，都是淡的：强调色（调淡一点，accentLane）打头，再灰绿、灰沙、灰紫、灰青、灰褐、灰蓝；不用红色。
+// 和打头那条最像的一个（强调色是森绿时的灰绿）不用，免得头两条泳道分不开。
 var (
-	lightLanes = [...]wui.Color{wui.Hex("#4e6e8e"), wui.Hex("#7fa393"), wui.Hex("#b79a73"), wui.Hex("#9286a8"),
-		wui.Hex("#6f9aa0"), wui.Hex("#a08c78")}
-	darkLanes = [...]wui.Color{wui.Hex("#8fa9c6"), wui.Hex("#86b09d"), wui.Hex("#c9ab82"), wui.Hex("#a79cc0"),
-		wui.Hex("#84b3b9"), wui.Hex("#b8a38e")}
+	lightLanes = [...]wui.Color{wui.Hex("#7fa393"), wui.Hex("#b79a73"), wui.Hex("#9286a8"),
+		wui.Hex("#6f9aa0"), wui.Hex("#a08c78"), wui.Hex("#4e6e8e")}
+	darkLanes = [...]wui.Color{wui.Hex("#86b09d"), wui.Hex("#c9ab82"), wui.Hex("#a79cc0"),
+		wui.Hex("#84b3b9"), wui.Hex("#b8a38e"), wui.Hex("#8fa9c6")}
 )
+
+// lanes 是按主题的强调色排好的一套泳道颜色（laneColor 每条线都要，记住上一次的）。
+var lanes struct {
+	accent wui.Color
+	dark   bool
+	cols   []wui.Color
+}
+
+// accentLane 是泳道 0 的颜色：强调色往次级字色挪一点（浅色）、往正文色挪一点（深色），和别的泳道一样不刺眼。
+func accentLane(t *wui.Theme) wui.Color {
+	if t.Dark {
+		return t.Accent.MixOklab(t.Text, 0.25)
+	}
+	return t.Accent.MixOklab(t.TextMuted, 0.2)
+}
+
+// laneColors 是泳道的一套颜色：accentLane 打头，后面是 lightLanes / darkLanes 去掉和它最像的那个（够像才去掉）。
+func laneColors(t *wui.Theme) []wui.Color {
+	if lanes.cols != nil && lanes.accent == t.Accent && lanes.dark == t.Dark {
+		return lanes.cols
+	}
+	rest := lightLanes[:]
+	if t.Dark {
+		rest = darkLanes[:]
+	}
+	first := accentLane(t)
+	near, best := -1, float32(60) // RGB 上的距离（0–255），小于这个才算像
+	for i, c := range rest {
+		dr, dg, db := float32(c.R)-float32(first.R), float32(c.G)-float32(first.G), float32(c.B)-float32(first.B)
+		if d := float32(math.Sqrt(float64(dr*dr + dg*dg + db*db))); d < best {
+			near, best = i, d
+		}
+	}
+	cols := []wui.Color{first}
+	for i, c := range rest {
+		if i != near {
+			cols = append(cols, c)
+		}
+	}
+	lanes.accent, lanes.dark, lanes.cols = t.Accent, t.Dark, cols
+	return cols
+}
 
 // laneColor 是泳道 lane 的颜色；选中的行（实心的强调色底）上一律 AccentText。
 func laneColor(t *wui.Theme, lane int, sel bool) wui.Color {
-	switch i := lane % len(lightLanes); {
-	case sel:
+	if sel {
 		return t.AccentText
-	case t.Dark:
-		return darkLanes[i]
-	default:
-		return lightLanes[i]
 	}
+	cols := laneColors(t)
+	return cols[lane%len(cols)]
 }
 
 // dirtyColor 是"未提交的改动"的虚线圈和连到 HEAD 的虚线：橙色（实心选中的行上 AccentText）。

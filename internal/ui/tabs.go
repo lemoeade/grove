@@ -889,12 +889,12 @@ func diffContent(a *app.App, c *wui.Context, d *docs.Doc) {
 	diffFooter(a, c, d)
 }
 
-// diffLook 给 Diff 标签和替换预览的 diff 视图上这一帧的样子：并排 / 统一、字体、折叠条（diffSep）、
-// 行首不画标记；刚读出来、切了局部 / 全文时
+// diffLook 给 Diff 标签和替换预览的 diff 视图上这一帧的样子：并排 / 统一（一边是空的 —— 新文件、删掉的文件 ——
+// 总是统一，不然一半宽度是斜纹）、字体、折叠条（diffSep）、行首不画标记；刚读出来、切了局部 / 全文时
 // 把光标所在（还没动过就是第一处；替换预览从一处进来的是那一处的）那块改动滚进视图。
 func diffLook(a *app.App, d *docs.Doc) {
 	d.DiffSt.Layout = editor.DiffSplit
-	if a.St.Unified {
+	if a.St.Unified || oneSided(d.DiffSt) {
 		d.DiffSt.Layout = editor.DiffUnified
 	}
 	d.DiffSt.Font = a.EditorFont()
@@ -1027,6 +1027,15 @@ func linesBar(a *app.App, c *wui.Context, d *docs.Doc, n int, stage, unstage, di
 	})
 }
 
+// oneSided 是 diff 的一边是空的：新文件（旧的一边空）或删掉的文件（新的一边空）。两边都空不算。
+func oneSided(st *editor.DiffState) bool {
+	if st == nil {
+		return false
+	}
+	empty := func(b *editor.Buffer) bool { return b == nil || b.Len() == 0 }
+	return empty(st.Old) != empty(st.New)
+}
+
 // diffFooter 是 Diff 标签底部的状态行：左边是 +/− 统计和比较的两侧，右边是两组切换。
 func diffFooter(a *app.App, c *wui.Context, d *docs.Doc) {
 	t := c.Theme()
@@ -1037,8 +1046,7 @@ func diffFooter(a *app.App, c *wui.Context, d *docs.Doc) {
 			wui.Textf(c, "+%d", added).Font(mono()).FontSize(11).FontWeight(600).TextColor(t.Success).Shrink(0)
 			wui.Textf(c, "−%d", deleted).Font(mono()).FontSize(11).FontWeight(600).TextColor(t.Danger).Shrink(0)
 		}
-		cl := compareLabel(d.Change)
-		tip := ""
+		cl, tip := compareLabel(d.Change)
 		switch d.Kind {
 		case docs.ReplacePreview:
 			cl = i18n.T("现在 ↔ 替换后")
@@ -1079,31 +1087,36 @@ func diffTools(a *app.App, c *wui.Context, d *docs.Doc, in func(func()) func(), 
 	if a.St.Unified {
 		ic, tip = iconRows, i18n.T("统一，点了换成并排")
 	}
-	iconButton(c, ic, app.Tip(tip, "diff.unified"), in(a.ToggleLayout))
+	if oneSided(d.DiffSt) { // 新文件 / 删掉的文件总是一栏，换不了
+		toolButton(c, iconRows, i18n.T("只有一边有内容，只显示一栏"), true, func() {})
+	} else {
+		iconButton(c, ic, app.Tip(tip, "diff.unified"), in(a.ToggleLayout))
+	}
 	if pencil {
 		sep()
 	}
 }
 
-// compareLabel 说明 diff 比较的是哪两边。
-func compareLabel(ch git.Change) string {
+// compareLabel 说明 diff 比较的是哪两边：底栏写的字和悬停提示（空就是和字一样）。已暂存 / 未暂存写成大白话，
+// git 的叫法（HEAD ↔ 索引）放进提示。
+func compareLabel(ch git.Change) (string, string) {
 	switch ch.Kind {
 	case git.Staged:
-		return i18n.T("HEAD ↔ 索引")
+		return i18n.T("已暂存的改动"), i18n.T("HEAD ↔ 索引")
 	case git.Unstaged:
-		return i18n.T("索引 ↔ 工作区")
+		return i18n.T("未暂存的改动"), i18n.T("索引 ↔ 工作区")
 	case git.InCommit:
 		if ch.Range { // 比较两个提交：Parent 是起点
-			return git.Short(ch.Parent) + " ↔ " + git.Short(ch.Commit)
+			return git.Short(ch.Parent) + " ↔ " + git.Short(ch.Commit), ""
 		}
-		return i18n.Tf("父提交 ↔ %s", git.Short(ch.Commit))
+		return i18n.Tf("父提交 ↔ %s", git.Short(ch.Commit)), ""
 	case git.Conflict:
 		if ch.Code == 'S' {
-			return i18n.T("我们的（:2）↔ 他们的（:3）")
+			return i18n.T("我们的（:2）↔ 他们的（:3）"), ""
 		}
-		return i18n.T("HEAD ↔ 工作区（有冲突）")
+		return i18n.T("HEAD ↔ 工作区（有冲突）"), ""
 	default:
-		return i18n.T("新文件")
+		return i18n.T("新文件"), ""
 	}
 }
 
