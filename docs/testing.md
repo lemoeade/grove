@@ -51,6 +51,7 @@ open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WOR
 - 界面测试也运行 `-race`。例如，重命名会在主线程修改文档字段，后台读取文件前需要先复制这些字段；这类竞争只有界面测试能覆盖。
 - 新功能的每个入口（快捷键、标题栏按钮、侧栏页、面板项、右键菜单、终端 ⌘点击）都要由 Tester 测试实际触发。
 - 设置窗口用第二个 Tester（`ui.SettingsView(a)`），和主窗口共用一个 `App`。
+- `newUI` 把编辑区的起始页画成空的（`bareStartPage = true`）：起始页上列着文件名、“工作树”这些字，会和侧栏、右栏里的撞（Tester 按字找元素，`HasText` 还是子串）。要看起始页的测试在 `newUI` 之后置回 `false` 并 `t.Cleanup` 恢复。
 - 英文界面用 `i18n.Set("en")` + `Tester.SetLocale(i18n.Locale())`；`TestEnglishUI` 查主窗口、右键菜单、命令面板里没有中文。
 - 编写 Tester 测试时的注意事项见 [mygo-pitfalls.md](mygo-pitfalls.md) 的“测试和 Tester”一节。
 

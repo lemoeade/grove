@@ -92,7 +92,7 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 
 设置有三种修改方式，最终都更新同一个 `Settings`：
 
-- 设置窗口（`ui/settings.go`，第二个 `mygo.Window`，和主窗口共用打开它的那个 `App`）。每一项是 `settingRow` 表里的一行，右上角的搜索框按名字和说明筛（`settingsResults`）。
+- 设置窗口（`ui/settings.go`，第二个 `mygo.Window`，和主窗口共用打开它的那个 `App`）。每一项是 `settingRow` 表里的一行，右上角的搜索框按名字和说明筛（`settingsResults`）。一页按 `settingsGroups`（页号 + 起头那一项的名字 → 小标题）分成几块，`settingsCards` 每块画一张圆角卡片，行间一道细线（`settingsSep`）。一行是 `settingField`：左边名字和说明，右边控件；fn 里用 `settingControl` 记下的控件 `LabelledBy` 名字、`DescribedBy` 说明（点名字等于点控件，读屏读得到）。`wui.NumberInput` 里的输入框从外面够不着，所以数字项用自己拼的 `numberBox`。“材质”只在窗口底是通透时画，缩进 18。
 - 设置文档：编辑器区的 `settings.json` 标签（`docs.SettingsDoc`，只在内存里）。内容是 `SettingsJSON` 生成的全部键（零值也写）；⌘S 应用设置，不写入文件。`ParseSettings` 严格解析内容：遇到未知键或类型错误时，通过 `SettingsError` 报告行列，不修改任何设置；通过后执行 `Clamp`，整体替换设置并应用到所有窗口。其他入口修改设置后，未编辑的设置文档会由 `syncSettingsDocs` 重新生成，避免保存旧文档时覆盖新设置。
 - 导出 / 导入 / 恢复默认：导出是 `{"workbench": 版本, "exported": 时间, "settings": {全部键}}`；导入时列出会变的键（`ChangedKeys` / `SettingNames`）再确认。
 
@@ -189,7 +189,7 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 
 ### 合并的历史
 
-右栏历史除“当前仓库”页外，还有“所有仓库”页（`histAll`）。`AllHistRows` 把每个仓库的一页提交按作者时间（`%aI`）做 k 路归并；各仓库的读取进度不同，因此只合并到所有仓库均已读取的时间（地平线），往下滚 `LoadMoreAllHistory` 给落后的仓库补一页。选中是 `HistAllSel`。所有仓库页不画提交图，每行左边一个仓库圆点（`repoDot`，颜色按仓库顺序轮换）。
+右栏历史除“当前仓库”页外，还有“所有仓库”页（`histAll`）。`AllHistRows` 把每个仓库的一页提交按作者时间（`%aI`）做 k 路归并；各仓库的读取进度不同，因此只合并到所有仓库均已读取的时间（地平线），往下滚 `LoadMoreAllHistory` 给落后的仓库补一页。选中是 `HistAllSel`。所有仓库页不画提交图，每行左边一个仓库圆点，行尾的仓库名是同色淡底的胶囊（`repoChip`）。仓库的颜色（`repoColor`，按仓库在工作区里的顺序在六个灰调的颜色间轮换）也用在文件树和 Git 栏的仓库行、终端标签、起始页上的圆点（`repoDot`）。
 
 ## Git
 
@@ -270,7 +270,7 @@ blame（`app/blame.go`、`git/blame.go`）：`ReadBlame` 读 `blame --porcelain`
 
 `ui/graph.go` 画：泳道间距 12，最多画 6 道，多出来的并到最右边；颜色是淡的（不用红色）：第 0 道是强调色往次级字色挪一点（`accentLane`），后面是灰绿、灰沙、灰紫、灰青、灰褐、灰蓝，去掉和第 0 道最像的一个（`laneColors`，按强调色记住一套），线宽 1.5，换泳道的线走 `graphBend`（竖、圆角、平、圆角、竖）。节点不描底色的边（行悬停、选中时不出白晕）；只有一条泳道（`GraphW <= 1`）时走 thin：淡灰细线和小点，线在节点前后留缝（`nodeGap`），HEAD 是强调色的细圈。“未提交的改动”那行是橙色虚线圈，用橙色虚线（`dirtyLine`）接到 HEAD 那道。有搜索词、只看 agent 时不连线，只画点（`HistDots` / `dotGraph`）。`histNoGraph`（头部右键菜单里的“提交图”）关掉整个图。
 
-右栏历史的列表行（`ui/history.go`）：一个提交一行。日期段头是单独的列表行（`HistRow.CI == DayRow`，所有仓库是 `AllDay`），用 `ListState.Header`：滚动时钉在顶上、下一天推走它，键盘和鼠标选不中，要有底色。第一行“未提交的改动”只在工作区有改动（或没读到状态、看工作树 / 标签）时有（`uncommittedRow`），它来去时 `keepRowSel` 把 `Hist.Sel` 挪一行。展开的提交不画选中的底：`commitTitle` 是卡片的第一行，下面的 `commitCard` 在选中的底外面（`histParts`），展开的文件是单独的列表行，接着画卡片的两边和底（`histFileRow`）。正文 `bodyItems` 拆成一条条，`Hist.BodyOpen` 记哪个提交的正文展开着；列表里量不了字，`bodyFits` 按字宽估要不要“展开全文”。分支标记走 `foldRefs`：同名的远程分支折进本地分支。
+右栏历史的列表行（`ui/history.go`）：一个提交一行。日期段头是单独的列表行（`HistRow.CI == DayRow`，所有仓库是 `AllDay`；分段是 `app.Bucket`：今天、昨天、本周（从周一起）、上周、本月，再早的一个月一段，字是 `groupLabel`，行尾的时间 `rowWhen` 跟着段变格式），用 `ListState.Header`：滚动时钉在顶上、下一天推走它，键盘和鼠标选不中，要有底色。第一行“未提交的改动”只在工作区有改动（或没读到状态、看工作树 / 标签）时有（`uncommittedRow`），它来去时 `keepRowSel` 把 `Hist.Sel` 挪一行。展开的提交不画选中的底：`commitTitle` 是卡片的第一行，下面的 `commitCard` 在选中的底外面（`histParts`），展开的文件是单独的列表行，接着画卡片的两边和底（`histFileRow`）。正文 `bodyItems` 拆成一条条，`Hist.BodyOpen` 记哪个提交的正文展开着；列表里量不了字，`bodyFits` 按字宽估要不要“展开全文”。分支标记走 `foldRefs`：同名的远程分支折进本地分支。
 
 agent 记号：`git.AgentOf` 认提交正文里的 `Co-Authored-By:` trailer（名字里的词或邮箱域名对上 `agentPats` 表），读 log 时填进 `Commit.Agent`，列表行不画记号，写在展开卡片的信息行里（`commitMeta`）。“只看 agent 写的”（`App.HistAgent`，不进 state.json）读一页再筛，`Hist.read` 记 git log 读了几条，下一页从那里接着读。
 
@@ -507,6 +507,8 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 最大化底栏（`app/bottommax.go`，⇧⌘J）：`App.BottomMax`，每个窗口独立、只在内存里；`ui/view.go` 的 `center` 在 `BottomMaxed()` 时不画主区和底栏旁边的拖条，底栏 `Grow(1)` 占掉那块，`St.BottomH` / `St.TermW` 不动。关底栏（`ToggleArea` / `ToggleProblems`）、进禅模式、切到或打开编辑器标签（`SelectDoc` / `FocusGroup` / `MoveDocTo` 里的 `showEditor`）时还原。
 
 禅模式（`app/zen.go`，⌃⌘Z）：三个面板全关，编辑器组居中；每个窗口独立，不持久化，存 state.json 时写进入前的面板状态。连按两下 Esc 退出。
+
+编辑组里没有标签时画起始页（`ui/startpage.go`）：工作区名和 `reposSummary`，有改动的文件（每个仓库最多 5 个，点了 `OpenDiff`）、`St.Recent` 里还在工作区里的文件（`RepoOfPath`）、不是主工作树的工作树（`WtInfo` 算过的才写状态）。行是 `ButtonBase`，`FocusBind(&a.StartFocus, 第几行)`，页面的 `OnShortcut` 里 ↑↓ 按 `FocusedValue` 挪；行的键由调用方给（同一个文件可以既暂存又未暂存，名字会重）。
 
 ### 其他
 

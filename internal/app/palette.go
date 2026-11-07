@@ -638,3 +638,6 @@ func (a *App) RunCommand(r *Repo, line string) {
 		}
 	}})
 }
+
+// RepoOfPath 是 abs 在哪个仓库里、仓库内的路径（斜杠分隔）；不在任何仓库里是 nil。
+func (a *App) RepoOfPath(abs string) (*Repo, string) { return a.repoOfPath(abs) }

@@ -298,7 +298,7 @@ func history(a *app.App, c *wui.Context, r *app.Repo) {
 		case row.CI == app.LocalRow:
 			return app.LocalTitle(h.Local[row.File]) + " · " + app.LocalMeta(h.Local[row.File])
 		case row.CI == app.DayRow:
-			return dayLabel(h.Commits[row.File].Date, time.Now())
+			return groupLabel(h.Commits[row.File].Date, time.Now())
 		case row.CI < 0:
 			return i18n.T("未提交的改动")
 		case row.File < 0:
@@ -458,7 +458,7 @@ func histDayRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ci int) {
 	h := &r.Hist
 	w := histGraphW(a, r)
 	withTheme(c, l.real, func() {
-		dayHead(c, dayLabel(h.Commits[ci].Date, time.Now()), histLeft(w), func() {
+		dayHead(c, groupLabel(h.Commits[ci].Date, time.Now()), histLeft(w), func() {
 			switch {
 			case a.HistGraph(r):
 				var dirty [2]int
@@ -571,14 +571,14 @@ func commitLine(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, k commit
 			unpushedMark(c, col)
 		}
 		if k.repoName {
-			wui.Text(c, r.Name).FontSize(11.5).TextColor(muted).SingleLine().Ellipsis("…").MaxWidth(96).Shrink(0).Tooltip(r.Root)
+			repoChip(a, c, r, k.sel)
 		}
-		wui.Row(c).Width(48).Justify(wui.End).Shrink(0).Children(func() {
+		wui.Row(c).MinWidth(48).Justify(wui.End).Shrink(0).Children(func() {
 			if k.hover {
 				wui.Text(c, cm.Short).Font(mono()).FontSize(11).TextColor(muted).SingleLine()
 				return
 			}
-			wui.Text(c, cm.Date.Local().Format("15:04")).FontSize(11.5).TextColor(muted).SingleLine().
+			wui.Text(c, rowWhen(cm.Date)).FontSize(11.5).TextColor(muted).SingleLine().
 				Tooltip(cm.Date.Local().Format("2006-01-02 15:04"))
 		})
 	})
@@ -1007,10 +1007,11 @@ func uncommittedRow(a *app.App, row wui.ListRow, r *app.Repo) {
 	el.Padding(0, 8, 0, 10).Gap(6).AlignItems(wui.Center).Children(body)
 }
 
-// repoColor 是"所有仓库"视图里仓库圆点的颜色：按仓库在工作区里的顺序在灰蓝、灰绿、灰沙、灰紫之间轮换。
+// repoColor 是仓库的颜色（文件树、Git 栏的仓库行、"所有仓库"的历史、终端标签、起始页上的圆点和胶囊）：按仓库在工作区里的顺序
+// 在灰蓝、灰绿、灰沙、灰紫、灰玫、灰青六个之间轮换。
 func repoColor(a *app.App, t *wui.Theme, r *app.Repo) wui.Color {
-	light := [...]string{"#6f86a0", "#7fa393", "#b79a73", "#9286a8"}
-	dark := [...]string{"#8fa4bc", "#86b09d", "#c9ab82", "#a79cc0"}
+	light := [...]string{"#6f86a0", "#7fa393", "#b79a73", "#9286a8", "#a7808f", "#6f9aa0"}
+	dark := [...]string{"#8fa4bc", "#86b09d", "#c9ab82", "#a79cc0", "#c59aab", "#86b3b8"}
 	i := max(0, slices.Index(a.Repos, r)) % len(light)
 	if t.Dark {
 		return wui.Hex(dark[i])
@@ -1060,7 +1061,7 @@ func allHistory(a *app.App, c *wui.Context) {
 		case app.AllFile:
 			return row.Repo.Hist.Files[row.File].Path
 		case app.AllDay:
-			return dayLabel(row.Commit().Date, time.Now())
+			return groupLabel(row.Commit().Date, time.Now())
 		}
 		return row.Title
 	}
@@ -1105,7 +1106,7 @@ func allHistRow(a *app.App, l *listLook, row wui.ListRow, rows []app.AllHistRow)
 			})
 		})
 	case app.AllDay:
-		withTheme(c, l.real, func() { dayHead(c, dayLabel(hr.Commit().Date, time.Now()), 10, nil) })
+		withTheme(c, l.real, func() { dayHead(c, groupLabel(hr.Commit().Date, time.Now()), 10, nil) })
 	case app.AllDirty:
 		l.row(c, row.Selected(), row.ListFocused(), func() {
 			t := c.Theme()
@@ -1215,4 +1216,59 @@ func compareRow(a *app.App, row wui.ListRow, r *app.Repo, cp *app.Compare, hr ap
 		wui.Text(c, compareTitle(cp)).FontSize(12.5).FontWeight(500).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 	})
 	return el.Hovered()
+}
+
+// groupLabel 是日期段头的字（app.Bucket 的段）："今天""昨天""本周""上周""本月"，再早的"10 月"，不是今年的"2025 年 10 月"。
+func groupLabel(d, now time.Time) string {
+	b, start := app.Bucket(d, now)
+	switch b {
+	case 0:
+		return i18n.T("今天")
+	case 1:
+		return i18n.T("昨天")
+	case 2:
+		return i18n.T("本周")
+	case 3:
+		return i18n.T("上周")
+	case 4:
+		return i18n.T("本月")
+	}
+	switch {
+	case i18n.Lang() == "en" && start.Year() == now.Year():
+		return start.Format("January")
+	case i18n.Lang() == "en":
+		return start.Format("January 2006")
+	case start.Year() == now.Year():
+		return i18n.Tf("%d 月", int(start.Month()))
+	}
+	return i18n.Tf("%d 年 %d 月", start.Year(), int(start.Month()))
+}
+
+// weekdays 是"周日"…"周六"（time.Weekday 的顺序）。
+var weekdays = [...]string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
+
+// rowWhen 是提交行行尾的时间，配着段头（groupLabel）看：今天、昨天"15:04"，本周、上周"周四 15:04"，再早的"10-25"
+// （悬停有完整的日期时间）。
+func rowWhen(d time.Time) string {
+	d = d.Local()
+	switch b, _ := app.Bucket(d, time.Now()); {
+	case b <= 1:
+		return d.Format("15:04")
+	case b <= 3:
+		return i18n.T(weekdays[d.Weekday()]) + " " + d.Format("15:04")
+	}
+	return d.Format("01-02")
+}
+
+// repoChip 是"所有仓库"历史行尾的仓库名：仓库颜色（repoColor，和左边的圆点、文件树里的一样）的淡底胶囊、深一点的字。
+func repoChip(a *app.App, c *wui.Context, r *app.Repo, sel bool) {
+	t := c.Theme()
+	col := repoColor(a, t, r)
+	fg, bg := col.MixOklab(t.Text, 0.35), col.Alpha(0.22)
+	if sel {
+		fg, bg = t.AccentText, t.AccentText.Alpha(0.18)
+	}
+	wui.Row(c).Padding(1, 6).Radius(999).Background(bg).Shrink(0).MaxWidth(96).Tooltip(r.Root).Children(func() {
+		wui.Text(c, r.Name).FontSize(11).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…")
+	})
 }

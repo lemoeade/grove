@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -98,15 +99,15 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 		// 设置窗口里的每一项：分在哪一组、名字和说明（中文原文，搜索时中英文都认），怎么画（拿到的名字、说明已经过 i18n.T）。
 		// 存的是反过来的那几个开关（零值 = 默认开）在画的时候翻过来。
 		rows := []settingRow{
-			{0, "外观", "", func(c *wui.Context, l, _ string) { choice(c, l, &s.Theme, workspace.Themes, themeNames, done) }},
+			{0, "外观", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Theme, workspace.Themes, themeNames, done) }},
 			{0, "窗口底", "柔和是纯色底上几团淡淡的颜色；纯色一色到底；通透透出桌面的系统材质，稍费内存", func(c *wui.Context, l, d string) {
-				choice(c, l, &s.Backdrop, workspace.Backdrops, backdropNames, done).Description(d)
+				choice(c, l, d, &s.Backdrop, workspace.Backdrops, backdropNames, done)
 			}},
 			{0, "材质", "透出桌面的是哪种系统材质，改了马上换；玻璃要 macOS 26，更早的系统里像弹出层", func(c *wui.Context, l, d string) {
-				choice(c, l, &s.Material, workspace.Materials, materialNames, done).Disabled(s.Backdrop != "vibrancy").Description(d)
+				choice(c, l, d, &s.Material, workspace.Materials, materialNames, done)
 			}},
 			{0, "强调色", "按钮、选中的行、焦点环和选中的文字用的颜色；跟随系统是系统设置里的强调色", func(c *wui.Context, l, d string) {
-				choice(c, l, &s.Accent, workspace.Accents, accentNames, done).Description(d)
+				choice(c, l, d, &s.Accent, workspace.Accents, accentNames, done)
 			}},
 			{0, "选中行用淡底", "列表里选中的行是强调色淡淡的一层、左边一道竖条，字不换色；关着是强调色的实心块", func(c *wui.Context, l, d string) {
 				soft := !s.SolidSelection
@@ -115,9 +116,9 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
-			{0, "界面缩放（%）", "放大、缩小、回到 100% 的快捷键；所有窗口一起", func(c *wui.Context, l, _ string) {
+			{0, "界面缩放（%）", "放大、缩小、回到 100% 的快捷键；所有窗口一起", func(c *wui.Context, l, d string) {
 				zoom := float32(s.ZoomPercent())
-				number(c, l, &zoom, 100, 50, 300, 5, func() { a.SetZoom(int(zoom)) }).Description(zoomDesc())
+				number(c, l, zoomDesc(), &zoom, 100, 50, 300, 5, func() { a.SetZoom(int(zoom)) })
 			}},
 			{0, "Markdown 预览里渲染 Mermaid 图和公式", "关了只显示代码块和公式的 TeX 原文；渲染用一个看不见的网页视图，60 秒不用就关掉", func(c *wui.Context, l, d string) {
 				on := !s.NoDiagrams
@@ -126,9 +127,9 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
-			{1, "字体", "", func(c *wui.Context, l, _ string) { choice(c, l, &s.EditorFont, mono(), nil, done, fontName) }},
-			{1, "字号", "", func(c *wui.Context, l, _ string) { number(c, l, &s.EditorSize, 12.5, 9, 32, 0.5, done) }},
-			{1, "缩进", "", func(c *wui.Context, l, _ string) { choice(c, l, &s.Indent, workspace.Indents, indentNames, done) }},
+			{1, "字体", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.EditorFont, mono(), nil, done, fontName) }},
+			{1, "字号", "", func(c *wui.Context, l, d string) { number(c, l, d, &s.EditorSize, 12.5, 9, 32, 0.5, done) }},
+			{1, "缩进", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Indent, workspace.Indents, indentNames, done) }},
 			{1, "软换行", "长行折到窗口宽度", func(c *wui.Context, l, d string) { toggle(c, l, app.Tip(d, "view.softWrap"), &s.SoftWrap, done) }},
 			{1, "粘性滚动", "滚动时把当前函数 / 类 / 标题吸在编辑器顶上", func(c *wui.Context, l, d string) {
 				sticky := !s.NoStickyScroll
@@ -137,10 +138,12 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
-			{1, "显示空白字符", "", func(c *wui.Context, l, _ string) {
-				choice(c, l, &s.Whitespace, workspace.Whitespaces, whitespaceNames, done)
+			{1, "显示空白字符", "", func(c *wui.Context, l, d string) {
+				choice(c, l, d, &s.Whitespace, workspace.Whitespaces, whitespaceNames, done)
 			}},
-			{1, "自动保存", "", func(c *wui.Context, l, _ string) { choice(c, l, &s.AutoSave, workspace.AutoSaves, autoSaveNames, done) }},
+			{1, "自动保存", "", func(c *wui.Context, l, d string) {
+				choice(c, l, d, &s.AutoSave, workspace.AutoSaves, autoSaveNames, done)
+			}},
 			{1, "保存时去掉行尾空白", "光标所在的行不动；Markdown 里正好两个空格的硬换行留着", func(c *wui.Context, l, d string) {
 				toggle(c, l, d, &s.TrimTrailing, done)
 			}},
@@ -152,19 +155,19 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
-			{1, "本地历史保留", "", func(c *wui.Context, l, _ string) {
+			{1, "本地历史保留", "", func(c *wui.Context, l, d string) {
 				days := strconv.Itoa(s.LocalHistoryDays())
 				opts := make([]string, len(workspace.HistoryDayOpts))
 				for i, n := range workspace.HistoryDayOpts {
 					opts[i] = strconv.Itoa(n)
 				}
-				choice(c, l, &days, opts, nil, func() {
+				choice(c, l, d, &days, opts, nil, func() {
 					s.HistoryDays, _ = strconv.Atoi(days)
 					done()
 				}, func(v string) string { return i18n.Tf("%s 天", v) }).Disabled(s.NoLocalHistory)
 				localUsageLine(a, c)
 			}},
-			{2, "保存时格式化", "保存时先跑这种语言的格式化命令再存；失败了照样存，提示一次", func(c *wui.Context, l, _ string) {
+			{2, "保存时格式化", "保存时先跑这种语言的格式化命令再存；失败了照样存，提示一次", func(c *wui.Context, l, d string) {
 				toggle(c, l, formatOnSaveDesc(), &s.FormatOnSave, done)
 			}},
 			// 格式化表算一项（名字不画：每行是语言名），说明是这一页底下那段
@@ -211,10 +214,10 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 				if s.TreeIconsPlain {
 					style = "plain"
 				}
-				choice(c, l, &style, []string{"", "plain"}, iconStyleNames, func() {
+				choice(c, l, d, &style, []string{"", "plain"}, iconStyleNames, func() {
 					s.TreeIconsPlain = style == "plain"
 					done()
-				}).Description(d)
+				})
 			}},
 			{3, "显示被忽略的文件", "被 .gitignore 忽略的文件和目录灰显在文件树里；搜索和快速打开仍不含它们", func(c *wui.Context, l, d string) {
 				toggle(c, l, d, &s.ShowIgnored, done)
@@ -223,29 +226,29 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 				toggle(c, l, d, &s.ShowOpenEditors, done)
 			}},
 			{3, "隐藏的文件", "glob，逗号分开，从每个仓库的根算起（**/ 开头的哪一级都算）；和工作区文件、仓库 .vscode/settings.json 的 files.exclude 并在一起。文件树、快速打开、搜索都看不到，Git 栏的改动照常列", func(c *wui.Context, l, d string) {
-				settingField(c, l, func() {
-					if wui.TextInput(c, &s.Exclude).Width(260).Placeholder("**/node_modules, **/*.log").Changed() {
+				settingField(c, l, d, func() {
+					if settingControl(wui.TextInput(c, &s.Exclude).Width(260)).Placeholder("**/node_modules, **/*.log").Changed() {
 						done()
 					}
-				}).Description(d)
+				})
 			}},
 			{4, "Shell", "默认是 $SHELL；新开的终端生效，格式化命令也用它", func(c *wui.Context, l, d string) { text(c, l, d, &s.Shell, done) }},
 			{4, "其他配置", termProfilesDesc, func(c *wui.Context, _, _ string) { termProfilesField(c, s, &profEdit, done) }},
-			{4, "字体", "", func(c *wui.Context, l, _ string) {
-				choice(c, l, &s.TermFont, append([]string{""}, mono()[1:]...), nil, done, func(f string) string {
+			{4, "字体", "", func(c *wui.Context, l, d string) {
+				choice(c, l, d, &s.TermFont, append([]string{""}, mono()[1:]...), nil, done, func(f string) string {
 					if f == "" {
 						return i18n.T("跟编辑器一样")
 					}
 					return f
 				})
 			}},
-			{4, "字号", "", func(c *wui.Context, l, _ string) { number(c, l, &s.TermSize, 12.5, 9, 32, 0.5, done) }},
-			{4, "配色", "", func(c *wui.Context, l, _ string) {
-				choice(c, l, &s.TermTheme, termThemes(), termThemeNames, done, termThemeName)
+			{4, "字号", "", func(c *wui.Context, l, d string) { number(c, l, d, &s.TermSize, 12.5, 9, 32, 0.5, done) }},
+			{4, "配色", "", func(c *wui.Context, l, d string) {
+				choice(c, l, d, &s.TermTheme, termThemes(), termThemeNames, done, termThemeName)
 			}},
-			{4, "回滚（MB）", "", func(c *wui.Context, l, _ string) {
+			{4, "回滚（MB）", "", func(c *wui.Context, l, d string) {
 				scrollback := float32(s.Scrollback)
-				number(c, l, &scrollback, 10, 1, 1000, 1, func() {
+				number(c, l, d, &scrollback, 10, 1, 1000, 1, func() {
 					s.Scrollback = int(scrollback)
 					done()
 				})
@@ -257,22 +260,26 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 				toggle(c, l, d, &s.TermOptionAsAlt, done)
 			}},
 			{4, "选中即复制", "在终端里拖选文字，松手就复制到剪贴板", func(c *wui.Context, l, d string) { toggle(c, l, d, &s.TermCopyOnSelect, done) }},
-			{4, "位置", "", func(c *wui.Context, l, _ string) { choice(c, l, &s.TermDock, workspace.TermDocks, termDockNames, done) }},
-			{4, "关掉窗口后终端继续在后台运行", termdDesc, func(c *wui.Context, l, _ string) {
+			{4, "位置", "", func(c *wui.Context, l, d string) {
+				choice(c, l, d, &s.TermDock, workspace.TermDocks, termDockNames, done)
+			}},
+			{4, "关掉窗口后终端继续在后台运行", termdDesc, func(c *wui.Context, l, d string) {
 				toggle(c, l, i18n.Tf(termdDesc, termdMB), &s.TermDaemon, func() {
 					done()
 					a.TermDaemonChanged()
 				})
 			}},
-			{4, "后台", "终端后台进程在不在跑、几个会话；停止…", func(c *wui.Context, l, _ string) { termdField(a, c, l) }},
+			{4, "后台", "终端后台进程在不在跑、几个会话；停止…", func(c *wui.Context, l, d string) { termdField(a, c, l) }},
 			{4, "agent 命令", "终端前台是这些命令时，标签上标出 agent 在等你（响铃、通知）或运行中；claude、codex、gemini、aider、opencode 不用写。逗号分开", func(c *wui.Context, l, d string) {
-				settingField(c, l, func() {
-					if wui.TextInput(c, &s.AgentNames).Width(260).Placeholder("goose, amp").Changed() {
+				settingField(c, l, d, func() {
+					if settingControl(wui.TextInput(c, &s.AgentNames).Width(260)).Placeholder("goose, amp").Changed() {
 						done()
 					}
-				}).Description(d)
+				})
 			}},
-			{5, "拉取方式", "", func(c *wui.Context, l, _ string) { choice(c, l, &s.PullMode, workspace.PullModes, pullModeNames, done) }},
+			{5, "拉取方式", "", func(c *wui.Context, l, d string) {
+				choice(c, l, d, &s.PullMode, workspace.PullModes, pullModeNames, done)
+			}},
 			{5, "提交后推送", "提交成功后马上推送当前分支（默认关）", func(c *wui.Context, l, d string) { toggle(c, l, d, &s.AutoPush, done) }},
 			{5, "在 Git 栏显示工作树", "工作树组、顶上的“需要你”条和段头的工作树数；关着时都不出现，也不再盯各工作树的目录（默认关）", func(c *wui.Context, l, d string) {
 				toggle(c, l, d, &s.ShowWorktrees, done)
@@ -289,7 +296,7 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 				webHostsField(a, c, s, done)
 			}},
 			{6, "片段目录", snippetDirDesc, func(c *wui.Context, l, d string) { snippetDirField(a, c, l, d) }},
-			{7, "界面语言", "", func(c *wui.Context, l, _ string) { choice(c, l, &s.Lang, i18n.Langs, langNames, done) }},
+			{7, "界面语言", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Lang, i18n.Langs, langNames, done) }},
 		}
 		q := strings.ToLower(strings.TrimSpace(query))
 		c.OnShortcut(wui.Cmd, wui.KeyF, func() { box.Focus(c) })
@@ -335,23 +342,16 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 						}
 						return
 					}
-					form := func(after bool) {
-						wui.Form(c, func() {
-							for i, r := range rows {
-								if r.Page == page && afterFoot[r.Label] == after {
-									r.Draw(c.Key(i), i18n.T(r.Label), i18n.T(r.Desc))
-								}
-							}
-						})
-					}
-					form(false)
+					vib := s.Backdrop == "vibrancy"
+					settingsCards(c.Key("cards"), rows, page, vib, false)
+					foot := func(s string) { wui.Text(c, s).FontSize(11.5).TextColor(t.TextMuted).Padding(0, 4) }
 					switch page {
 					case 2:
-						wui.Text(c, formatterFootText()).FontSize(11.5).TextColor(t.TextMuted)
-						form(true)
-						wui.Text(c, lintFootText()).FontSize(11.5).TextColor(t.TextMuted)
+						foot(formatterFootText())
+						settingsCards(c.Key("after"), rows, page, vib, true)
+						foot(lintFootText())
 					case 4:
-						wui.Text(c, i18n.T("Shell、回滚大小、光标闪烁、⌥ 作为 Meta 键和后台运行新开的终端才用（开着的按“重新启动终端”）；字体、配色和选中即复制马上换。")).FontSize(11.5).TextColor(t.TextMuted)
+						foot(i18n.T("Shell、回滚大小、光标闪烁、⌥ 作为 Meta 键和后台运行新开的终端才用（开着的按“重新启动终端”）；字体、配色和选中即复制马上换。"))
 					case 6:
 						snippetTables(a, c)
 					}
@@ -427,19 +427,56 @@ func (r settingRow) matches(q string) (hit, label bool) {
 // settingsHit 是正在画的这一项名字对上了搜索词：settingField 把名字加粗（设置窗口只有一个，在主线程上一项一项画）。
 var settingsHit bool
 
-// settingField 是设置窗口里的一行（wui.Field）：搜索时名字对上了的，名字是正文色 600（只有名字：说明、控件不变）。
-func settingField(c *wui.Context, label string, fn func()) wui.Element {
-	f := wui.Field(c, label, fn)
-	if settingsHit {
-		f.TextColor(c.Theme().Text).FontWeight(600)
-	}
-	return f
+// settingField 是设置窗口里一块里的一行：左边名字（13）、下面一行灰的说明（desc，空的不写），右边 fn 画的控件。
+// 名字是控件的标签（点名字等于点控件、读屏读它）：控件是 fn 里 settingControl 记下的那个；没记的（几个按钮、一张表）
+// 各自有名字，名字只是字。说明是右边那一格的说明。
+// 搜索时名字对上了的，名字加粗（settingsHit）。返回这一行，好整行 Disabled。
+func settingField(c *wui.Context, label, desc string, fn func()) wui.Element {
+	t := c.Theme()
+	var name, hint wui.Element
+	row := wui.Row(c).Padding(settingPadY, 14).Gap(16).AlignItems(wui.Center)
+	row.Children(func() {
+		wui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+			name = wui.Text(c, label).FontSize(13).TextColor(t.Text)
+			if settingsHit {
+				name.FontWeight(600)
+			}
+			if desc != "" {
+				hint = wui.Text(c, desc).FontSize(11).TextColor(t.TextMuted)
+			}
+		})
+		settingCtl = nil
+		box := wui.Row(c).Shrink(0).MaxWidth(420).AlignItems(wui.Center).Children(fn)
+		ctl := box
+		if settingCtl != nil {
+			ctl = *settingCtl
+			settingCtl = nil
+			if label != "" {
+				ctl.LabelledBy(name)
+			}
+		}
+		if desc != "" {
+			ctl.DescribedBy(hint)
+		}
+	})
+	return row
 }
 
-// settingsResults 是搜着的时候的设置：所有分组里对得上 q 的项，一组一个灰的小标题；返回有没有对得上的
+// settingPadY 是 settingField 一行上下的空：平常 9，格式化 / 检查表里一种语言一行，挤一点（toolTable.draw）。
+var settingPadY float32 = 9
+
+// settingCtl 是 settingField 的 fn 里 settingControl 记下的控件（拿名字当它的标签）。
+var settingCtl *wui.Element
+
+// settingControl 记下 e 是这一行的控件，原样返回。
+func settingControl(e wui.Element) wui.Element {
+	settingCtl = &e
+	return e
+}
+
+// settingsResults 是搜着的时候的设置：所有分组里对得上 q 的项，一个分组一块（分组名是块的小标题）；返回有没有对得上的
 // （命令另算，keyResults；都没有时 SettingsView 写“没有匹配的设置”）。
 func settingsResults(c *wui.Context, rows []settingRow, q string) bool {
-	t := c.Theme()
 	found := false
 	for p := range settingsPages {
 		var hits []int
@@ -453,15 +490,15 @@ func settingsResults(c *wui.Context, rows []settingRow, q string) bool {
 			continue
 		}
 		found = true
-		wui.Column(c.Key(p)).Gap(8).Children(func() {
-			wui.Text(c, i18n.T(settingsPages[p])).FontSize(11.5).FontWeight(600).TextColor(t.TextMuted)
-			wui.Form(c, func() {
-				for j, i := range hits {
-					settingsHit = labels[j]
-					rows[i].Draw(c.Key(i), i18n.T(rows[i].Label), i18n.T(rows[i].Desc))
-					settingsHit = false
+		settingsCard(c.Key(p), settingsPages[p], func() {
+			for j, i := range hits {
+				if j > 0 {
+					settingsSep(c.Key(-1 - i))
 				}
-			})
+				settingsHit = labels[j]
+				wui.Column(c.Key(i)).Children(func() { rows[i].Draw(c, i18n.T(rows[i].Label), i18n.T(rows[i].Desc)) })
+				settingsHit = false
+			}
 		})
 	}
 	return found
@@ -479,7 +516,7 @@ func termdField(a *app.App, c *wui.Context, label string) {
 	if st.Running {
 		msg = i18n.Tn("%d 个会话（%d 个没在任何窗口里）", st.Total, st.Loose)
 	}
-	settingField(c, label, func() {
+	settingField(c, label, "", func() {
 		wui.Row(c).Gap(10).AlignItems(wui.Center).Children(func() {
 			wui.Text(c, msg).FontSize(12.5).TextColor(t.TextMuted)
 			if wui.Button(c, i18n.T("停止…")).Disabled(!st.Running || st.Total == 0).Tooltip(i18n.T("停止终端后台进程…")).Clicked() {
@@ -504,7 +541,7 @@ func localUsageLine(a *app.App, c *wui.Context) {
 	if b, n, ok := a.LocalUsage(); ok {
 		msg = i18n.Tn("现在 %s · %d 个文件", docs.HumanSize(b), n)
 	}
-	wui.Row(c).Gap(8).AlignItems(wui.Center).Padding(0, 0, 4, 0).Children(func() {
+	wui.Row(c).Gap(8).AlignItems(wui.Center).Padding(0, 14, 10, 14).Children(func() {
 		wui.Text(c, msg).FontSize(11.5).TextColor(c.Theme().TextMuted)
 		if linkButton(c, i18n.T("在访达中显示"), i18n.T("本地历史的目录")).Clicked() {
 			if d := a.LocalHistDir(); d != "" {
@@ -516,7 +553,7 @@ func localUsageLine(a *app.App, c *wui.Context) {
 
 // choice 是一项下拉选择：values 是存进设置的值；显示的名字由 names 给（再过 i18n.T），
 // 或者由 name 算（如字体）。返回这一项（Field），好再加说明。
-func choice(c *wui.Context, label string, v *string, values []string, names map[string]string, done func(), name ...func(string) string) wui.Element {
+func choice(c *wui.Context, label, desc string, v *string, values []string, names map[string]string, done func(), name ...func(string) string) wui.Element {
 	opts := make([]string, len(values))
 	sel := ""
 	for i, x := range values {
@@ -533,8 +570,8 @@ func choice(c *wui.Context, label string, v *string, values []string, names map[
 		opts, values = append(opts, *v), append(values, *v)
 		sel = *v
 	}
-	return settingField(c, label, func() {
-		if wui.Select(c, &sel, opts).MinWidth(220).Changed() {
+	return settingField(c, label, desc, func() {
+		if settingControl(wui.Select(c, &sel, opts).MinWidth(220)).Changed() {
 			if i := slices.Index(opts, sel); i >= 0 {
 				*v = values[i]
 				done()
@@ -543,42 +580,85 @@ func choice(c *wui.Context, label string, v *string, values []string, names map[
 	})
 }
 
-// number 是一项数字；0 存的是默认值 def。返回这一项（Field），好再加说明。
-func number(c *wui.Context, label string, v *float32, def, lo, hi, step float64, done func()) wui.Element {
+// number 是一项数字；0 存的是默认值 def。返回这一行，好整行 Disabled。
+func number(c *wui.Context, label, desc string, v *float32, def, lo, hi, step float64, done func()) wui.Element {
 	f := float64(*v)
 	if f == 0 {
 		f = def
 	}
-	return settingField(c, label, func() {
-		if wui.NumberInput(c, &f, lo, hi, step).Width(120).Changed() {
+	return settingField(c, label, desc, func() {
+		if numberBox(c, label, &f, lo, hi, step) {
 			*v = float32(f)
 			done()
 		}
 	})
 }
 
+// numberBox 是一个数字框：输入框（敲完对得上范围的数就算，↑↓ 加减 step）和 −、+ 两个按钮；返回这一帧改没改 v。
+// 和 wui.NumberInput 一样，只是自己拼：NumberInput 里的输入框够不着，没法拿这一行的名字当它的标签（settingControl）。
+func numberBox(c *wui.Context, label string, v *float64, lo, hi, step float64) bool {
+	decimals := 0
+	if s := strconv.FormatFloat(step, 'f', -1, 64); strings.Contains(s, ".") {
+		decimals = len(s) - strings.IndexByte(s, '.') - 1
+	}
+	format := func(x float64) string { return strconv.FormatFloat(x, 'f', decimals, 64) }
+	changed := false
+	set := func(x float64) {
+		p := math.Pow(10, float64(decimals))
+		if x = math.Round(math.Max(lo, math.Min(hi, x))*p) / p; x != *v {
+			*v, changed = x, true
+		}
+	}
+	row := wui.Row(c).Gap(4).Shrink(0).AlignItems(wui.Center)
+	text := wui.Local(row, "text", func() string { return format(*v) })
+	row.Children(func() {
+		in := settingControl(wui.TextInput(c, text).Width(64))
+		if in.Changed() {
+			if x, err := strconv.ParseFloat(strings.TrimSpace(*text), 64); err == nil && x >= lo && x <= hi {
+				set(x)
+			}
+		}
+		for _, k := range []struct {
+			key wui.Key
+			d   float64
+		}{{wui.KeyUp, step}, {wui.KeyDown, -step}} {
+			if in.Shortcut(0, k.key) {
+				set(*v + k.d)
+				*text = format(*v)
+			}
+		}
+		if !in.Focused() {
+			*text = format(*v)
+		}
+		for _, b := range []struct {
+			text, tip string
+			d         float64
+		}{{"−", i18n.Tf("%s 减小", label), -step}, {"+", i18n.Tf("%s 加大", label), step}} {
+			if wui.Button(c, b.text).Label(b.tip).Disabled(b.d < 0 && *v <= lo || b.d > 0 && *v >= hi).Clicked() {
+				set(*v + b.d)
+				*text = format(*v)
+			}
+		}
+	})
+	return changed
+}
+
 // toggle 是一项开关，desc 写在下面。
 func toggle(c *wui.Context, label, desc string, v *bool, done func()) {
-	f := settingField(c, label, func() {
-		if wui.Switch(c, v).Changed() {
+	settingField(c, label, desc, func() {
+		if settingControl(wui.Switch(c, v)).Changed() {
 			done()
 		}
 	})
-	if desc != "" {
-		f.Description(desc)
-	}
 }
 
 // text 是一项文字输入，desc 写在下面。
 func text(c *wui.Context, label, desc string, v *string, done func()) {
-	f := settingField(c, label, func() {
-		if wui.TextInput(c, v).Width(260).Changed() {
+	settingField(c, label, desc, func() {
+		if settingControl(wui.TextInput(c, v).Width(260)).Changed() {
 			done()
 		}
 	})
-	if desc != "" {
-		f.Description(desc)
-	}
 }
 
 // webHostsField 是 Git 页的"网页风格"表：一行一台主机 → 风格（下拉五种）、"移除"；最后"添加主机"，
@@ -587,11 +667,11 @@ func webHostsField(a *app.App, c *wui.Context, s *workspace.Settings, done func(
 	drop := -1
 	for i := range s.WebHosts {
 		h := &s.WebHosts[i]
-		label := ""
+		label, desc := "", ""
 		if i == 0 {
-			label = i18n.T("网页风格")
+			label, desc = i18n.T("网页风格"), i18n.T(webHostsDesc)
 		}
-		settingField(c, label, func() {
+		settingField(c, label, desc, func() {
 			wui.Row(c).Gap(8).AlignItems(wui.Center).Children(func() {
 				if wui.TextInput(c, &h.Host).Width(170).Placeholder("git.example.com").Label(i18n.T("主机")).Changed() {
 					h.Host = strings.ToLower(strings.TrimSpace(h.Host))
@@ -619,11 +699,11 @@ func webHostsField(a *app.App, c *wui.Context, s *workspace.Settings, done func(
 		s.WebHosts = slices.Delete(s.WebHosts, drop, drop+1)
 		done()
 	}
-	label := ""
+	label, desc := "", ""
 	if len(s.WebHosts) == 0 {
-		label = i18n.T("网页风格")
+		label, desc = i18n.T("网页风格"), i18n.T(webHostsDesc)
 	}
-	f := settingField(c, label, func() {
+	settingField(c, label, desc, func() {
 		if wui.Button(c, i18n.T("添加主机")).Clicked() {
 			host, kind := "", "gitlab"
 			if r := a.Current(); r != nil && r.Extra.Web.OK() && s.WebKindFor(r.Extra.Web.Host) == "" {
@@ -633,7 +713,6 @@ func webHostsField(a *app.App, c *wui.Context, s *workspace.Settings, done func(
 			done()
 		}
 	})
-	f.Description(i18n.T(webHostsDesc))
 }
 
 // profileEdit 是"其他配置"表一行里参数、环境两个框正在编辑的字：存的是拆好的 []string，边敲边拆了再拼会吃掉空格和引号。
@@ -666,11 +745,11 @@ func termProfilesField(c *wui.Context, s *workspace.Settings, edit *[]profileEdi
 			why = i18n.T("和前面的重名，不用")
 		}
 		seen[name] = true
-		label := ""
+		label, desc := "", ""
 		if i == 0 {
-			label = i18n.T("其他配置")
+			label, desc = i18n.T("其他配置"), i18n.Tf(termProfilesDesc, workspace.MaxTermProfiles)
 		}
-		settingField(c.Key(i), label, func() {
+		settingField(c.Key(i), label, desc, func() {
 			wui.Column(c).Gap(6).Children(func() {
 				wui.Row(c).Gap(8).AlignItems(wui.Center).Children(func() {
 					if wui.TextInput(c, &p.Name).Width(100).Placeholder(i18n.T("名字")).Label(i18n.T("配置的名字")).Changed() {
@@ -707,18 +786,17 @@ func termProfilesField(c *wui.Context, s *workspace.Settings, edit *[]profileEdi
 		*edit = slices.Delete(*edit, drop, drop+1)
 		done()
 	}
-	label := ""
+	label, desc := "", ""
 	if len(s.TermProfiles) == 0 {
-		label = i18n.T("其他配置")
+		label, desc = i18n.T("其他配置"), i18n.Tf(termProfilesDesc, workspace.MaxTermProfiles)
 	}
-	f := settingField(c, label, func() {
+	settingField(c, label, desc, func() {
 		if wui.Button(c, i18n.T("添加配置")).AlignSelf(wui.Start).Disabled(len(s.TermProfiles) >= workspace.MaxTermProfiles).Clicked() { // 按钮不跟着撑满一行
 			s.TermProfiles = append(s.TermProfiles, workspace.TermProfile{})
 			*edit = append(*edit, profileEdit{})
 			done()
 		}
 	})
-	f.Description(i18n.Tf(termProfilesDesc, workspace.MaxTermProfiles))
 }
 
 // toolTable 是格式化表和检查表共用的一张表：每种语言一行命令输入框，空着时灰字是内置默认；
@@ -749,6 +827,8 @@ func linterTable(a *app.App, s *workspace.Settings) toolTable {
 
 // draw 画整张表。
 func (t toolTable) draw(c *wui.Context, done func()) {
+	settingPadY = 4
+	defer func() { settingPadY = 9 }()
 	for _, l := range append(slices.Clone(t.langs), t.extra...) {
 		t.field(c.Key(l), l, done)
 	}
@@ -770,9 +850,9 @@ func (t toolTable) field(c *wui.Context, lang string, done func()) {
 		}
 		done()
 	}
-	settingField(c, lang, func() {
+	settingField(c, lang, "", func() {
 		wui.Row(c).Gap(8).AlignItems(wui.Center).Children(func() {
-			in := wui.TextInput(c, &v).Width(260).Label(t.what(lang))
+			in := wui.TextInput(c, &v).Width(260).Label(t.what(lang)) // 自己有名字（"Go 的格式化命令"），不拿语言名当标签
 			if builtin {
 				in.Placeholder(def)
 			} else {
@@ -799,8 +879,8 @@ func (t toolTable) add(c *wui.Context, done func()) {
 		}
 	}
 	sel := opts[0]
-	settingField(c, i18n.T("添加一种语言"), func() {
-		if wui.Select(c, &sel, opts).MinWidth(220).Changed() && sel != opts[0] {
+	settingField(c, i18n.T("添加一种语言"), "", func() {
+		if settingControl(wui.Select(c, &sel, opts).MinWidth(220)).Changed() && sel != opts[0] {
 			if *t.cmds == nil {
 				*t.cmds = map[string]string{}
 			}
@@ -816,28 +896,30 @@ func snippetDirField(a *app.App, c *wui.Context, label, desc string) {
 	t := c.Theme()
 	dir := a.SnippetDir()
 	set := a.Snippets()
-	settingField(c, label, func() {
-		wui.Column(c).Gap(6).MinWidth(0).Children(func() {
-			wui.Row(c).Gap(8).AlignItems(wui.Center).Children(func() {
-				if wui.Button(c, i18n.T("打开片段目录")).Disabled(dir == "").Tooltip(i18n.T("没有就建，并复制一份内置的片段当样板；在访达里打开")).Clicked() {
-					a.OpenSnippetDir()
-				}
-				if wui.Button(c, i18n.T("重新加载")).Tooltip(i18n.T("马上重读片段目录里的 JSON（平时用到时自己会看）")).Clicked() {
-					a.ReloadSnippets()
-				}
-			})
-			where := dir
-			if !a.SnippetDirExists() {
-				where = i18n.Tf("%s（还没建，现在只有内置的）", dir)
+	settingField(c, label, desc, func() {
+		wui.Row(c).Gap(8).AlignItems(wui.Center).Children(func() {
+			if wui.Button(c, i18n.T("打开片段目录")).Disabled(dir == "").Tooltip(i18n.T("没有就建，并复制一份内置的片段当样板；在访达里打开")).Clicked() {
+				a.OpenSnippetDir()
 			}
-			if dir != "" {
-				wui.Text(c, where).Font(mono()).FontSize(11).TextColor(t.TextMuted).MinWidth(0)
+			if wui.Button(c, i18n.T("重新加载")).Tooltip(i18n.T("马上重读片段目录里的 JSON（平时用到时自己会看）")).Clicked() {
+				a.ReloadSnippets()
 			}
-			for _, e := range set.Errs {
-				wui.Text(c, i18n.Tf("读不了 %s", e)).FontSize(11.5).TextColor(t.Danger).MinWidth(0)
-			}
-			wui.Text(c, desc).FontSize(11.5).TextColor(t.TextMuted).MinWidth(0)
 		})
+	})
+	where := dir
+	if !a.SnippetDirExists() {
+		where = i18n.Tf("%s（还没建，现在只有内置的）", dir)
+	}
+	if dir == "" && len(set.Errs) == 0 {
+		return
+	}
+	wui.Column(c).Gap(4).Padding(0, 14, 10, 14).MinWidth(0).Children(func() {
+		if dir != "" {
+			wui.Text(c, where).Font(mono()).FontSize(11).TextColor(t.TextMuted).MinWidth(0)
+		}
+		for _, e := range set.Errs {
+			wui.Text(c, i18n.Tf("读不了 %s", e)).FontSize(11.5).TextColor(t.Danger).MinWidth(0)
+		}
 	})
 }
 
@@ -889,4 +971,66 @@ func snippetLangName(lang string) string {
 		}
 	}
 	return lang
+}
+
+// settingsGroups 是一页怎么分块：从这一项起另起一块，值是块上面的小标题（空的不写，中文原文）。
+// 一页的第一项没列的，第一块没有标题；只有一项的页一整块。
+var settingsGroups = map[[2]any]string{
+	{0, "外观"}: "主题", {0, "界面缩放（%）"}: "界面", {0, "Markdown 预览里渲染 Mermaid 图和公式"}: "Markdown",
+	{1, "字体"}: "文字", {1, "软换行"}: "显示", {1, "自动保存"}: "保存", {1, "本地历史"}: "本地历史",
+	{2, "格式化命令"}: "格式化命令", {2, "检查命令"}: "检查命令",
+	{3, "显示被忽略的文件"}: "列出什么",
+	{4, "Shell"}:    "启动", {4, "字体"}: "外观", {4, "回滚（MB）"}: "行为", {4, "关掉窗口后终端继续在后台运行"}: "后台", {4, "agent 命令"}: "",
+	{5, "拉取方式"}: "同步", {5, "在 Git 栏显示工作树"}: "显示", {5, "作者名字"}: "作者", {5, "网页风格"}: "在网页打开",
+}
+
+// settingsCards 画一页（after：格式化页底下那段说明后面的检查那组，afterFoot）：一块一块圆角底，块里一行一项、细线隔开。
+// “材质”收在“窗口底”下面，选了通透才出来、往里缩一点。
+func settingsCards(c *wui.Context, rows []settingRow, page int, vibrancy, after bool) {
+	var groups [][]int
+	var titles []string
+	for i, r := range rows {
+		if r.Page != page || afterFoot[r.Label] != after || r.Label == "材质" && !vibrancy {
+			continue
+		}
+		if title, ok := settingsGroups[[2]any{page, r.Label}]; ok || len(groups) == 0 {
+			groups, titles = append(groups, nil), append(titles, title)
+		}
+		groups[len(groups)-1] = append(groups[len(groups)-1], i)
+	}
+	wui.Column(c).Gap(14).Children(func() {
+		for g, ids := range groups {
+			settingsCard(c.Key(g), titles[g], func() {
+				for j, i := range ids {
+					if j > 0 {
+						settingsSep(c.Key(-1 - i))
+					}
+					r := rows[i]
+					indent := float32(0)
+					if r.Label == "材质" {
+						indent = 18
+					}
+					wui.Column(c.Key(i)).Padding(0, 0, 0, indent).Children(func() {
+						r.Draw(c, i18n.T(r.Label), i18n.T(r.Desc))
+					})
+				}
+			})
+		}
+	})
+}
+
+// settingsCard 是设置里的一块：上面灰的小标题（title 是中文原文，空的不写），下面一块圆角底，body 画里面的行。
+func settingsCard(c *wui.Context, title string, body func()) {
+	t := c.Theme()
+	wui.Column(c).Gap(6).Children(func() {
+		if title != "" {
+			wui.Text(c, i18n.T(title)).FontSize(11.5).FontWeight(600).TextColor(t.TextMuted).Padding(0, 4)
+		}
+		wui.Column(c).Radius(10).Background(toolFill(t, 0.035)).BorderWidth(1).BorderColor(t.Border.Alpha(0.55)).Children(body)
+	})
+}
+
+// settingsSep 是一块里两项之间的细线（两头空 14）。
+func settingsSep(c *wui.Context) {
+	wui.Box(c).Height(1).Margin(0, 14).Background(c.Theme().Border.Alpha(0.5))
 }

@@ -58,21 +58,22 @@ func TestSettingsWindow(t *testing.T) {
 	if a.St.Settings.Theme != "dark" || len(themes) == 0 || themes[len(themes)-1] != "dark" {
 		t.Fatalf("外观 %q，交给窗口的 %q", a.St.Settings.Theme, themes)
 	}
-	// 窗口底默认柔和；纯色存成 flat、通透存成 vibrancy，都马上交给窗口（窗口换材质）；不是通透时材质那一项点不开
+	// 窗口底默认柔和；纯色存成 flat、通透存成 vibrancy，都马上交给窗口（窗口换材质）；不是通透时没有材质那一项
 	n := len(themes)
 	pick("柔和", "纯色")
 	if a.St.Settings.Backdrop != "flat" || saved().Backdrop != "flat" || len(themes) != n+1 {
 		t.Fatalf("换成纯色：%q 存的 %q，交给窗口 %d 次", a.St.Settings.Backdrop, saved().Backdrop, len(themes)-n)
 	}
-	st.Click("侧栏")
-	st.Frame()
-	if _, ok := st.Find("弹出层"); ok {
-		t.Fatal("不是通透时材质的下拉不该打开")
+	if _, ok := st.Find("材质"); ok { // HasText 是子串，窗口底的说明里就有"材质"两个字
+		t.Fatalf("不是通透时不该有材质一项：%q", st.Texts())
 	}
 	n = len(themes)
 	pick("纯色", "通透")
 	if a.St.Settings.Backdrop != "vibrancy" || saved().Backdrop != "vibrancy" || len(themes) != n+1 {
 		t.Fatalf("换成通透：%q 存的 %q，交给窗口 %d 次", a.St.Settings.Backdrop, saved().Backdrop, len(themes)-n)
+	}
+	if _, ok := st.Find("材质"); !ok {
+		t.Fatal("通透时材质一项该出来")
 	}
 	// 材质默认侧栏；通透时换了马上交给窗口（窗口 SetVibrancy）、存进 state.json
 	n = len(themes)

@@ -84,15 +84,16 @@ func histUI(t *testing.T, repo *testutil.Repo, commits int) (*app.App, *wui.Test
 	return a, tt, wait, r
 }
 
-// 日期段头滚动时钉在顶上，方向键跳过它，点它不选中。
+// 日期段头滚动时钉在顶上，方向键跳过它，点它不选中。三段：两个月前、昨天、今天（各在一个日期段里）。
 func TestHistDayHeader(t *testing.T) {
 	repo := testutil.NewRepo(t, "days")
-	base := time.Date(2025, 3, 1, 9, 0, 0, 0, time.Local)
-	for d := range 3 {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 1, 0, 0, time.Local)
+	for d, base := range []time.Time{today.AddDate(0, -2, 0), today.AddDate(0, 0, -1), today} {
 		for i := range 12 {
 			msg := fmt.Sprintf("第 %d 天 %d", d, i)
 			repo.Write("a.txt", msg+"\n")
-			repo.CommitAt(msg, base.AddDate(0, 0, d).Add(time.Duration(i)*time.Minute))
+			repo.CommitAt(msg, base.Add(time.Duration(i)*time.Minute))
 		}
 	}
 	a, tt, wait, r := histUI(t, repo, 36)
@@ -116,7 +117,7 @@ func TestHistDayHeader(t *testing.T) {
 	a.HistList.ScrollTo(i, wui.Start)
 	tt.Frame()
 	tt.Frame()
-	head, ok := tt.Find(dayLabel(h.Commits[ci].Date, time.Now()))
+	head, ok := tt.Find(groupLabel(h.Commits[ci].Date, time.Now()))
 	if !ok {
 		t.Fatalf("段头没钉住；texts=%q", tt.Texts())
 	}
