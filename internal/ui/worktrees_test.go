@@ -97,11 +97,8 @@ func TestWorktreeBlock(t *testing.T) {
 	if _, ok := tt.Find(i18n.T("链接的工作树")); !ok {
 		t.Error("段头没有\"工作树\"标签")
 	}
-	// 状态栏：仓库名、分支图标、"分支 · 工作树"（分开画）
-	if _, ok := tt.Find(i18n.Tf("当前仓库 %s", "proj-feat")); !ok {
-		t.Error("状态栏的当前仓库不是 proj-feat")
-	}
-	mustText(t, tt, "wt/feat · "+i18n.T("工作树"))
+	// 标题栏的分支胶囊是打开的工作树的分支（状态栏左边是所有仓库的总况，不写当前仓库）
+	mustText(t, tt, i18n.Tf("分支 %s", "wt/feat"))
 	mustText(t, tt, i18n.T("已打开"))
 
 	// 锁定：对话框填原因，行上多一把锁

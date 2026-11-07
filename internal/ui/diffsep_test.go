@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	wui "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/git"
 	"github.com/lemoeade/grove/internal/testutil"
@@ -83,5 +84,40 @@ func TestDiffSeparatorExpand(t *testing.T) {
 	tt.Frame()
 	if got := folded(tt); len(got) != 1 || got[0] != up-100 {
 		t.Fatalf("点开头那条应往改动那边展开 100 行，剩 %d：%v", up-100, got)
+	}
+}
+
+// 新文件只有一边有内容：选着并排也画成一栏（统一），并排 / 统一的按钮灰着；有两边的照旧并排。
+// 底栏写"未暂存的改动"（git 的叫法在悬停提示里）。
+func TestOneSidedDiff(t *testing.T) {
+	repo := testutil.NewRepo(t, "onesided")
+	repo.Write("a.txt", "一\n")
+	repo.Commit("初始")
+	repo.Write("a.txt", "二\n")
+	repo.Write("new.txt", "新\n")
+	repo.Git("add", "-N", "new.txt")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")
+	a.St.Unified = false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'A', Path: "new.txt"}, true)
+	wait("new.txt 的 diff", func() bool { d := diffDoc(a, ""); return d != nil && d.DiffSt != nil && d.Rel == "new.txt" })
+	tt.Frame()
+	if l := diffDoc(a, "").DiffSt.Layout; l != editor.DiffUnified {
+		t.Errorf("新文件应只画一栏（统一），是 %v", l)
+	}
+	mustText(t, tt, "只有一边有内容，只显示一栏")
+	mustText(t, tt, "未暂存的改动")
+
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "a.txt"}, true)
+	wait("a.txt 的 diff", func() bool { d := diffDoc(a, ""); return d != nil && d.DiffSt != nil && d.Rel == "a.txt" })
+	tt.Frame()
+	if l := diffDoc(a, "").DiffSt.Layout; l != editor.DiffSplit {
+		t.Errorf("两边都有内容的照旧并排，是 %v", l)
+	}
+	if tt.HasText("只有一边有内容，只显示一栏") {
+		t.Error("两边都有内容时并排 / 统一按钮应能点")
 	}
 }

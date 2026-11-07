@@ -42,7 +42,8 @@ about 79 MiB of memory when idle.
   merge, has changes, idle, merged); expand it to see what it adds over the main branch, review it, or merge it into main.
   A collapsed worktree group shows the most urgent mark on its header.
   A "Needs you" bar at the top lists worktrees across all repositories that are waiting or ready to merge, with previous /
-  next buttons to jump between them. Git actions that are greyed out say why ("Push (in sync with origin)"), and button tooltips show the
+  next buttons to jump between them. The left of the status bar sums up every repository (how many have changes or commits to push,
+  which one is mid-merge); click it to open the Git view. Git actions that are greyed out say why ("Push (in sync with origin)"), and button tooltips show the
   git command they run.
   Hovering (or selecting with the keyboard) a changed file shows inline Open File, Discard Changes and Stage / Unstage
   buttons; with the list focused, Space stages / unstages and ⌘⌫ discards, acting on all selected rows.

@@ -379,25 +379,20 @@ func groupMenu(a *app.App, m menu, cr app.ChangeRow) {
 	}
 }
 
-// stashGroupRow 是仓库段里贮藏的分组标题（默认收着），也能收起：箭头、归档图标、条数，不写"贮藏"两个字
-// （悬停提示和读屏照旧是"贮藏"），和工作树组头一样。
+// stashGroupRow 是仓库段里贮藏的分组标题（默认收着），也能收起：箭头、"贮藏"、条数，和已暂存 / 改动两组一样。
 func stashGroupRow(a *app.App, row wui.ListRow, cr app.ChangeRow) {
-	c := row.Context
-	t := c.Theme()
-	groupHeader(a, row, cr, func() {
-		wui.Icon(c, iconArchive).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0).Label(cr.Title)
-	}, nil)
+	groupHeader(a, row, cr, func() {}, nil)
 }
 
-// groupHeader 是分组标题的一行：箭头、mark（颜色点或图标）、组名、条数，actions 画在右边。点整行收起 / 展开，
-// 改动、已暂存两组右键是 groupMenu。贮藏不写组名（图标代替，读屏和悬停提示照旧是组名）。
+// groupHeader 是分组标题的一行：箭头、mark（颜色点，没有就是空的）、组名、条数，actions 画在右边。点整行收起 / 展开，
+// 改动、已暂存两组右键是 groupMenu。
 func groupHeader(a *app.App, row wui.ListRow, cr app.ChangeRow, mark func(), actions func(hover bool)) {
 	r := cr.Repo
 	var build func(menu)
 	if cr.Kind == app.RowGroup && (cr.Change.Kind == git.Staged || cr.Change.Kind == git.Unstaged) {
 		build = func(m menu) { groupMenu(a, m, cr) }
 	}
-	foldHeader(a, row, 26, cr.Title, cr.Kind == app.RowStashes, strconv.Itoa(cr.Count), r.GroupOpen(cr.Group), func() { a.ToggleGitGroup(r, cr.Group) }, mark, actions, cr.Key(), build)
+	foldHeader(a, row, 26, cr.Title, false, strconv.Itoa(cr.Count), r.GroupOpen(cr.Group), func() { a.ToggleGitGroup(r, cr.Group) }, mark, actions, cr.Key(), build)
 }
 
 // foldHeader 是能收起的标题行（分组标题、工作树块头）：h 高，箭头、mark、标题、count（条数，可以带说明），
@@ -729,27 +724,57 @@ func ongoingRow(a *app.App, row wui.ListRow, cr app.ChangeRow) {
 		})
 		wui.Row(c).Gap(6).Padding(2, 0, 0, indent).AlignItems(wui.Center).Children(func() {
 			n := r.Status.Conflicts
-			// 继续：强调色的图标，有冲突时灰、提示里写还剩几个文件
-			tip := i18n.Tf("%s：git %s，用原来的提交信息", op.ContinueLabel(), strings.Join(op.ContinueArgs(), " "))
+			// 继续：强调色底的小按钮，有冲突时灰、提示里写还剩几个文件
+			tip := i18n.Tf("git %s，用原来的提交信息", strings.Join(op.ContinueArgs(), " "))
 			why := ""
 			if n > 0 {
 				tip, why = "", i18n.Tn("还有 %d 个文件有冲突：先解决、标记为已解决，才能继续", n)
 			}
-			if iconAction(c.Key("continue"), iconPlay, op.ContinueLabel(), tip, why, t.Accent) {
+			if bannerButton(c.Key("continue"), op.ContinueLabel(), tip, why, true) {
 				a.ContinueOngoing(r)
 			}
 			if args := op.SkipArgs(); args != nil {
-				if iconAction(c.Key("skip"), iconSkipForward, i18n.T("跳过"),
-					i18n.Tf("跳过停在的这个提交（git %s，会先问）", strings.Join(args, " ")), "", wui.Transparent) {
+				if bannerButton(c.Key("skip"), i18n.T("跳过"),
+					i18n.Tf("跳过停在的这个提交（git %s，会先问）", strings.Join(args, " ")), "", false) {
 					a.SkipOngoing(r)
 				}
 			}
-			if iconAction(c.Key("abort"), iconCircleX, i18n.T("放弃"),
-				i18n.Tf("%s（git %s，会先问）", op.AbortLabel(), strings.Join(op.AbortArgs(), " ")), "", wui.Transparent) {
+			if bannerButton(c.Key("abort"), i18n.T("放弃"),
+				i18n.Tf("%s（git %s，会先问）", op.AbortLabel(), strings.Join(op.AbortArgs(), " ")), "", false) {
 				a.AbortOngoing(r)
 			}
 		})
 	})
+}
+
+// bannerButton 是合并 / 变基横幅里的小文字按钮（高 22）：primary 是强调色底（继续），其余是一层淡底；
+// why 不空时灰着、点了没用，提示里写原因。返回点了。
+func bannerButton(c *wui.Context, label, tip, why string, primary bool) bool {
+	t := c.Theme()
+	b := wui.ButtonBase(c).Height(22).Padding(0, 10).Radius(6).AlignItems(wui.Center).Justify(wui.Center).Shrink(0).Label(label)
+	full := withWhy(label, why)
+	if tip != "" {
+		full += "\n" + tip
+	}
+	tooltip(c, b, full)
+	fg, bg := t.Text, toolFill(t, 0.07)
+	switch {
+	case why != "":
+		fg, bg = t.TextMuted.Alpha(0.7), toolFill(t, 0.05)
+	case primary && b.Hovered():
+		fg, bg = t.AccentText, t.Accent.Alpha(0.88)
+	case primary:
+		fg, bg = t.AccentText, t.Accent
+	case b.Hovered():
+		bg = toolFill(t, 0.12)
+	}
+	if why == "" {
+		b.Cursor(wui.CursorPointer)
+	}
+	b.Background(bg).Children(func() {
+		wui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(fg).SingleLine()
+	})
+	return b.Clicked() && why == ""
 }
 
 // changeLabel 是一项变更的文件图标（和文件树同一个）、文件名和目录（或重命名前的路径）。它撑满这一行：

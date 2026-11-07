@@ -370,24 +370,26 @@ func softBackdrop(a *app.App, c *wui.Context) bool {
 }
 
 // blob 是柔和底上的一团颜色：中心在窗口宽高的比例 (x, y)，大小 w×h pt 固定，颜色带着浓淡。
+// accent 的那团颜色从主题的强调色推出来（blobColor），c 只给浓淡。
 type blob struct {
 	x, y, w, h float32
 	c          wui.Color
+	accent     bool
 }
 
 // 柔和底的色斑：设计样稿 .wall 的位置和原色，α 直接盖在 windowBg 上（样稿是糊开的壁纸上盖 84% 的窗色，约等于 16%）。
 // 晕开 blobBlur（σ 是一半）、再往外撑 blobSpread。先画的在下面。
 var (
 	lightBlobs = []blob{
-		{0.30, 0.75, 250, 250, wui.Hex("#9fe0c8").Alpha(0.14)}, // 薄荷
-		{0.55, 0.92, 320, 260, wui.Hex("#f0a3c8").Alpha(0.16)}, // 粉
-		{0.88, 0.22, 300, 230, wui.Hex("#ffc48a").Alpha(0.16)}, // 桃
-		{0.12, 0.18, 260, 210, wui.Hex("#8fb6ff").Alpha(0.18)}, // 蓝
+		{0.30, 0.75, 250, 250, wui.Hex("#9fe0c8").Alpha(0.14), false}, // 薄荷
+		{0.55, 0.92, 320, 260, wui.Hex("#f0a3c8").Alpha(0.16), false}, // 粉
+		{0.88, 0.22, 300, 230, wui.Hex("#ffc48a").Alpha(0.16), false}, // 桃
+		{0.12, 0.18, 260, 210, wui.Hex("#8fb6ff").Alpha(0.18), true},  // 左上：强调色（原来是蓝）
 	}
 	darkBlobs = []blob{
-		{0.55, 0.92, 320, 260, wui.Hex("#7a3a62").Alpha(0.26)},
-		{0.88, 0.22, 300, 230, wui.Hex("#8a4e2a").Alpha(0.26)},
-		{0.12, 0.18, 260, 210, wui.Hex("#2d4f9a").Alpha(0.30)},
+		{0.55, 0.92, 320, 260, wui.Hex("#7a3a62").Alpha(0.26), false},
+		{0.88, 0.22, 300, 230, wui.Hex("#8a4e2a").Alpha(0.26), false},
+		{0.12, 0.18, 260, 210, wui.Hex("#2d4f9a").Alpha(0.30), true},
 	}
 )
 
@@ -409,8 +411,20 @@ func paintBackdrop(p *wui.Painter, win wui.Rect, t *wui.Theme) {
 		cx, cy := win.X+b.x*win.W, win.Y+b.y*win.H
 		short := min(b.w, b.h)
 		seg := wui.Rect{X: cx - (b.w-short)/2, Y: cy - (b.h-short)/2, W: b.w - short, H: b.h - short}
-		p.Shadow(seg, 1, 0, 0, blobBlur, short/2+blobSpread, b.c)
+		p.Shadow(seg, 1, 0, 0, blobBlur, short/2+blobSpread, blobColor(t, b))
 	}
+}
+
+// blobColor 是一团色斑的颜色：accent 的那团是强调色调成样稿那种粉彩（浅色往白挪、深色往黑挪），浓淡照 b.c。
+func blobColor(t *wui.Theme, b blob) wui.Color {
+	if !b.accent {
+		return b.c
+	}
+	c := t.Accent.MixOklab(wui.Hex("#ffffff"), 0.35)
+	if t.Dark {
+		c = t.Accent.MixOklab(wui.Hex("#000000"), 0.3)
+	}
+	return c.Alpha(float32(b.c.A) / 255)
 }
 
 // underBackdrop 给盖在窗口底上的不透明元素（Git 栏贴在顶上的段头）画上同一片色斑，接得上、没有一条平带。

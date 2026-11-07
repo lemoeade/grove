@@ -447,7 +447,7 @@ func TestRemotesMenu(t *testing.T) {
 }
 
 // 未暂存和未跟踪合成一组：只有未跟踪的文件时组名仍是"改动"，没有丢弃按钮（git restore . 不动未跟踪的），+ 照样有；
-// 有已跟踪的改动后才出丢弃。贮藏的组头不写"贮藏"两个字（只有图标和条数，读屏照旧）。
+// 有已跟踪的改动后才出丢弃。贮藏的组头和别的组一样写着"贮藏"和条数。
 func TestUnstagedGroupWithUntracked(t *testing.T) {
 	repo := testutil.NewRepo(t, "mix")
 	repo.Write("a.txt", "一\n")
@@ -469,11 +469,10 @@ func TestUnstagedGroupWithUntracked(t *testing.T) {
 	if tt.HasText("未跟踪") || tt.HasText("丢弃所有未暂存的改动…") {
 		t.Fatalf("只有未跟踪的：组名应是改动、没有丢弃: %q", tt.Texts())
 	}
-	// 贮藏组头：读屏有"贮藏"，画出来的字里只有条数
+	// 贮藏组头和"改动"组头一样：列表格子的名字一个、画出来的一个（不再只有图标、靠悬停提示）
 	mustText(t, tt, "展开 贮藏")
-	// 和只有图标的"未暂存"组头一样：一行的提示和图标的 Label 各一个；以前还多一个画出来的"贮藏"
-	if n := countText(tt, "贮藏"); n != 2 {
-		t.Errorf("贮藏组头应只有图标：%d 个\"贮藏\" %q", n, tt.Texts())
+	if n, want := countText(tt, "贮藏"), countText(tt, "改动"); n != want {
+		t.Errorf("贮藏组头应写着\"贮藏\"：%d 个 %q", n, tt.Texts())
 	}
 	repo.Write("a.txt", "二\n")
 	a.RefreshRepo(r, app.WhyManual)

@@ -108,14 +108,9 @@ func wtSummaryRow(a *app.App, row wui.ListRow, cr app.ChangeRow, g *gitFrame) {
 		case x.Err != nil:
 			wui.Text(c, x.Err.Error()).FontSize(sideSub).TextColor(t.Danger).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		default:
-			stat := func(ic *wui.SVG, n int, tip string) {
-				wui.Row(c).Gap(3).AlignItems(wui.Center).Shrink(0).Tooltip(tip).Label(tip).Children(func() {
-					wui.Icon(c, ic).FontSize(iconInline).TextColor(muted)
-					wui.Text(c, strconv.Itoa(n)).FontSize(sideSub).TextColor(muted).SingleLine().FontFeatures("tnum")
-				})
-			}
-			stat(iconCommit, x.Commits, i18n.Tf("%s 个提交", strconv.Itoa(x.Commits)))
-			stat(iconFile, len(x.Files), i18n.Tf("%s 个文件", strconv.Itoa(len(x.Files))))
+			// "2 个提交 · 2 个文件 +6 −0"：写字，不用图标
+			wui.Text(c, i18n.Tn("%d 个提交", x.Commits)+" · "+i18n.Tn("%d 个文件", len(x.Files))).FontSize(sideSub).TextColor(muted).
+				SingleLine().Ellipsis("…").FontFeatures("tnum").MinWidth(0).Shrink(1)
 			add, del := lineTotals(x.Files)
 			if add+del > 0 {
 				wui.Row(c).Gap(4).AlignItems(wui.Center).Shrink(0).Children(func() {

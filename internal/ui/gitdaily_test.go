@@ -77,8 +77,8 @@ func TestGitDailyMenus(t *testing.T) {
 	}
 	closeMenu(t, tt)
 
-	// 状态栏的 ↑3：点了同步（拉取 ff-only 没东西，再推送）
-	mustClickRow(t, tt, "同步 ↑3")
+	// 推送按钮右键的同步（拉取 ff-only 没东西，再推送）
+	mustRightClickRow(t, tt, "推送（git push），领先 3", "同步（拉取再推送）")
 	wait("同步", func() bool { return idle(r)() && r.Status.Ahead == 0 })
 	if got, head := testutil.GitOut(t, bare, "rev-parse", "main"), repo.Git("rev-parse", "HEAD"); got != head {
 		t.Fatalf("同步后远程 %s，本地 %s", got, head)

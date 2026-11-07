@@ -38,7 +38,7 @@ func TestOngoingBanner(t *testing.T) {
 		t.Errorf("有冲突时右键里的继续合并应是灰的: %v；菜单=%q", err, shownMenu(t, tt))
 	}
 	closeMenu(t, tt)
-	mustClick(t, tt, "继续合并") // 灰的：点了什么都不做（图标按钮，读屏名是"继续合并"）
+	mustClick(t, tt, "继续合并") // 灰的：点了什么都不做
 	if r.Busy != "" || len(r.Queue) != 0 || a.Toast != "" {
 		t.Fatalf("灰的继续被点了: busy %q toast %q", r.Busy, a.Toast)
 	}

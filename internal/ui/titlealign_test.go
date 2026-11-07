@@ -208,7 +208,7 @@ func TestStatusBarEdges(t *testing.T) {
 		return rc
 	}
 	const w, h = 1440, 880 // newUI 的 Tester 是 1440×880
-	left, right := find("当前仓库 demo"), find("有未提交的改动")
+	left, right := find("所有仓库：未暂存 2"), find("有未提交的改动")
 	// 字在卡片底边和窗口底边中间（只在下面 22 里居中的话看着偏下 3 pt）
 	bottom := float32(h - statusHeight - cardGap) // 卡片底边（TestCardGeometry 量过）
 	if mid := left.Y + left.H/2; mid > (bottom+h)/2+0.5 || mid < (bottom+h)/2-0.5 {
@@ -228,7 +228,7 @@ func TestStatusBarEdges(t *testing.T) {
 	}
 	a.St.Sidebar, a.St.RightBar = false, false
 	tt.Frame()
-	if l, r := find("当前仓库 demo"), find("有未提交的改动"); l.X != left.X || r.X+r.W != right.X+right.W {
+	if l, r := find("所有仓库：未暂存 2"), find("有未提交的改动"); l.X != left.X || r.X+r.W != right.X+right.W {
 		t.Errorf("侧栏、右栏关掉以后状态栏两头跳了：%.1f–%.1f，原来 %.1f–%.1f", l.X, r.X+r.W, left.X, right.X+right.W)
 	}
 }
