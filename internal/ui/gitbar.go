@@ -790,7 +790,7 @@ func pathLabel(c *wui.Context, ch git.Change, sel bool, muted wui.Color, size fl
 }
 
 // lineCounts 是提交里的文件行右边的 +12 −3（diff-tree --numstat），二进制是灰的"二进制"，是 0 的一边不画。
-func lineCounts(c *wui.Context, ch git.Change, onAccent bool, muted wui.Color) {
+func lineCounts(c *wui.Context, ch git.Change, onAccent bool, muted wui.Color, weight int) {
 	t := c.Theme()
 	if ch.Binary {
 		wui.Text(c, i18n.T("二进制")).FontSize(sideSub).TextColor(muted).SingleLine().Shrink(0)
@@ -801,17 +801,17 @@ func lineCounts(c *wui.Context, ch git.Change, onAccent bool, muted wui.Color) {
 		add, del = t.AccentText, t.AccentText
 	}
 	if ch.Add > 0 {
-		wui.Textf(c, "+%d", ch.Add).Font(mono()).FontSize(sideSub).FontWeight(600).TextColor(add).SingleLine().Shrink(0)
+		wui.Textf(c, "+%d", ch.Add).Font(mono()).FontSize(sideSub).FontWeight(weight).TextColor(add).SingleLine().Shrink(0)
 	}
 	if ch.Del > 0 {
-		wui.Textf(c, "−%d", ch.Del).Font(mono()).FontSize(sideSub).FontWeight(600).TextColor(del).SingleLine().Shrink(0)
+		wui.Textf(c, "−%d", ch.Del).Font(mono()).FontSize(sideSub).FontWeight(weight).TextColor(del).SingleLine().Shrink(0)
 	}
 }
 
 // commitFileLabel 是提交里的一个文件：changeLabel，右边是行数和状态字母。
 func commitFileLabel(a *app.App, c *wui.Context, ch git.Change, sel bool, muted wui.Color) {
 	changeLabel(a, c, ch, sel, muted, sideFont)
-	lineCounts(c, ch, sel, muted)
+	lineCounts(c, ch, sel, muted, 600)
 	codeLetter(c, c.Theme(), ch.Code, sel)
 }
 

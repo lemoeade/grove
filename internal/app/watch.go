@@ -134,7 +134,7 @@ func (a *App) RefreshRepo(r *Repo, why string) {
 			if err != nil && (r.Err == nil || r.Err.Error() != err.Error()) {
 				log.Printf("读 %s 的状态: %v", r.Root, err) // 同一个错只记一次
 			}
-			first := !r.Loaded
+			first, dirtyRow := !r.Loaded, uncommittedRow(r)
 			took := time.Since(t0)
 			r.Loading, r.Loaded, r.LoadedAt = false, true, time.Now()
 			if late != nil {
@@ -155,6 +155,7 @@ func (a *App) RefreshRepo(r *Repo, why string) {
 			if err != nil {
 				r.Status = git.Status{}
 			}
+			keepRowSel(r, dirtyRow)
 			if plain != r.Plain {
 				a.setPlain(r, plain, first)
 			}

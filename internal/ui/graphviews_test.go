@@ -162,12 +162,9 @@ func TestAllHistGraphRows(t *testing.T) {
 		}
 		return a.Repos[slices.IndexFunc(a.Repos, func(r *app.Repo) bool { return r.Name == name })]
 	}
-	for i, s := range order {
+	for _, s := range order {
 		rc := g.find(repoOf(s).Name + " " + s)
 		y := rc.Y + histRowH/2
-		if i == 0 {
-			y += histDayH // 第一个提交上面是日期段头
-		}
 		want := rgba(repoColor(a, th, repoOf(s)))
 		if c := g.at(rc.X+8+histDotD/2, y); !nearRGBA(c, want) {
 			t.Errorf("%s 的仓库圆点是 %v，应接近 %v", s, c, want)
@@ -226,22 +223,22 @@ func TestSearchGraphLinks(t *testing.T) {
 	}
 	x0 := g.find("甲 登录校验").X
 	accent := rgba(laneColor(lightTheme(), 0, false))
-	row := func(s string) wui.Rect {
-		rc := g.find(s)
-		if s == subjects()[0] {
-			rc.Y += histDayH // 第一个提交上面是日期段头
+	row := func(s string) wui.Rect { return g.find(s) }
+	// 单线的历史：HEAD 是强调色的圈，别的是淡灰的点
+	bg := rgba(cardBg(lightTheme()))
+	for i, s := range subjects() {
+		c := g.at(x0+graphX(0), row(s).Y+graphNodeY)
+		if i == 0 && !nearRGBA(c, accent) {
+			t.Errorf("%s（HEAD）的点是 %v，应接近强调色", s, c)
 		}
-		return rc
-	}
-	for _, s := range subjects() {
-		if c := g.at(x0+graphX(0), row(s).Y+graphNodeY); !nearRGBA(c, accent) {
-			t.Errorf("%s 的点是 %v，应接近强调色", s, c)
+		if i > 0 && (nearRGBA(c, accent) || nearRGBA(c, bg)) {
+			t.Errorf("%s 的点是 %v，应是淡灰", s, c)
 		}
 	}
 	// 两个点之间：登录校验 → 登录页 有线，登录按钮 → 登录校验 没有
 	gapHas := func(above, below string) bool {
 		y0, y1 := row(above).Y+graphNodeY+graphRingR+1, row(below).Y+graphNodeY-graphRingR-1
-		return g.count(x0+graphX(0)-1, y0, x0+graphX(0)+1, y1, accent) > int((y1-y0)*graphScale)
+		return g.count(x0+graphX(0)-1, y0, x0+graphX(0)+1, y1, bg) < int(2*(y1-y0)*graphScale*graphScale)*3/4
 	}
 	if !gapHas("甲 登录校验", "甲 登录页") {
 		t.Error("登录校验和登录页是父子，点之间没连线")

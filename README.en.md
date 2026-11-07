@@ -34,7 +34,7 @@ about 79 MiB of memory when idle.
   previews with Mermaid and math. Supports encodings such as GB18030 and Big5. Run formatters like gofmt and prettier,
   or checks like go vet and eslint, on save. A file replaced in the preview tab reopens where you left it.
 - **Git**: stage changes by hunk or line and resolve conflicts in the editor. View a commit graph for one repo, or the
-  history of all repos merged by time; commits co-authored by a coding agent are marked and can be filtered. Merge, rebase (including interactive rebase), cherry-pick, stash, worktree and submodule operations
+  history of all repos merged by time; the expanded commit card names any coding agent that co-authored it, and you can filter to those commits. Merge, rebase (including interactive rebase), cherry-pick, stash, worktree and submodule operations
   are available in the UI. Each repo's header in the Git panel has its own Pull and Push buttons, with ahead / behind
   commit counts; in each repo the commit box sits at the top: a single input line, whose button appears once there is a message and says how many files it will commit; with nothing staged it commits all changes, untracked files included, and its ▾ holds Commit and Push, Amend Last Commit and Undo Last Commit. Change rows show the same file icon as the file tree, with M / A / D at the row end; when space runs out the path shrinks before the filename. Untracked files share the "Changes" group with unstaged
   changes, group buttons appear on hover, and worktrees and stashes are hidden by default — turn on "Show worktrees / stashes in the Git panel" under

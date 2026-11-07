@@ -10,21 +10,30 @@ import (
 
 // 这个文件画右栏历史每行最左边的提交图：泳道算法在 internal/graph，读历史时就算好了（History.Graph），这里只按行画。
 // 每行一个图格（Box 的 Draw，不用 Canvas 位图），撑满行高：上半截（行顶到节点）是上一行连下来的竖线，
-// 节点，下半截（节点到行底）是这一行连到下一行的线，弯都在下半截。
+// 节点，下半截（节点到行底）是这一行连到下一行的线，弯都在下半截：竖着出来，圆角转平，走到目标泳道，再圆角转竖（graphBend）。
+// 分出岔的历史用泳道的颜色；只有一条线的历史（thin）线细而淡，节点是小灰点，只有 HEAD 用强调色（thinNode）。
 // "所有仓库"视图每个仓库那一段用它自己的图（cutGraph），接不到挨着的行的那半截渐隐；搜索结果、文件历史只画点（dotGraph）。
 
 // 图的几何，单位 DIP。
 const (
-	graphLane   = 14  // 泳道间距
+	graphLane   = 12  // 泳道间距
 	graphLeft   = 4   // 左边距
 	graphRight  = 2   // 右边距
 	graphMax    = 6   // 图格最多这么多条泳道宽；再多的照样画，被图格裁掉
 	graphNodeY  = 15  // 节点圆心离行顶（一行 30 高的正中）
-	graphNodeR  = 3.6 // 节点半径
-	graphHalo   = 2   // 节点外面一圈底色描边的宽
-	graphRingR  = 7   // HEAD 外面那圈的半径
-	graphStroke = 1.8 // 线宽
+	graphNodeR  = 3.2 // 节点半径
+	graphRingR  = 5.5 // HEAD 外面那圈的半径
+	graphRingW  = 1.4 // 圈（HEAD、合并提交）的线宽
+	graphCoreR  = 2.6 // HEAD 圈里那个点的半径
+	graphStroke = 1.5 // 线宽
+	graphBendR  = 5.5 // 拐弯的圆角半径
 	graphDash   = 2   // 虚线（"未提交的改动"）一段的长和空
+
+	thinStroke  = 1.2  // 单线历史的线宽
+	thinAlpha   = 0.38 // 单线历史的线有多淡
+	thinNodeR   = 2.8  // 单线历史的节点半径
+	thinGap     = 4.4  // 单线历史的线离节点圆心多远断开
+	thinHeadGap = 6.5  // 同上，HEAD
 )
 
 // graphWidth 是 lanes 条泳道的图格宽（最多 graphMax 条）。
@@ -116,48 +125,114 @@ func dashedLine(p *wui.Painter, r wui.Rect, lane int, y0, y1 float32, col wui.Co
 }
 
 // graphLine 画图格里的一段直线：fade < 0 从上往下淡入（上半截接不到上一行），> 0 淡出（下半截接不到下一行），0 实色。
-func graphLine(p *wui.Painter, x0, y0, x1, y1 float32, col wui.Color, fade int) {
+// thin 是单线历史的细淡线。
+func graphLine(p *wui.Painter, x0, y0, x1, y1 float32, col wui.Color, fade int, thin bool) {
+	w := float32(graphStroke)
+	if thin {
+		w, col = thinStroke, col.Alpha(thinAlpha)
+	}
 	if fade == 0 {
-		p.Line(x0, y0, x1, y1, graphStroke, col)
+		p.Line(x0, y0, x1, y1, w, col)
 		return
 	}
 	var path wui.Path
 	path.MoveTo(x0, y0).LineTo(x1, y1)
-	strokeFade(p, &path, col, fade)
+	strokeFade(p, &path, w, col, fade)
 }
 
 // strokeFade 描图格里的一条线，fade 同 graphLine。渐隐只占线的前 / 后一段、行边上那一截全透明：
 // 两段的线在行边上碰头时中间留一道空，不会看着像一条被捏细的线。
-func strokeFade(p *wui.Painter, path *wui.Path, col wui.Color, fade int) {
+func strokeFade(p *wui.Painter, path *wui.Path, w float32, col wui.Color, fade int) {
 	switch {
 	case fade < 0:
-		p.StrokePathGradient(path, graphStroke, wui.LinearGradient{From: col.Alpha(0), To: col, Angle: 180, Start: 0.35, End: 1})
+		p.StrokePathGradient(path, w, wui.LinearGradient{From: col.Alpha(0), To: col, Angle: 180, Start: 0.35, End: 1})
 	case fade > 0:
-		p.StrokePathGradient(path, graphStroke, wui.LinearGradient{From: col, To: col.Alpha(0), Angle: 180, Start: 0, End: 0.6})
+		p.StrokePathGradient(path, w, wui.LinearGradient{From: col, To: col.Alpha(0), Angle: 180, Start: 0, End: 0.6})
 	default:
-		p.StrokePath(path, graphStroke, col)
+		p.StrokePath(path, w, col)
 	}
 }
 
-// graphNode 画节点：实心点，外面一圈 2 px 的底色描边（和穿过的线分开）；合并提交空心；HEAD 外面再一圈。
+// graphBend 是拐弯的线：竖着出来，圆角转平，走到目标泳道，再圆角转竖。跨几条泳道都是同一个弯，不会变成斜线。
+func graphBend(p *wui.Path, x0, y0, x1, y1 float32) {
+	const k = 0.55 // 四分之一圆的三次曲线控制点
+	dx, s := x1-x0, float32(1)
+	if dx < 0 {
+		dx, s = -dx, -1
+	}
+	ym := (y0 + y1) / 2
+	r := min(graphBendR, dx/2, (y1-y0)/2)
+	p.MoveTo(x0, y0).LineTo(x0, ym-r)
+	p.CubeTo(x0, ym-r+r*k, x0+s*(r-r*k), ym, x0+s*r, ym)
+	p.LineTo(x1-s*r, ym)
+	p.CubeTo(x1-s*(r-r*k), ym, x1, ym+r-r*k, x1, ym+r)
+	p.LineTo(x1, y1)
+}
+
+// nodeGap 是穿过节点的竖线离圆心多远断开。
+func nodeGap(head, thin bool) float32 {
+	switch {
+	case thin && head:
+		return thinHeadGap
+	case thin:
+		return thinGap
+	case head:
+		return graphRingR
+	}
+	return graphNodeR
+}
+
+// graphNode 画节点：实心点；合并提交空心；HEAD 是一道细圈里一个点。不描底色的边，行悬停、选中时点外面不会有一圈白晕；
+// 空心的里面填底色，盖住从圆心出发的弯。
 func graphNode(p *wui.Painter, x, y float32, col wui.Color, merge, head bool) {
 	bg := p.Theme().Background
-	var halo wui.Path
-	halo.Circle(x, y, graphNodeR+graphHalo/2)
-	p.StrokePath(&halo, graphHalo, bg)
 	var dot wui.Path
-	if merge {
-		dot.Circle(x, y, graphNodeR-graphStroke/2)
+	switch {
+	case head:
+		var ring wui.Path
+		ring.Circle(x, y, graphRingR)
+		p.FillPath(&ring, bg)
+		p.StrokePath(&ring, graphRingW, col)
+		dot.Circle(x, y, graphCoreR)
+		p.FillPath(&dot, col)
+	case merge:
+		dot.Circle(x, y, graphNodeR-0.6)
 		p.FillPath(&dot, bg)
-		p.StrokePath(&dot, graphStroke, col)
-	} else {
+		p.StrokePath(&dot, graphRingW, col)
+	default:
 		dot.Circle(x, y, graphNodeR)
 		p.FillPath(&dot, col)
 	}
-	if head {
+}
+
+// thinColor 是单线历史节点的颜色：普通提交淡灰，HEAD 强调色；实心选中的行上一律 AccentText。
+func thinColor(t *wui.Theme, head, sel bool) wui.Color {
+	switch {
+	case sel:
+		return t.AccentText
+	case head:
+		return t.Accent
+	}
+	return t.TextMuted.Alpha(0.6)
+}
+
+// thinNode 画单线历史的节点：小灰点，合并提交空心，HEAD 是强调色的细圈。线在 nodeGap 就断开了，不用盖底色。
+func thinNode(p *wui.Painter, x, y float32, merge, head, sel bool) {
+	col := thinColor(p.Theme(), head, sel)
+	var dot wui.Path
+	switch {
+	case head:
 		var ring wui.Path
-		ring.Circle(x, y, graphRingR-graphStroke/2)
-		p.StrokePath(&ring, graphStroke, col)
+		ring.Circle(x, y, graphRingR)
+		p.StrokePath(&ring, graphRingW, col)
+		dot.Circle(x, y, graphCoreR)
+		p.FillPath(&dot, col)
+	case merge:
+		dot.Circle(x, y, thinNodeR)
+		p.StrokePath(&dot, thinStroke, col)
+	default:
+		dot.Circle(x, y, thinNodeR)
+		p.FillPath(&dot, col)
 	}
 }
 
@@ -183,7 +258,7 @@ func cutGraph(c *wui.Context, h *app.History, ci int, head string, dirty [2]int,
 		prev = h.Graph[ci-1].Edges
 	}
 	cm := h.Commits[ci]
-	isHead, merge := cm.Hash == head && head != "", len(cm.Parents) > 1
+	isHead, merge, thin := cm.Hash == head && head != "", len(cm.Parents) > 1, h.GraphW <= 1
 	dash := dirty[0] >= 0 && dirty[0] <= graphMax && ci <= dirty[1]
 	up, down := 0, 0
 	if cut.fadeUp {
@@ -195,10 +270,7 @@ func cutGraph(c *wui.Context, h *app.History, ci int, head string, dirty [2]int,
 	wui.Box(c).Width(cut.w).Shrink(0).Draw(func(p *wui.Painter, r wui.Rect) {
 		t := p.Theme()
 		ny, bottom := r.Y+graphNodeY, r.Y+r.H
-		gap := float32(graphNodeR)
-		if isHead {
-			gap = graphRingR
-		}
+		gap := nodeGap(isHead, thin)
 		p.Clip(r, 0, func() {
 			// 上半截：上一行的每条线落到这一行的泳道，竖着下来；落到节点的到节点边上为止
 			var done [graphMax + 2]bool
@@ -211,30 +283,29 @@ func cutGraph(c *wui.Context, h *app.History, ci int, head string, dirty [2]int,
 				if e.To == row.Lane {
 					y1 = ny - gap
 				}
-				graphLine(p, r.X+graphX(e.To), r.Y, r.X+graphX(e.To), y1, laneColor(t, e.To, sel), up)
+				graphLine(p, r.X+graphX(e.To), r.Y, r.X+graphX(e.To), y1, laneColor(t, e.To, sel), up, thin)
 			}
 			if dash && ci == dirty[1] {
 				dashedLine(p, r, dirty[0], r.Y, ny-gap, dirtyColor(t, sel))
 			} else if dash {
 				dashedLine(p, r, dirty[0], r.Y, bottom, dirtyColor(t, sel))
 			}
-			// 下半截：直的是竖线；拐弯的从节点（或这条泳道的中线）出发、到下一行那条泳道的行底，一段 S 形三次曲线
+			// 下半截：直的是竖线；拐弯的从节点圆心（或这条泳道的中线）出发、到下一行那条泳道的行底（graphBend）
 			for _, e := range row.Edges {
 				if min(e.From, e.To) > graphMax {
 					continue
 				}
 				x0, x1, y0 := r.X+graphX(e.From), r.X+graphX(e.To), ny
-				if e.From == row.Lane {
-					y0 = ny + gap
-				}
 				col := edgeColor(t, e, sel)
 				if e.From == e.To {
-					graphLine(p, x0, y0, x1, bottom, col, down)
+					if e.From == row.Lane {
+						y0 = ny + gap
+					}
+					graphLine(p, x0, y0, x1, bottom, col, down, thin)
 					continue
 				}
-				hh := (bottom - y0) / 2
 				var path wui.Path
-				path.MoveTo(x0, y0).CubeTo(x0, y0+hh, x1, bottom-hh, x1, bottom)
+				graphBend(&path, x0, y0, x1, bottom)
 				if max(e.From, e.To) >= graphMax && down == 0 {
 					// 伸出图格的线往外渐隐（极少：同时开着超过 graphMax 条泳道）
 					angle := float32(90)
@@ -244,34 +315,35 @@ func cutGraph(c *wui.Context, h *app.History, ci int, head string, dirty [2]int,
 					p.StrokePathGradient(&path, graphStroke, wui.LinearGradient{From: col, To: col.Alpha(0), Angle: angle})
 					continue
 				}
-				strokeFade(p, &path, col, down)
+				strokeFade(p, &path, graphStroke, col, down)
 			}
-			if row.Lane <= graphMax {
-				graphNode(p, r.X+graphX(row.Lane), ny, laneColor(t, row.Lane, sel), merge, isHead)
+			switch x := r.X + graphX(row.Lane); {
+			case row.Lane > graphMax:
+			case thin:
+				thinNode(p, x, ny, merge, isHead, sel)
+			default:
+				graphNode(p, x, ny, laneColor(t, row.Lane, sel), merge, isHead)
 			}
 		})
 	})
 }
 
-// dotGraph 是搜索结果、文件历史一行的图格：提交不连续，不画泳道，只在泳道 0 上一个点（颜色也是泳道 0 的；
-// 合并提交空心、HEAD 外圈）。up / down 是和上 / 下一个提交在完整历史里是父子（app.DotLink），是就从点连到行顶 / 行底。
+// dotGraph 是搜索结果、文件历史一行的图格：提交不连续，不画泳道，只在泳道 0 上一个单线历史的节点（thinNode）。
+// up / down 是和上 / 下一个提交在完整历史里是父子（app.DotLink），是就从点连到行顶 / 行底。
 func dotGraph(c *wui.Context, cm git.Commit, head string, up, down bool, w float32, sel bool) {
 	isHead, merge := cm.Hash == head && head != "", len(cm.Parents) > 1
 	wui.Box(c).Width(w).Shrink(0).Draw(func(p *wui.Painter, r wui.Rect) {
 		col := laneColor(p.Theme(), 0, sel)
 		x, ny := r.X+graphX(0), r.Y+graphNodeY
-		gap := float32(graphNodeR)
-		if isHead {
-			gap = graphRingR
-		}
+		gap := nodeGap(isHead, true)
 		p.Clip(r, 0, func() {
 			if up {
-				p.Line(x, r.Y, x, ny-gap, graphStroke, col)
+				graphLine(p, x, r.Y, x, ny-gap, col, 0, true)
 			}
 			if down {
-				p.Line(x, ny+gap, x, r.Y+r.H, graphStroke, col)
+				graphLine(p, x, ny+gap, x, r.Y+r.H, col, 0, true)
 			}
-			graphNode(p, x, ny, col, merge, isHead)
+			thinNode(p, x, ny, merge, isHead, sel)
 		})
 	})
 }
@@ -284,14 +356,14 @@ func dotPass(c *wui.Context, down bool, w float32, sel bool) {
 	}
 	el.Draw(func(p *wui.Painter, r wui.Rect) {
 		x := r.X + graphX(0)
-		p.Line(x, r.Y, x, r.Y+r.H, graphStroke, laneColor(p.Theme(), 0, sel))
+		graphLine(p, x, r.Y, x, r.Y+r.H, laneColor(p.Theme(), 0, sel), 0, true)
 	})
 }
 
 // passGraph 画展开的提交 ci 下面文件行的图格：这个提交连到下一个提交的线竖着穿过去（还在 HEAD 上面的话，虚线也穿过去）。
 // w 是图格宽。
 func passGraph(c *wui.Context, h *app.History, ci int, dirty [2]int, sel bool, w float32) {
-	edges := h.Graph[ci].Edges
+	edges, thin := h.Graph[ci].Edges, h.GraphW <= 1
 	dash := dirty[0] >= 0 && dirty[0] <= graphMax && ci < dirty[1]
 	wui.Box(c).Width(w).Shrink(0).Draw(func(p *wui.Painter, r wui.Rect) {
 		t := p.Theme()
@@ -306,7 +378,7 @@ func passGraph(c *wui.Context, h *app.History, ci int, dirty [2]int, sel bool, w
 				}
 				done[e.To] = true
 				x := r.X + graphX(e.To)
-				p.Line(x, r.Y, x, r.Y+r.H, graphStroke, laneColor(t, e.To, sel))
+				graphLine(p, x, r.Y, x, r.Y+r.H, laneColor(t, e.To, sel), 0, thin)
 			}
 		})
 	})

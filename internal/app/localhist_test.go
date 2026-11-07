@@ -129,15 +129,15 @@ func TestLocalHistoryRows(t *testing.T) {
 
 	a.ShowFileHistory(r, "f.txt", false)
 	wait("读文件历史", func() bool { return r.Hist.Loaded && !r.Hist.Loading })
-	want := []HistRow{{-1, -1}, {LocalRow, 2}, {0, -1}, {LocalRow, 1}, {1, -1}, {LocalRow, 0}}
+	want := []HistRow{{-1, -1}, {LocalRow, 2}, {DayRow, 0}, {0, -1}, {LocalRow, 1}, {1, -1}, {LocalRow, 0}}
 	if got := HistRows(r); !slices.Equal(got, want) || r.Hist.localFor != abs {
 		t.Fatalf("混排 %v，要 %v（localFor %q）", got, want, r.Hist.localFor)
 	}
-	if !LocalPass(r, want, 3) || LocalPass(r, want, 1) || LocalPass(r, want, 5) {
+	if !LocalPass(r, want, 4) || LocalPass(r, want, 1) || LocalPass(r, want, 6) {
 		t.Error("竖线只该穿过两个提交中间的那条")
 	}
 	r.Hist.Done = false // 提交没读完：比最后一个读到的还早的先不列
-	if got := HistRows(r); len(got) != 5 {
+	if got := HistRows(r); len(got) != 6 {
 		t.Errorf("没读完时 %v", got)
 	}
 	r.Hist.Done = true

@@ -354,7 +354,7 @@ func TestHistoryRows(t *testing.T) {
 	a.EnsureHistory(r)
 	wait("读历史", func() bool { return r.Hist.Loaded && idle(r)() })
 	rows := HistRows(r)
-	if len(rows) != 3 || rows[0].CI != -1 {
+	if len(rows) != 4 || rows[0].CI != -1 || rows[1] != (HistRow{DayRow, 0}) {
 		t.Fatalf("历史行 %+v", rows)
 	}
 
@@ -365,14 +365,14 @@ func TestHistoryRows(t *testing.T) {
 		t.Fatal("没切到 Git 栏")
 	}
 	// 点提交展开它，点它的文件开预览 Diff 标签
-	r.Hist.Sel = 1
+	r.Hist.Sel = 2
 	a.OnHistSelected(r)
 	wait("读提交的文件", func() bool { return !r.Hist.FilesLoading && r.Hist.FilesFor != "" })
 	rows = HistRows(r)
-	if len(rows) != 4 || rows[2].File != 0 {
+	if len(rows) != 5 || rows[3].File != 0 {
 		t.Fatalf("展开后 %+v", rows)
 	}
-	r.Hist.Sel = 2
+	r.Hist.Sel = 3
 	a.OnHistSelected(r)
 	d := a.CurrentDoc()
 	if d == nil || d.Kind != docs.Diff || d.Change.Kind != git.InCommit || d.Pinned {
@@ -446,4 +446,33 @@ func TestStateMigration(t *testing.T) {
 func showGroups(a *App) {
 	a.St.Settings.ShowWorktrees, a.St.Settings.ShowStashes = true, true
 	a.syncShownGroups()
+}
+
+// 工作区干净时历史没有"未提交的改动"那行；这行来了又走，选中还在原来的提交上。
+func TestHistRowsClean(t *testing.T) {
+	repo := testutil.NewRepo(t, "clean")
+	repo.Write("a.txt", "1\n")
+	repo.Commit("初始提交")
+	a, wait := newTestApp(t, testutil.Workspace(t, repo.Root))
+	r := a.Current()
+	a.RefreshRepo(r, WhyManual)
+	wait("读状态", idle(r))
+	a.EnsureHistory(r)
+	wait("读历史", func() bool { return r.Hist.Loaded && idle(r)() })
+	if rows := HistRows(r); len(rows) != 2 || rows[0] != (HistRow{DayRow, 0}) || r.Hist.Sel != -1 {
+		t.Fatalf("干净时 %+v 选中 %d", rows, r.Hist.Sel)
+	}
+	setHistSel(r, 0, -1)
+	repo.Write("a.txt", "2\n")
+	a.RefreshRepo(r, WhyManual)
+	wait("有改动", func() bool { return idle(r)() && r.Status.Count > 0 })
+	if rows := HistRows(r); rows[0].CI != -1 || rows[r.Hist.Sel] != (HistRow{0, -1}) {
+		t.Fatalf("有改动时 %+v 选中 %d", rows, r.Hist.Sel)
+	}
+	repo.Write("a.txt", "1\n")
+	a.RefreshRepo(r, WhyManual)
+	wait("干净了", func() bool { return idle(r)() && r.Status.Count == 0 })
+	if rows := HistRows(r); rows[0].CI != DayRow || rows[r.Hist.Sel] != (HistRow{0, -1}) {
+		t.Fatalf("又干净了 %+v 选中 %d", rows, r.Hist.Sel)
+	}
 }

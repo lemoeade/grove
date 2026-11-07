@@ -261,7 +261,7 @@ func TestEnglishPlurals(t *testing.T) {
 		{Tn("%d 个文件", 1), "1 file"},
 		{Tn("%d 个文件", 2), "2 files"},
 		{Tn("%d 个文件", 0), "0 files"},
-		{Tn("%d 个文件 · +%d −%d", 1, 3, 1), "1 file · +3 −1"},
+		{Tn("比较 %s → %s（%d 个文件，+%d −%d）", "a", "b", 1, 3, 1), "Compare a → b (1 file, +3 −1)"},
 		{Tn("%d 处，%d 个文件", 1, 1), "1 match in 1 file"},
 		{Tn("%d 处，%d 个文件", 1, 2), "1 match in 2 files"},
 		{Tn("%d 处，%d 个文件", 3, 1), "3 matches in 1 file"},

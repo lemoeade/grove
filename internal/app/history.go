@@ -27,10 +27,11 @@ type History struct {
 	gen     int // 每次重读递增，旧的结果作废
 
 	Expanded     string       // 展开着的提交
+	BodyOpen     string       // 卡片里正文全露出来的提交（"展开全文"）
 	Files        []git.Change // 展开的提交改的文件
 	FilesFor     string
 	FilesLoading bool
-	Sel, PrevSel int // 列表里选中的行（含第一行"未提交的改动"）
+	Sel, PrevSel int // 列表里选中的行（含有改动时第一行的"未提交的改动"）
 
 	Path    string // 文件历史：只看动过它的提交（仓库内路径），空为不筛
 	PathDir bool   // Path 是目录（不跟重命名）
@@ -77,24 +78,55 @@ func (h *History) HeadIndex(head string) int {
 	return slices.IndexFunc(h.Commits, func(c git.Commit) bool { return c.Hash == head })
 }
 
-// HistRow 是历史列表的一行："未提交的改动"（CI = -1）、比较段（CI = CompareRow）、提交、展开的提交下的一个文件，
-// 或文件历史里的一条本地历史（CI = LocalRow）。
+// HistRow 是历史列表的一行："未提交的改动"（CI = -1）、比较段（CI = CompareRow）、日期段头（CI = DayRow）、提交、
+// 展开的提交下的一个文件，或文件历史里的一条本地历史（CI = LocalRow）。
 type HistRow struct {
-	CI   int // Commits 下标；-1 为"未提交的改动"，CompareRow 为比较段，LocalRow 为本地历史
-	File int // -1 为提交行（比较段的标题），否则 Files（比较段是 Compare.Files，本地历史是 Local）下标
+	CI   int // Commits 下标；-1 为"未提交的改动"，CompareRow 为比较段，LocalRow 为本地历史，DayRow 为日期段头
+	File int // -1 为提交行（比较段的标题），否则 Files（比较段是 Compare.Files，本地历史是 Local）下标；段头是这一天第一个提交的下标
 }
 
-// CompareRow 是 HistRow.CI 里比较段的行；LocalRow 是本地历史的行。
+// CompareRow 是 HistRow.CI 里比较段的行；LocalRow 是本地历史的行；DayRow 是日期段头（列表的 Header，选不中，滚动时钉在顶上）。
 const (
 	CompareRow = -2
 	LocalRow   = -3
+	DayRow     = -4
 )
+
+// SameDay 是两个时刻在本地时区是同一天。
+func SameDay(x, y time.Time) bool {
+	x, y = x.Local(), y.Local()
+	return x.YearDay() == y.YearDay() && x.Year() == y.Year()
+}
+
+// DayStart 是第 ci 个提交上面要不要一个日期段头：第一个，或和上一个不是同一天。
+func DayStart(cs []git.Commit, ci int) bool {
+	return ci == 0 || !SameDay(cs[ci-1].Date, cs[ci].Date)
+}
+
+// uncommittedRow 是历史列表第一行要不要"未提交的改动"：这个仓库自己的历史、工作区干净时没有这一行。
+func uncommittedRow(r *Repo) bool {
+	return !r.Loaded || r.Err != nil || r.Status.Count > 0 || r.Hist.RefKind != RefNone
+}
+
+// keepRowSel 在第一行"未提交的改动"来了 / 走了之后（had 是之前有没有）让选中还落在原来那行；选着它的就不选了。
+func keepRowSel(r *Repo, had bool) {
+	h := &r.Hist
+	switch now := uncommittedRow(r); {
+	case now == had || h.Sel < 0:
+	case now:
+		h.Sel++
+	default:
+		h.Sel--
+	}
+}
 
 // HistRows 是历史列表现在的行。
 func HistRows(r *Repo) []HistRow {
 	h := &r.Hist
 	rows := make([]HistRow, 0, 2+len(h.Commits)+len(h.Files))
-	rows = append(rows, HistRow{-1, -1})
+	if uncommittedRow(r) {
+		rows = append(rows, HistRow{-1, -1})
+	}
 	if cp := h.Compare; cp != nil {
 		rows = append(rows, HistRow{CompareRow, -1})
 		if cp.Open {
@@ -112,6 +144,9 @@ func HistRows(r *Repo) []HistRow {
 	}
 	for i, c := range h.Commits {
 		local(c.Date)
+		if DayStart(h.Commits, i) {
+			rows = append(rows, HistRow{DayRow, i})
+		}
 		rows = append(rows, HistRow{i, -1})
 		if c.Hash == h.Expanded && h.FilesFor == c.Hash {
 			for j := range h.Files {
@@ -325,6 +360,7 @@ func (a *App) OnHistSelected(r *Repo) {
 		a.OpenDiff(r, h.Compare.Files[row.File], false)
 	case row.CI == LocalRow:
 		a.OpenLocalCompare(h.localFor, h.Local[row.File], false)
+	case row.CI == DayRow:
 	case row.CI < 0:
 		a.ShowSidebar(workspace.ModeGit)
 		a.JumpRepo(slices.Index(a.Repos, r))
@@ -338,6 +374,16 @@ func (a *App) OnHistSelected(r *Repo) {
 	default:
 		a.OpenDiff(r, h.Files[row.File], false)
 	}
+}
+
+// ToggleCommitBody 展开 / 收起卡片里提交 cm 的正文。
+func (a *App) ToggleCommitBody(r *Repo, cm git.Commit) {
+	h := &r.Hist
+	if h.BodyOpen == cm.Hash {
+		h.BodyOpen = ""
+		return
+	}
+	h.BodyOpen = cm.Hash
 }
 
 // SetHistAll 切换右栏的"所有仓库"（头部的开关），记进 state.json。
@@ -361,13 +407,14 @@ const (
 	AllDirty         // 一个有未提交改动的仓库
 	AllCommit        // 一个提交
 	AllFile          // 展开的提交改的一个文件
+	AllDay           // 日期段头（列表的 Header）：下面第一个提交是 Repo.Hist.Commits[CI]
 )
 
 // AllHistRow 是右栏"所有仓库"视图的一行。
 type AllHistRow struct {
 	Kind  int
 	Repo  *Repo
-	CI    int    // AllCommit / AllFile：Repo.Hist.Commits 下标
+	CI    int    // AllCommit / AllFile / AllDay：Repo.Hist.Commits 下标
 	File  int    // AllFile：Repo.Hist.Files 下标
 	Title string // AllHeader
 }
@@ -385,7 +432,7 @@ func (row AllHistRow) Key() any {
 	if row.Repo != nil {
 		k.root = row.Repo.Root
 	}
-	if row.Kind == AllCommit || row.Kind == AllFile {
+	if row.Kind == AllCommit || row.Kind == AllFile || row.Kind == AllDay {
 		k.hash = row.Repo.Hist.Commits[row.CI].Hash
 	}
 	if row.Kind == AllFile {
@@ -394,11 +441,11 @@ func (row AllHistRow) Key() any {
 	return k
 }
 
-// Commit 是这一行的提交（AllCommit / AllFile）。
+// Commit 是这一行的提交（AllCommit / AllFile / AllDay）。
 func (row AllHistRow) Commit() git.Commit { return row.Repo.Hist.Commits[row.CI] }
 
 // AllHistRows 是"所有仓库"视图现在的行：先一段"未提交的改动"（有改动的仓库各一行，都干净就没有这段），
-// 再是各仓库读到的提交按时间合并（每个仓库自己的顺序不变）。有仓库读到的那页用完了、后面还有没读的，
+// 再是各仓库读到的提交按时间合并（每个仓库自己的顺序不变），换一天先是一个日期段头。有仓库读到的那页用完了、后面还有没读的，
 // 就停在那里：再往下的提交可能比它没读的那些早，等"再读"读了下一页再接着排，免得顺序错。
 func (a *App) AllHistRows() []AllHistRow {
 	var rows []AllHistRow
@@ -414,6 +461,7 @@ func (a *App) AllHistRows() []AllHistRow {
 		rows = append(rows, AllHistRow{Kind: AllHeader, Title: i18n.T("提交")})
 	}
 	next := make([]int, len(a.Repos))
+	var day time.Time
 	for {
 		best := -1
 		for i, r := range a.Repos {
@@ -436,6 +484,10 @@ func (a *App) AllHistRows() []AllHistRow {
 		}
 		r, ci := a.Repos[best], next[best]
 		next[best]++
+		if d := r.Hist.Commits[ci].Date; day.IsZero() || !SameDay(day, d) {
+			rows = append(rows, AllHistRow{Kind: AllDay, Repo: r, CI: ci, File: -1})
+			day = d
+		}
 		rows = append(rows, AllHistRow{Kind: AllCommit, Repo: r, CI: ci, File: -1})
 		if h := &r.Hist; h.Commits[ci].Hash == h.Expanded && h.FilesFor == h.Expanded {
 			for j := range h.Files {

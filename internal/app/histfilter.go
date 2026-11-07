@@ -127,7 +127,7 @@ func (h *History) DotLinks(ci int) (up, down bool) {
 
 // AllHistLinks 是"所有仓库"视图第 i 行（AllCommit；AllFile 算它那个提交）和上 / 下一个提交行连不连：得是同一个仓库，
 // 画提交图时是它历史里挨着的两个提交（CI 差 1；别的仓库的行插在中间就断开，段与段之间不连），画圆点时是父子（DotLink）。
-// 中间隔着的展开文件行不算，隔着段头就不连。
+// 中间隔着的展开文件行和日期段头不算，隔着"提交"段头就不连。
 func (a *App) AllHistLinks(rows []AllHistRow, i int) (up, down bool) {
 	row := rows[i]
 	link := func(above, below AllHistRow) bool {
@@ -140,7 +140,7 @@ func (a *App) AllHistLinks(rows []AllHistRow, i int) (up, down bool) {
 		return DotLink(above.Commit(), below.Commit())
 	}
 	near := func(from, step int) (AllHistRow, bool) {
-		for j := from; j >= 0 && j < len(rows) && (rows[j].Kind == AllCommit || rows[j].Kind == AllFile); j += step {
+		for j := from; j >= 0 && j < len(rows) && rows[j].Kind != AllHeader && rows[j].Kind != AllDirty; j += step {
 			if rows[j].Kind == AllCommit {
 				return rows[j], true
 			}

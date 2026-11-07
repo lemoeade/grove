@@ -118,19 +118,11 @@ func TestHistoryGraph(t *testing.T) {
 		d := func(x, y uint8) bool { return x-y <= 10 || y-x <= 10 }
 		return d(a.R, b.R) && d(a.G, b.G) && d(a.B, b.B)
 	}
-	// 按标题找到的是整行（行的 Label），图格从行的左边起；一天的第一个提交上面多一个日期段头
+	// 按标题找到的是整行（行的 Label），图格从行的左边起
 	cellX := func() float32 { return find("修文档").X }
 	nodeY := func(subject string) float32 {
 		t.Helper()
-		i := slices.Index(subjects(), subject)
-		if i < 0 {
-			t.Fatalf("历史里没有 %q", subject)
-		}
-		y := find(subject).Y + graphNodeY
-		if dayStart(r.Hist.Commits, i) {
-			y += histDayH
-		}
-		return y
+		return find(subject).Y + graphNodeY
 	}
 	at := func(x, y float32) color.RGBA { return tt.Image().RGBAAt(int(x*s), int(y*s)) }
 	// count 数 (x0, y0)–(x1, y1) 这块里颜色接近 col 的像素
@@ -159,15 +151,15 @@ func TestHistoryGraph(t *testing.T) {
 	expect("修文档行泳道 1 的竖线", at(gx(1), nodeY("修文档")-6), lane(1))
 	expect("修文档行泳道 2 的竖线", at(gx(2), nodeY("修文档")-6), lane(2))
 	// 合并提交空心：圈上是线的颜色，圆心不是
-	ring := float32(graphNodeR - graphStroke/2)
+	ring := float32(graphNodeR - 0.6)
 	expect("合并 feature/login 的圈", at(gx(0)+ring, nodeY("合并 feature/login")), lane(0))
 	if c := at(gx(0), nodeY("合并 feature/login")); near(c, lane(0)) {
 		t.Errorf("合并提交的圆心是 %v，应该空心", c)
 	}
 	// HEAD 外面一圈（泳道 0）
-	expect("HEAD 的外圈", at(gx(0)+graphRingR-graphStroke/2, nodeY("合并 feature/search")), lane(0))
+	expect("HEAD 的外圈", at(gx(0)+graphRingR, nodeY("合并 feature/search")), lane(0))
 	// 日期段头（第一个提交上面）没有节点
-	if n := count(gx(0)-4, find("试验：新布局").Y, gx(0)+4, find("试验：新布局").Y+histDayH-2, lane(1)); n > 0 {
+	if n := count(gx(0)-4, find("试验：新布局").Y-histDayH, gx(0)+4, find("试验：新布局").Y-2, lane(1)); n > 0 {
 		t.Errorf("日期段头左边有 %d 个泳道 1 颜色的像素", n)
 	}
 
@@ -226,15 +218,14 @@ func TestHistoryGraph(t *testing.T) {
 
 	// 有改动：未提交的改动那行 HEAD 的泳道（0）上一个橙色虚线圈，橙色虚线穿过 topic 那行（泳道 0 留给 HEAD，空着）连到 HEAD
 	orange := rgba(th.Warning)
-	und := find("未提交的改动")
-	if n := count(gx(0)-5, und.Y, gx(0)+5, und.Y+und.H, orange); n > 0 {
-		t.Errorf("没改动时未提交的改动那行有 %d 个泳道 0 颜色的像素", n)
+	if tt.HasText("未提交的改动") {
+		t.Error("工作区干净时不该有未提交的改动那行")
 	}
 	repo.Write("a.txt", "改\n")
 	a.RefreshRepo(r, app.WhyManual)
 	wait("改动", func() bool { return idle(r)() && r.Status.Count > 0 })
 	tt.Frame()
-	und = find("未提交的改动")
+	und := find("未提交的改动")
 	if n := count(gx(0)-5, und.Y, gx(0)+5, und.Y+und.H, orange); n == 0 {
 		t.Error("有改动时未提交的改动那行没有虚线圈")
 	}

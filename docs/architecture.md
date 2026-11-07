@@ -266,11 +266,11 @@ blame（`app/blame.go`、`git/blame.go`）：`ReadBlame` 读 `blame --porcelain`
 
 `internal/graph` 只负责计算：按显示顺序将提交传给 `Lanes.Next(hash, parents)`，返回该行的泳道及上下连接关系（`Row{Lane, Edges}`）。状态保存在 `Lanes` 中，下一页继续使用。`Reserve` 将 HEAD 固定在第 0 道。log 使用 `--date-order`，避免分支连线过长。
 
-`ui/graph.go` 画：泳道间距 14，最多画 6 道，多出来的并到最右边；颜色是淡的钢蓝、灰绿、灰沙……（不用红色），线宽 1.8，节点外面一圈底色描边。“未提交的改动”那行是橙色虚线圈，用橙色虚线（`dirtyLine`）接到 HEAD 那道。有搜索词、只看 agent 时不连线，只画点（`HistDots` / `dotGraph`）。`histNoGraph`（头部右键菜单里的“提交图”）关掉整个图。
+`ui/graph.go` 画：泳道间距 12，最多画 6 道，多出来的并到最右边；颜色是淡的钢蓝、灰绿、灰沙……（不用红色），线宽 1.5，换泳道的线走 `graphBend`（竖、圆角、平、圆角、竖）。节点不描底色的边（行悬停、选中时不出白晕）；只有一条泳道（`GraphW <= 1`）时走 thin：淡灰细线和小点，线在节点前后留缝（`nodeGap`），HEAD 是强调色的细圈。“未提交的改动”那行是橙色虚线圈，用橙色虚线（`dirtyLine`）接到 HEAD 那道。有搜索词、只看 agent 时不连线，只画点（`HistDots` / `dotGraph`）。`histNoGraph`（头部右键菜单里的“提交图”）关掉整个图。
 
-右栏历史的列表行（`ui/history.go`）：一个提交一行，一天的第一个提交那一行上面带日期段头，展开的提交下面带卡片；段头和卡片在选中的底外面（`histParts`），展开的文件是单独的列表行，接着画卡片的两边和底（`histFileRow`）。
+右栏历史的列表行（`ui/history.go`）：一个提交一行。日期段头是单独的列表行（`HistRow.CI == DayRow`，所有仓库是 `AllDay`），用 `ListState.Header`：滚动时钉在顶上、下一天推走它，键盘和鼠标选不中，要有底色。第一行“未提交的改动”只在工作区有改动（或没读到状态、看工作树 / 标签）时有（`uncommittedRow`），它来去时 `keepRowSel` 把 `Hist.Sel` 挪一行。展开的提交不画选中的底：`commitTitle` 是卡片的第一行，下面的 `commitCard` 在选中的底外面（`histParts`），展开的文件是单独的列表行，接着画卡片的两边和底（`histFileRow`）。正文 `bodyItems` 拆成一条条，`Hist.BodyOpen` 记哪个提交的正文展开着；列表里量不了字，`bodyFits` 按字宽估要不要“展开全文”。分支标记走 `foldRefs`：同名的远程分支折进本地分支。
 
-agent 记号：`git.AgentOf` 认提交正文里的 `Co-Authored-By:` trailer（名字里的词或邮箱域名对上 `agentPats` 表），读 log 时填进 `Commit.Agent`。“只看 agent 写的”（`App.HistAgent`，不进 state.json）读一页再筛，`Hist.read` 记 git log 读了几条，下一页从那里接着读。
+agent 记号：`git.AgentOf` 认提交正文里的 `Co-Authored-By:` trailer（名字里的词或邮箱域名对上 `agentPats` 表），读 log 时填进 `Commit.Agent`，列表行不画记号，写在展开卡片的信息行里（`commitMeta`）。“只看 agent 写的”（`App.HistAgent`，不进 state.json）读一页再筛，`Hist.read` 记 git log 读了几条，下一页从那里接着读。
 
 ### 工作树
 
