@@ -221,6 +221,8 @@ git 请求用户名、密码或 SSH 口令时，由 Grove 显示凭据对话框�
 
 ### 暂存、块和行
 
+Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`）每帧设：`Indicators` 是 `DiffNoIndicators`（行首不画竖条），折起来的未修改行由 `RenderSeparator = diffSep`（`ui/diffsep.go`）画成细线上的一颗胶囊，点了走 `expandSep`（开头 / 结尾的展开 `Step` 行，中间的或按住 ⇧ 全部展开）。空出来那边的斜纹和 mygo 自带的折叠条样式在 mygo 里，Grove 不改。
+
 Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.go`）。`git.HunkPatch` 从那一块生成补丁，暂存是 `git apply --cached -`，取消暂存是 `--cached -R`，丢弃是工作区上 `-R`。
 
 选几行再暂存是行级（`app/lines.go`）：`LinesEdits` 把选中的删除行和新增行配对，`git.LinesPatch` 生成只含这些行的补丁，总是正向套到 index 上（取消暂存时反过来算一份正向的），这样不用处理反向补丁的上下文问题。

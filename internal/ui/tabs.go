@@ -889,7 +889,8 @@ func diffContent(a *app.App, c *wui.Context, d *docs.Doc) {
 	diffFooter(a, c, d)
 }
 
-// diffLook 给 Diff 标签和替换预览的 diff 视图上这一帧的样子：并排 / 统一、字体；刚读出来、切了局部 / 全文时
+// diffLook 给 Diff 标签和替换预览的 diff 视图上这一帧的样子：并排 / 统一、字体、折叠条（diffSep）、
+// 行首不画标记；刚读出来、切了局部 / 全文时
 // 把光标所在（还没动过就是第一处；替换预览从一处进来的是那一处的）那块改动滚进视图。
 func diffLook(a *app.App, d *docs.Doc) {
 	d.DiffSt.Layout = editor.DiffSplit
@@ -898,6 +899,8 @@ func diffLook(a *app.App, d *docs.Doc) {
 	}
 	d.DiffSt.Font = a.EditorFont()
 	d.DiffSt.Font.Size -= 0.5
+	d.DiffSt.Indicators = editor.DiffNoIndicators // 行首不画竖条：改动靠底色和红绿的行号分
+	d.DiffSt.RenderSeparator = diffSep
 	if d.ToHunk { // 全文 diff 别停在文件顶上、切局部 / 全文别把改动甩出视图（mygo 等视图排过版才滚过去）
 		d.ToHunk = false
 		i, _ := d.DiffSt.CurrentHunk()
