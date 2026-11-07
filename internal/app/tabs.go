@@ -160,6 +160,7 @@ func (a *App) JumpHere(j docs.Jump) {
 // 否则就把当前这一步的位置定在 j。
 func (a *App) jumpIn(d *docs.Doc, j docs.Jump, same bool) {
 	d.JumpTo(j)
+	d.Top = 0 // 跳到哪看哪，不回 resumeView 记下的那一行
 	to := navPoint{key: d.Key(), pos: editor.Pos{Line: j.Line, Col: j.Col}, at: true}
 	if a.navPos >= len(a.nav) || a.nav[a.navPos].key != to.key {
 		a.push(to)
@@ -175,10 +176,12 @@ func (a *App) jumpIn(d *docs.Doc, j docs.Jump, same bool) {
 // addDoc 把标签加进去并切过去：不固定时顶掉一个没固定、没改过的预览标签。
 func (a *App) addDoc(d *docs.Doc, pin bool) {
 	d.Pinned = pin
+	a.resumeView(d)
 	if !pin {
 		for i, old := range a.Docs {
 			if !old.Pinned && !old.Modified() {
 				old.Gen++ // 还在读的话作废
+				a.noteView(old)
 				a.Docs[i] = d
 				a.SelectDoc(i)
 				return
@@ -187,6 +190,38 @@ func (a *App) addDoc(d *docs.Doc, pin bool) {
 	}
 	a.Docs = append(a.Docs, d)
 	a.SelectDoc(len(a.Docs) - 1)
+}
+
+// viewMark 是预览标签被顶掉时文件看到的地方：光标和最上面那一行。
+type viewMark struct {
+	pos editor.Pos
+	top int
+}
+
+// noteView 记下要被顶掉的预览标签看到哪了，再点回这个文件时接着看（只在这次运行里）。画过的文件才记：
+// 没画过的、Markdown 预览没有这份位置，十六进制的行不是文件的行，回到开头的不用记。
+func (a *App) noteView(d *docs.Doc) {
+	p, ok := d.Cursor()
+	first, last := d.St.VisibleLines()
+	if d.Kind != docs.File || d.Hex || !ok || last == 0 || p == (editor.Pos{}) && first == 0 {
+		return
+	}
+	if a.views == nil {
+		a.views = map[docs.Key]viewMark{}
+	}
+	a.views[d.Key()] = viewMark{p, first}
+}
+
+// resumeView 让新开的标签回到 noteView 记下的地方；要跳去别处的（jumpIn）跳的时候不用它。
+func (a *App) resumeView(d *docs.Doc) {
+	k := d.Key()
+	if m, ok := a.views[k]; ok {
+		delete(a.views, k)
+		if m.pos != (editor.Pos{}) { // 光标本来就在开头：不跳，跳了第一帧会把开头露出来
+			d.JumpTo(docs.Jump{Line: m.pos.Line, Col: m.pos.Col})
+		}
+		d.Top = m.top
+	}
 }
 
 // reuse 是已经开着的同一个标签：切过去（在别的组就连键盘一起换过去），pin 时固定它。
@@ -344,7 +379,7 @@ func (a *App) readDoc(d *docs.Doc, fresh bool) {
 			if snap {
 				dc.OldName = right // 本地历史的内容文件没有扩展名：语言按工作区的文件认
 			}
-			up(func() { d.ApplyDiff(gen, dc, err, a.St.FullDiff) })
+			hand(func() { d.ApplyDiff(gen, dc, err, a.St.FullDiff) })
 		}()
 	case docs.Diff:
 		ctx := context.Background()
@@ -363,14 +398,14 @@ func (a *App) readDoc(d *docs.Doc, fresh bool) {
 					dc, err = git.DiffContent{Note: docs.CommitGoneNote(gone)}, nil
 				}
 			}
-			up(func() {
+			hand(func() {
 				if d.ApplyDiff(gen, dc, err, a.St.FullDiff) {
 					d.Gone = gone != ""
 				}
 			})
 		}()
 	}
-	if got != nil && (d.Kind == docs.File || d.Kind == docs.Version) {
+	if got != nil && (d.Kind == docs.File || d.Kind == docs.Version || d.Kind == docs.Compare || d.Kind == docs.Diff) {
 		t := time.NewTimer(quickLoad)
 		select {
 		case f := <-got:
@@ -808,7 +843,7 @@ func (a *App) syncFile(r *Repo, d *docs.Doc) {
 // loadingDelay 是标签读了多久还没读完才画"读取中…"（Doc.SlowLoad）：读得快的（绝大多数）不闪转圈。
 var loadingDelay = 150 * time.Millisecond
 
-// quickLoad 是新开的文件 / 历史版本标签主线程最多等多久读完、同步放上内容（这样预览换文件时编辑区不空一帧）；
+// quickLoad 是新开的文件 / 历史版本 / Diff 标签主线程最多等多久读完、同步放上内容（这样预览换文件时编辑区不空一帧）；
 // 过了这么久还没读完照旧在后台读。0 是不等（测试改它）。
 var quickLoad = 40 * time.Millisecond
 

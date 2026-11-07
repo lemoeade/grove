@@ -68,7 +68,7 @@ func TestOpenFileTextBeforeBase(t *testing.T) {
 	d := a.OpenFile(repo, "a.go", true)
 	wait("文字", func() bool { return !d.Loading && d.Buf != nil })
 	wait("开始读基准", func() bool { return g.count() == 1 })
-	if !d.BasePending || d.Base != nil || d.St.DiffBase != nil || DocHunks(d) != nil {
+	if !d.BasePending || d.Base != nil || d.St.DiffBase != d.Buf || DocHunks(d) != nil { // 文字自己占着装订线
 		t.Fatalf("基准还没回来：pending=%v base=%v", d.BasePending, d.Base != nil)
 	}
 	if d.Buf.String() != "package a\n\nfunc A() { println() }\n" {
@@ -177,5 +177,52 @@ func TestSlowLoadAfterDelay(t *testing.T) {
 	wait("读完", func() bool { return !d.Loading && d.Buf != nil })
 	if d.Buf.String() != "hi\n" {
 		t.Fatalf("内容 %q", d.Buf.String())
+	}
+}
+
+// 没有基准的文件也留着改动条那一条（文字自己占位）：仓库里的文件宽度一样，打开时代码不横跳；仓库外的不留。
+func TestGutterHeldWithoutBase(t *testing.T) {
+	r := testutil.NewRepo(t, "demo")
+	r.Write("a.go", "package a\n")
+	r.Commit("一")
+	r.Write("new.go", "package b\n")
+	out := filepath.Join(t.TempDir(), "out.go")
+	if err := os.WriteFile(out, []byte("package c\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, wait := newTestApp(t, testutil.Workspace(t, r.Root))
+	repo := a.Repos[0]
+	a.RefreshRepo(repo, WhyManual)
+	wait("仓库读完", idle(repo))
+
+	d := a.OpenFile(repo, "new.go", true)
+	wait("未跟踪的文件", func() bool { return !d.Loading && !d.BasePending })
+	if d.Base != nil || d.St.DiffBase != d.Buf || DocHunks(d) != nil {
+		t.Fatalf("未跟踪：base=%v 占位=%v hunks=%d", d.Base != nil, d.St.DiffBase == d.Buf, len(DocHunks(d)))
+	}
+	o := a.OpenPath(out)
+	wait("仓库外的文件", func() bool { return !o.Loading && !o.BasePending })
+	if o.St.DiffBase != nil {
+		t.Fatal("仓库外的文件不留改动条那一条")
+	}
+}
+
+// Diff 标签和文件一样，读得快的在打开的这一下就放上，不空一帧。
+func TestDiffQuickLoad(t *testing.T) {
+	keep := quickLoad
+	quickLoad = testutil.Budget(10 * time.Second) // 这里只看放上的路径，不和机器快慢赛跑
+	t.Cleanup(func() { quickLoad = keep })
+	r := testutil.NewRepo(t, "demo")
+	r.Write("a.go", "package a\n")
+	r.Commit("一")
+	r.Write("a.go", "package a\n\nvar A = 1\n")
+	a, wait := newTestApp(t, testutil.Workspace(t, r.Root))
+	repo := a.Repos[0]
+	a.RefreshRepo(repo, WhyManual)
+	wait("仓库读完", idle(repo))
+
+	d := a.OpenDiff(repo, repo.Status.Changes[0], false)
+	if d.Loading || d.DiffSt == nil {
+		t.Fatalf("打开后还没放上：loading=%v diff=%v", d.Loading, d.DiffSt != nil)
 	}
 }

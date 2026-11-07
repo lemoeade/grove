@@ -425,7 +425,7 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 
 标签规则（`app/tabs.go`）：
 
-- 单击打开是预览标签（斜体），下一个预览会替换它；双击、回车、编辑以后固定。
+- 单击打开是预览标签（斜体），下一个预览会替换它；双击、回车、编辑以后固定。被替换的文件记下光标和最上面那一行（`noteView`），再打开时接着看（`resumeView`，只在这次运行里）；`jumpIn` 指明了行的不用它。
 - 读文件、历史版本和 diff 都在后台；写盘只在用户保存、或者在关标签 / 退出的确认框里选了保存之后。
 - ⇧⌘T 重开关掉的标签，‹ › 前进后退（`Back` / `Forward`，⌃- / ⌃⇧-），同一个文件里跳行也算一步。
 - 切当前组的标签（`app/tabswitch.go`）：⇧⌘[ / ⇧⌘]、⌥⌘← / ⌥⌘→ 按标签条顺序走、到头绕回（`StepTab`）；⌃Tab / ⌃⇧Tab 按最近使用走（`StepTabByUse`），顺序来自 `visit` 里记的 `tabMRU`（只在内存里，不存 state.json）。⌃Tab 是每按一次切到上一个用过的（连按在两个标签之间来回），还没有按住 ⌃ 时的标签列表浮层。键盘在终端里时这几个键先给终端标签（注册表里 `term.prevTab` 等排在前面）。
@@ -440,7 +440,7 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 | 到 `MaxViewBytes` 64 MB | 只读打开（`Doc.Big`），后台高亮 |
 | 更大 | 不打开，显示原因说明 |
 
-读文件在后台（`docs.Loaded`，`fresh` 判断读回来时标签还是不是那一版），读好了 `setText` 换上。读分两步，在同一个后台 goroutine 里：先 `ReadFileText` / `ReadVersionText` 读文字、`a.Update` 放上（这时 `Doc.BasePending`），再 `Loaded.LoadBase` 读 HEAD（历史版本：父提交）里的那份、`ApplyBase` 放上；`Gen` 变了（重读了）的基准丢掉，重读时槽里先留着原来的基准。新开的文件 / 历史版本标签（`Loading`）主线程在 `readDoc` 里最多等 `quickLoad`（40 ms）：后台读完先试着把"放上去"经无缓冲 channel 交给等着的主线程，同步放上（预览换文件时编辑区不空一帧，issue #50）；没人等了（超时）就照旧走 `a.Update`。基准不在这一步等，还是后台接着读。标签读了 `loadingDelay`（150 ms）还没读完才置 `Doc.SlowLoad`、画"读取中…"，在那之前只露编辑区的底。只读的大文件外部改了，过 2 秒再重读（`reloadBig`），避免日志持续写入时频繁重读。
+读文件在后台（`docs.Loaded`，`fresh` 判断读回来时标签还是不是那一版），读好了 `setText` 换上。读分两步，在同一个后台 goroutine 里：先 `ReadFileText` / `ReadVersionText` 读文字、`a.Update` 放上（这时 `Doc.BasePending`），再 `Loaded.LoadBase` 读 HEAD（历史版本：父提交）里的那份、`ApplyBase` 放上；`Gen` 变了（重读了）的基准丢掉，重读时槽里先留着原来的基准。新开的文件 / 历史版本 / Diff 标签（`Loading`）主线程在 `readDoc` 里最多等 `quickLoad`（40 ms）：后台读完先试着把"放上去"经无缓冲 channel 交给等着的主线程，同步放上（预览换文件时编辑区不空一帧，issue #50）；没人等了（超时）就照旧走 `a.Update`。基准不在这一步等，还是后台接着读；没读到之前和仓库里没有基准的（未跟踪）拿文字自己当 `St.DiffBase` 占着装订线的改动条那一条（`holdGutter`），基准放上时代码不横跳。标签读了 `loadingDelay`（150 ms）还没读完才置 `Doc.SlowLoad`、画"读取中…"，在那之前只露编辑区的底。只读的大文件外部改了，过 2 秒再重读（`reloadBig`），避免日志持续写入时频繁重读。
 
 大文件的高亮在 `internal/highlight`：mygo 自带的高亮器在主线程上每帧追 4 ms，64 MB 要追两三秒。这里一个 goroutine 从头分词、记下每行开头的状态，主线程只按记好的状态分看得见的几行；没算到的行先按状态 0 猜一份（`final` 为假）。`Highlight` 总是返回 true；编辑时停掉旧的 goroutine，从改动那行接着算。
 
