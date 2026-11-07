@@ -66,6 +66,7 @@ var (
 	iconClock     = icon("clock")
 	iconUndo      = icon("arrow-u-up-left")
 	iconTrash     = icon("trash")
+	iconSend      = icon("paper-plane-tilt") // 提交按钮：只放图标，字在 Label 和悬停提示里
 )
 
 // 文件和编辑器面板用的图标。

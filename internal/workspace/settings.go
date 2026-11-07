@@ -176,13 +176,14 @@ var (
 	Langs       = []string{"", "en"}
 )
 
-// DefaultAccent 是 Accent 存成 "" 时的强调色："steel" 钢蓝（以前是 "system" 跟随系统，mygo 跟着系统设置里的强调色）。
+// DefaultAccent 是 Accent 存成 "" 时的强调色："forest" 森绿（之前是 "steel" 钢蓝，再之前是 "system" 跟随系统，
+// mygo 跟着系统设置里的强调色）。
 // 换默认只改这一行：Accents 里它存成 ""，存过的这个值读回来也成 ""；别的（包括跟随系统）存实名，换默认时不跟着变。
-// 以前选“跟随系统”存的也是 ""，和没选过分不开，所以那些都成了钢蓝。
-const DefaultAccent = "steel"
+// 以前选“跟随系统”存的也是 ""，和没选过分不开，所以那些都成了默认色。
+const DefaultAccent = "forest"
 
 // AccentKeys 是所有的强调色，设置下拉里就是这个顺序。
-var AccentKeys = []string{"system", "steel", "ink", "graphite", "teal", "indigo"}
+var AccentKeys = []string{"system", "forest", "steel", "ink", "graphite", "teal", "indigo"}
 
 // accents 是设置里强调色可选的值：AccentKeys 的顺序，默认的那个存成 ""。
 func accents() []string {

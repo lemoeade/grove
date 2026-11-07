@@ -18,7 +18,8 @@ import (
 // accentColors 是能选的强调色（跟随系统的 "system" 不在这里）：浅色、深色主题各一个；
 // darkText 是深色主题里强调色上的字，零值是白色（石墨的深色太浅，白字看不清）。
 var accentColors = map[string]struct{ light, dark, darkText wui.Color }{
-	"steel":    {wui.Hex("#4E6E8E"), wui.Hex("#8FA9C6"), wui.Hex("#18181B")}, // 默认：白字 5.3:1；深色的太亮，白字只有 2.4:1，换深字
+	"forest":   {wui.Hex("#2B7A57"), wui.Hex("#5DBB8C"), wui.Hex("#0E1A14")}, // 默认：白字 5.2:1；深色的白字只有 2.3:1，换墨绿的深字（7.6:1）
+	"steel":    {wui.Hex("#4E6E8E"), wui.Hex("#8FA9C6"), wui.Hex("#18181B")}, // 白字 5.3:1；深色的太亮，白字只有 2.4:1，换深字
 	"ink":      {wui.Hex("#3B5B84"), wui.Hex("#7A9CC6"), wui.Color{}},
 	"graphite": {wui.Hex("#6E7075"), wui.Hex("#9A9CA3"), wui.Hex("#18181B")},
 	"teal":     {wui.Hex("#2E8B78"), wui.Hex("#4FB8A2"), wui.Color{}},
@@ -60,10 +61,11 @@ func onAccent(a *app.App, sel bool) bool { return sel && a.St.Settings.SolidSele
 // 行里的东西（按钮、勾选框、胶囊）还在真的主题下建。实心、圆角又没改时 list 就是 c.Theme()，什么都不换。
 type listLook struct {
 	soft   bool
-	active bool       // 选中行总按活动选中画（命令面板：键盘在输入框里，上下键移的是列表）
-	list   *wui.Theme // 建列表用的
-	real   *wui.Theme // 建行用的（淡底时）：真的主题，圆角和列表一样
-	bg     wui.Color  // 窗口根的底色：行可能在布局时才建，SetTheme 会把它改成主题的底色，建完换回来
+	active bool         // 选中行总按活动选中画（命令面板：键盘在输入框里，上下键移的是列表）
+	list   *wui.Theme   // 建列表用的
+	real   *wui.Theme   // 建行用的（淡底时）：真的主题，圆角和列表一样
+	bg     wui.Color    // 窗口根的底色：行可能在布局时才建，SetTheme 会把它改成主题的底色，建完换回来
+	chosen map[int]bool // 这一帧建过的行选没选中（rows 记）：连着选中的几行底色和竖条接成一片
 }
 
 // newListLook 照设置给列表一个 listLook；radius > 0 时选中块的圆角换成它（侧栏那样内缩的圆角行）。
@@ -89,7 +91,7 @@ func softAlpha(t *wui.Theme) float32 {
 	if t.Dark {
 		return 0.28
 	}
-	return 0.2 // 钢蓝很灰，再淡就和非活动选中的灰分不开了
+	return 0.2 // 钢蓝、石墨很灰，再淡就和非活动选中的灰分不开了
 }
 
 // softFills 是淡底列表行的三档底色：悬停是字色 4%（深色 6%），非活动选中是字色 8%（深色 12%），
@@ -117,12 +119,25 @@ func (l *listLook) rows(fn func(wui.ListRow)) func(wui.ListRow) {
 	if !l.soft {
 		return fn
 	}
-	return func(row wui.ListRow) { l.row(row.Context, row.Selected(), row.ListFocused(), func() { fn(row) }) }
+	return func(row wui.ListRow) {
+		if l.chosen == nil {
+			l.chosen = map[int]bool{}
+		}
+		l.chosen[row.Index] = row.Selected()
+		l.rowAt(row.Context, row.Index, row.Selected(), row.ListFocused(), func() { fn(row) })
+	}
 }
 
 // row 建一行：淡底时换回真的主题建。选中的行底下铺一层满行的底，列表有键盘时是强调色的淡底、
 // 左边再加一道强调色的竖条，没有时是中性的灰、不加竖条。
 func (l *listLook) row(c *wui.Context, sel, focused bool, fn func()) {
+	l.rowAt(c, -1, sel, focused, fn)
+}
+
+// rowAt 同 row，i 是这一行在列表里的下标（不知道是 -1）。多选时上下相邻的行也选中的话，这一行的底在那一边
+// 不留圆角、竖条通到行边，几行接成一整块、一整条（Finder、VS Code 都这样），不是一格一格的。
+// 邻行选没选中等画的时候才看（chosen 在建行时记，下面那行这时还没建），所以底和竖条都在 Draw 里画。
+func (l *listLook) rowAt(c *wui.Context, i int, sel, focused bool, fn func()) {
 	if !l.soft {
 		fn()
 		return
@@ -139,12 +154,26 @@ func (l *listLook) row(c *wui.Context, sel, focused bool, fn func()) {
 				fill = f.active
 			}
 		}
-		wui.Box(c).Shrink(0).Radius(l.real.Radius).Background(fill).Children(func() {
-			fn()
-			if sel && active {
-				wui.Box(c).Absolute().Left(0).Top(softBarInset).Bottom(softBarInset).Width(softBarW).Radius(1).Background(l.real.Accent).PassThrough()
-			}
-		})
+		bar := l.real.Accent
+		rad := l.real.Radius
+		box := wui.Box(c).Shrink(0).Radius(rad).Children(fn)
+		if sel {
+			box.Draw(func(p *wui.Painter, r wui.Rect) {
+				up, down := i > 0 && l.chosen[i-1], i >= 0 && l.chosen[i+1]
+				fr, br := [4]float32{rad, rad, rad, rad}, [4]float32{1, 1, 1, 1}
+				top, bottom := float32(softBarInset), float32(softBarInset)
+				if up {
+					fr[0], fr[1], br[0], br[1], top = 0, 0, 0, 0, 0
+				}
+				if down {
+					fr[2], fr[3], br[2], br[3], bottom = 0, 0, 0, 0, 0
+				}
+				p.FillRadii(r, fr, fill)
+				if active {
+					p.FillRadii(wui.Rect{X: r.X, Y: r.Y + top, W: softBarW, H: r.H - top - bottom}, br, bar)
+				}
+			})
+		}
 	})
 	c.Root().Background(l.bg)
 }

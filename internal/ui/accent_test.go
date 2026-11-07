@@ -12,7 +12,7 @@ import (
 	"github.com/lemoeade/grove/internal/workspace"
 )
 
-// 强调色：跟随系统时主题不动，默认（存成 ""）是钢蓝；选了的那个浅色、深色主题各换一套，悬停 / 按下往黑（深色往白）调，
+// 强调色：跟随系统时主题不动，默认（存成 ""）是森绿；选了的那个浅色、深色主题各换一套，悬停 / 按下往黑（深色往白）调，
 // 石墨在深色主题里的字是深的，高对比度时焦点环还是不透明。
 func TestApplyAccent(t *testing.T) {
 	a := &app.App{}
@@ -34,14 +34,14 @@ func TestApplyAccent(t *testing.T) {
 	a.St.Settings.Accent = workspace.DefaultAccent
 	th := base(false)
 	applyAccent(a, &th)
-	if def.Accent != wui.Hex("#4E6E8E") || th != def {
-		t.Errorf("默认的强调色该是钢蓝：%v，选了钢蓝 %v", def.Accent, th.Accent)
+	if def.Accent != wui.Hex("#2B7A57") || th != def {
+		t.Errorf("默认的强调色该是森绿：%v，选了森绿 %v", def.Accent, th.Accent)
 	}
 	a.St.Settings.Accent = ""
 	def = base(true)
 	applyAccent(a, &def)
-	if def.Accent != wui.Hex("#8FA9C6") || def.AccentText != wui.Hex("#18181B") {
-		t.Errorf("深色钢蓝：%v，字 %v", def.Accent, def.AccentText)
+	if def.Accent != wui.Hex("#5DBB8C") || def.AccentText != wui.Hex("#0E1A14") {
+		t.Errorf("深色森绿：%v，字 %v", def.Accent, def.AccentText)
 	}
 
 	a.St.Settings.Accent = "teal"
@@ -82,7 +82,7 @@ func TestApplyAccent(t *testing.T) {
 	}
 }
 
-// 文件树里选中的行：实心时跟随系统是系统的强调色、默认是钢蓝、选了青绿是青绿的实心块、字是白的；默认的淡底是青绿淡淡的一层
+// 文件树里选中的行：实心时跟随系统是系统的强调色、默认是森绿、选了青绿是青绿的实心块、字是白的；默认的淡底是青绿淡淡的一层
 // （侧栏底色上叠 14%），字还是正文的深色，左边一道青绿的竖条（列表有键盘时粗一点）。
 func TestSelectedRowLook(t *testing.T) {
 	r0 := testutil.NewRepo(t, "look")
@@ -141,7 +141,7 @@ func TestSelectedRowLook(t *testing.T) {
 		return m
 	}
 
-	// 实心、跟随系统：系统的强调色；默认（存成 ""）是钢蓝，不管系统
+	// 实心、跟随系统：系统的强调色；默认（存成 ""）是森绿，不管系统
 	a.St.Settings.SolidSelection = true
 	pink := wui.Hex("#D9366B")
 	tt.SetPreferences(wui.Preferences{Accent: pink})
@@ -150,8 +150,8 @@ func TestSelectedRowLook(t *testing.T) {
 		t.Errorf("跟随系统时选中行是 %v，系统的强调色 %v", sel, pink)
 	}
 	a.St.Settings.Accent = ""
-	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#4E6E8E"), 3) {
-		t.Errorf("默认的选中行是 %v，应是钢蓝", sel)
+	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#2B7A57"), 3) {
+		t.Errorf("默认的选中行是 %v，应是森绿", sel)
 	}
 
 	// 青绿实心：字是白的（最深的像素也就是青绿本身）
@@ -229,7 +229,7 @@ func TestSelectedRowLook(t *testing.T) {
 	}
 }
 
-// lightTheme 是默认设置下应用实际画的浅色主题：mygo 的浅色主题套上默认的强调色（钢蓝，不是 mygo 跟的系统色）。
+// lightTheme 是默认设置下应用实际画的浅色主题：mygo 的浅色主题套上默认的强调色（森绿，不是 mygo 跟的系统色）。
 func lightTheme() *wui.Theme {
 	th := wui.LightTheme()
 	applyAccent(&app.App{}, th)
