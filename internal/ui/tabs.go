@@ -511,9 +511,9 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 		a.SyncInlineBlame(d, focused) // 设置里开着行内 blame：光标行末尾那一条（只在键盘所在那组的当前标签上）
 		a.SyncProblems(d)             // 检查报的问题：这个文件的变了才重设诊断
 		d.St.ContextMenu = func(m *wui.Menu) { docMenu(a, nativeMenu(m), d) }
-		if d.Top > 0 { // 恢复的标签：等编辑器排过一次版（知道每行多高）再滚
+		if d.Top > 0 { // 恢复的标签：第一帧就滚（光标在视野里就不再动），光标不在视野里第一帧会被挪走，排过版再滚一次
+			d.St.ScrollTo(d.Top)
 			if _, last := d.St.VisibleLines(); last > 0 {
-				d.St.ScrollTo(d.Top)
 				d.Top = 0
 			} else {
 				c.Invalidate()

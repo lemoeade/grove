@@ -145,7 +145,7 @@ type Doc struct {
 	ReloadQueued bool
 
 	Pending *Jump // 还没读完时要跳去的地方，读完再跳
-	Top     int   // 恢复上次的标签时要滚到最上面的行；编辑器排过一次版后界面滚过去并清零
+	Top     int   // 恢复标签时要滚到最上面的行：界面第一帧就滚，编辑器排过一次版后再滚一次并清零
 
 	// Markdown 预览（⇧⌘V）
 	Preview bool
@@ -1173,7 +1173,9 @@ func (d *Doc) setText(l Loaded) {
 	d.St.Buffer, d.St.Label = d.Buf, i18n.Tf("编辑 %s", d.Title)
 	if d.BasePending = l.BasePending(); !d.BasePending {
 		d.SetBase(l.Base, l.BaseSum)
-	} // 基准还在后台读：重读的先留着原来的（HEAD 多半没变，改动标记不闪），新标签本来就没有
+	} else { // 基准还在后台读：重读的先留着原来的（HEAD 多半没变，改动标记不闪），新标签先占位
+		d.holdGutter()
+	}
 	if swap {
 		d.St.GoTo(at)
 		d.St.SetScrollY(y)
@@ -1188,7 +1190,18 @@ func (d *Doc) setText(l Loaded) {
 func (d *Doc) SetBase(base *editor.Buffer, sum Sum) {
 	d.Base, d.BaseSum = base, sum
 	d.NoBase = base == nil && sum.OK
-	d.St.DiffBase = base
+	d.holdGutter()
+}
+
+// holdGutter 把槽里的基准交给编辑器。mygo 的装订线有 DiffBase 才留改动条那 6 px：基准还没读到、仓库里
+// 没有基准的（未跟踪、父提交里没有）拿文字自己占位，自己和自己比没有改动条，代码也不会在基准放上时横跳。
+// 不和 HEAD 比的（大文件、NoBase、二进制、十六进制）不留这一条。
+func (d *Doc) holdGutter() {
+	d.St.DiffBase = d.Base
+	if d.Base == nil && d.Buf != nil && d.Root != "" && !d.NoBase && !d.Big && !d.Hex && d.Enc != Binary &&
+		d.Buf.Len() <= MaxDiffBaseBytes {
+		d.St.DiffBase = d.Buf
+	}
 }
 
 // ApplyBase 把后台读好的对比基准（Loaded.LoadBase）放上：这次读（gen）过期了（重读、改名重开）、
