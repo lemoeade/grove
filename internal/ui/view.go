@@ -59,7 +59,7 @@ func root(a *app.App, c *wui.Context) {
 	}
 	// 标题栏、侧栏、状态栏直接画在窗口底上，编辑器组、底栏、右栏是放在上面的卡片。窗口底默认是柔和底（底色上几团
 	// 淡淡的颜色），可以是纯色，或者通透（整个窗口是一块材质，Vibrancy；系统不给材质时是纯色）。
-	// 卡片换过主题会重设根的底色，所以放在最后（布局时才建的淡底列表行也会，见 listLook.row）。
+	// 卡片换过主题会重设根的底色，所以放在最后（布局时才建的列表行换主题以后由 withTheme 设回窗口底）。
 	switch {
 	case softBackdrop(a, c):
 		c.Root().Background(rootBg(c, t)).Draw(func(p *wui.Painter, r wui.Rect) { paintBackdrop(p, r, t) })

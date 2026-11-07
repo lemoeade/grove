@@ -64,14 +64,13 @@ type listLook struct {
 	active bool         // 选中行总按活动选中画（命令面板：键盘在输入框里，上下键移的是列表）
 	list   *wui.Theme   // 建列表用的
 	real   *wui.Theme   // 建行用的（淡底时）：真的主题，圆角和列表一样
-	bg     wui.Color    // 窗口根的底色：行可能在布局时才建，SetTheme 会把它改成主题的底色，建完换回来
 	chosen map[int]bool // 这一帧建过的行选没选中（rows 记）：连着选中的几行底色和竖条接成一片
 }
 
 // newListLook 照设置给列表一个 listLook；radius > 0 时选中块的圆角换成它（侧栏那样内缩的圆角行）。
 func newListLook(a *app.App, c *wui.Context, radius float32) *listLook {
 	t := c.Theme()
-	l := &listLook{soft: !a.St.Settings.SolidSelection, list: t, real: t, bg: rootBg(c, t)}
+	l := &listLook{soft: !a.St.Settings.SolidSelection, list: t, real: t}
 	if radius > 0 && radius != t.Radius {
 		rt := *t
 		rt.Radius = radius
@@ -175,7 +174,6 @@ func (l *listLook) rowAt(c *wui.Context, i int, sel, focused bool, fn func()) {
 			})
 		}
 	})
-	c.Root().Background(l.bg)
 }
 
 // softBarInset 是淡底选中行左边竖条上下离行边的距离；softBarW 是竖条的宽。
