@@ -9,6 +9,7 @@ Git 审阅 + 终端。工作区可以是一个 `.code-workspace` 文件，也可
 文档：
 
 - [README.md](README.md) / [README.en.md](README.en.md)：给用户的说明
+- [docs/requirements.md](docs/requirements.md)：需求定稿（定位、原则、范围、对象、功能、阶段）；做新东西先看这份
 - [docs/architecture.md](docs/architecture.md)：架构，现在实际是什么样
 - [docs/testing.md](docs/testing.md)：测试怎么分工、怎么量
 - [docs/release.md](docs/release.md)：版本号、构建、DMG、签名和公证、CI

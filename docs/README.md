@@ -2,6 +2,7 @@
 
 开发约定和常用命令见仓库根目录的 [AGENTS.md](../AGENTS.md)。这里的文档补充具体说明：
 
+- [requirements.md](requirements.md)：需求定稿：Grove 是架在 git 上的 agent 版本控制系统加上人的决策面；做什么、不做什么、分哪几个阶段
 - [architecture.md](architecture.md)：各个包的职责、状态流转和主要数据结构
 - [testing.md](testing.md)：测试分工、验收标准对应的测试，以及内存测量方法
 - [release.md](release.md)：版本号规则、构建、DMG 打包、签名、公证和 CI
