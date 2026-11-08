@@ -444,7 +444,7 @@ func (d *Doc) SetReplacePreview(old, nw []byte, ver int, repl string, expand boo
 	}
 	d.Raw = [2][]byte{old, nw}
 	ob, nb := editor.NewBuffer(string(old)), editor.NewBuffer(string(nw))
-	if l := editor.LanguageFor(d.Rel); l != nil {
+	if l := highlight.LanguageFor(d.Rel); l != nil {
 		ob.SetLanguage(l)
 		nb.SetLanguage(l)
 	}
@@ -818,7 +818,7 @@ const (
 
 // SetLang 换语言（状态栏语言那项选的；"" 为按文件名认）：高亮、注释、缩进、大纲跟着换。
 func (d *Doc) SetLang(name string) {
-	if name != "" && name != PlainLang && editor.LanguageNamed(name) == nil {
+	if name != "" && name != PlainLang && highlight.LanguageNamed(name) == nil {
 		name = "" // 会话里存的、这个版本不认识的语言：照文件名认
 	}
 	d.Lang, d.olOK = name, false
@@ -1158,11 +1158,11 @@ func (d *Doc) ApplyDiff(gen int, dc git.DiffContent, err error, expand bool) boo
 			return true // 没变：保留滚动位置和展开状态
 		}
 		old := editor.NewBuffer(string(dc.Old))
-		if l := editor.LanguageFor(dc.OldName); l != nil {
+		if l := highlight.LanguageFor(dc.OldName); l != nil {
 			old.SetLanguage(l)
 		}
 		nw := editor.NewBuffer(string(dc.New))
-		if l := editor.LanguageFor(dc.NewName); l != nil {
+		if l := highlight.LanguageFor(dc.NewName); l != nil {
 			nw.SetLanguage(l)
 		}
 		st := &editor.DiffState{Old: old, New: nw, ExpandUnchanged: expand}
@@ -1254,11 +1254,11 @@ func (d *Doc) language() *editor.Language {
 	var l *editor.Language
 	switch d.Lang {
 	case "":
-		l = editor.LanguageFor(d.Title)
+		l = highlight.LanguageFor(d.Title)
 	case PlainLang:
 		return nil
 	default:
-		l = editor.LanguageNamed(d.Lang)
+		l = highlight.LanguageNamed(d.Lang)
 	}
 	if d.Big {
 		return highlight.Wrap(l)

@@ -14,6 +14,7 @@ import (
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/docs"
 	"github.com/lemoeade/grove/internal/git"
+	"github.com/lemoeade/grove/internal/highlight"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/workspace"
 )
@@ -676,7 +677,7 @@ func languageMenu(a *app.App, m menu, d *docs.Doc) {
 		a.SetDocLang(d, docs.PlainLang)
 	}
 	m.Separator()
-	langs := slices.Clone(editor.Languages())
+	langs := slices.Clone(highlight.Languages())
 	slices.SortFunc(langs, func(x, y *editor.Language) int {
 		return strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name))
 	})

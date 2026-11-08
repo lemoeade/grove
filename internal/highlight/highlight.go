@@ -26,7 +26,7 @@ func Running() int { return int(running.Load()) }
 
 // For 是 name 的语言换成后台高亮的一份（其余照 mygo 的，Name、缩进、注释、括号都一样）；mygo 不认识的为 nil，
 // 没有 Tokenizer 或自带 Highlighter 的原样返回。同一种语言每次返回同一个指针（Buffer 按指针认语言换没换）。
-func For(name string) *editor.Language { return Wrap(editor.LanguageFor(name)) }
+func For(name string) *editor.Language { return Wrap(LanguageFor(name)) }
 
 // Wrap 和 For 一样，换的是 base 这种语言（状态栏手动选的）；nil 为 nil。
 func Wrap(base *editor.Language) *editor.Language {

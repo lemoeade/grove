@@ -8,12 +8,12 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 	wui "github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/editor"
 
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/docs"
 	"github.com/lemoeade/grove/internal/fonts"
 	"github.com/lemoeade/grove/internal/git"
+	"github.com/lemoeade/grove/internal/highlight"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/snippets"
 	"github.com/lemoeade/grove/internal/workspace"
@@ -875,7 +875,7 @@ func (t toolTable) field(c *wui.Context, lang string, done func()) {
 // add 是表最后的“添加一种语言”：表里还没有的语言里选一种，加一行空的命令。
 func (t toolTable) add(c *wui.Context, done func()) {
 	opts := []string{i18n.T("选一种语言…")}
-	for _, l := range editor.Languages() {
+	for _, l := range highlight.Languages() {
 		_, builtin := t.defaults[l.Name]
 		if _, listed := (*t.cmds)[l.Name]; !builtin && !listed {
 			opts = append(opts, l.Name)
@@ -968,7 +968,7 @@ func snippetLangName(lang string) string {
 	if lang == snippets.Global {
 		return i18n.T("所有语言")
 	}
-	for _, l := range editor.Languages() {
+	for _, l := range highlight.Languages() {
 		if snippets.LangKey(l.Name) == lang {
 			return l.Name
 		}
