@@ -33,6 +33,7 @@ var DefaultFormatters = map[string]string{
 	"JSON":       prettier,
 	"CSS":        prettier,
 	"HTML":       prettier,
+	"Vue":        prettier,
 	"YAML":       prettier,
 	"Markdown":   prettier,
 	"C":          clangFormat,
@@ -49,7 +50,7 @@ const (
 )
 
 // FormatterLangs 是设置里格式化表先列出来的语言（都有内置默认），按这个顺序；设置里加过的别的语言排在后面。
-var FormatterLangs = []string{"Go", "Rust", "Python", "JavaScript", "TypeScript", "JSON", "CSS", "HTML", "YAML", "Markdown",
+var FormatterLangs = []string{"Go", "Rust", "Python", "JavaScript", "TypeScript", "JSON", "CSS", "HTML", "Vue", "YAML", "Markdown",
 	"C", "C++", "Shell", "Swift", "Zig", "Lua"}
 
 // FormatOff 是设置里"这种语言不格式化"的写法。

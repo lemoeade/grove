@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/egoist/mygo/ui/editor"
+	"github.com/lemoeade/grove/internal/highlight"
 
 	"github.com/lemoeade/grove/internal/docs"
 	"github.com/lemoeade/grove/internal/fuzzy"
@@ -306,7 +306,7 @@ func (a *App) OpenLocalFile(abs string, e history.Entry) *docs.Doc {
 	}
 	d.Snapshot = e.T
 	d.Title = filepath.Base(abs) + " · " + LocalStamp(e.Time())
-	if l := editor.LanguageFor(abs); l != nil { // 内容文件没有扩展名，语言按原来的文件认
+	if l := highlight.LanguageFor(abs); l != nil { // 内容文件没有扩展名，语言按原来的文件认
 		d.Lang = l.Name
 	}
 	a.addDoc(d, true)
