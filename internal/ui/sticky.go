@@ -199,7 +199,7 @@ func stickyRows(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element, left f
 	}
 
 	t := c.Theme()
-	ct := editor.DefaultTheme(t)
+	ct := fullCodeTheme(t)
 	g := stickyGutter(c, st, n, float32(lh))
 	right := float32(stickyScrollbar)
 	if rb := row.Bounds(); rb.W > 0 {

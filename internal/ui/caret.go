@@ -117,6 +117,7 @@ func restingDiff(c *wui.Context, key any, d *editor.DiffState, r *docs.Rest) wui
 		d.Run(editor.GoToLine)
 		d.Run(editor.Cancel)
 	}
+	softTheme(&d.Theme, c.Theme()) // 和编辑器一样的代码颜色
 	return editor.DiffView(c.Key(key), d).Bind(&r.H)
 }
 
