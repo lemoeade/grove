@@ -103,11 +103,44 @@ func anchorName(s string) string {
 	return strings.ToLower(s)
 }
 
-// ToggleSoftWrap 开关软换行（⌥Z）。
+// ToggleSoftWrap 开关当前标签的软换行（⌥Z）：只这一个标签，设置里的默认不动；切回和设置一样就又跟着设置。
 func (a *App) ToggleSoftWrap() {
-	a.St.Settings.SoftWrap = !a.St.Settings.SoftWrap
-	a.SaveState()
+	d := a.CurrentDoc()
+	if !canWrap(d) {
+		return
+	}
+	on := !a.WrapOf(d)
+	switch {
+	case on == a.wrapDefault(d):
+		d.Wrap = 0
+	case on:
+		d.Wrap = 1
+	default:
+		d.Wrap = -1
+	}
 }
+
+// WrapOf 是 d 软换不换行：⌥Z 给它定过的按定的，不然按设置（Settings.Wrap）。
+func (a *App) WrapOf(d *docs.Doc) bool {
+	if d.Wrap != 0 {
+		return d.Wrap > 0
+	}
+	return a.wrapDefault(d)
+}
+
+// wrapDefault 是设置里给 d 的软换行：默认只给 Markdown 和纯文本（Doc.Prose），"all" 都换，"off" 都不换。
+func (a *App) wrapDefault(d *docs.Doc) bool {
+	switch a.St.Settings.Wrap {
+	case "all":
+		return true
+	case "off":
+		return false
+	}
+	return d.Prose()
+}
+
+// canWrap 是 ⌥Z 对 d 有没有用：有编辑器的标签（十六进制的不折行）。
+func canWrap(d *docs.Doc) bool { return d != nil && d.Buf != nil && !d.Hex }
 
 // ToggleStickyScroll 开关粘性滚动（view.stickyScroll；设置里存的是反面 noStickyScroll）。
 func (a *App) ToggleStickyScroll() {
@@ -138,13 +171,14 @@ func (a *App) EditorFont() ui.Font {
 	return f
 }
 
-// EditorOptions 把设置里的字体、软换行、空白字符和缩进套到编辑器上（indent 是这个文件状态栏里选的缩进，"" 为跟设置）；
+// EditorOptions 把设置里的字体、软换行（WrapOf）、空白字符和缩进（状态栏里给这个文件选过的优先）套到 d 的编辑器上；
 // 界面每帧画编辑器前调。
-func (a *App) EditorOptions(st *editor.State, indent string) {
+func (a *App) EditorOptions(d *docs.Doc) {
 	s := &a.St.Settings
+	st, indent := &d.St, d.Indent
 	st.Font = a.EditorFont()
 	st.Bindings = EditorBindings() // 改过键的编辑器命令（keybind.go）
-	st.SoftWrap = s.SoftWrap
+	st.SoftWrap = a.WrapOf(d)
 	switch s.Whitespace {
 	case "all":
 		st.Whitespace = editor.WhitespaceAll

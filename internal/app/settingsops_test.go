@@ -193,7 +193,7 @@ func TestSettingsExportImport(t *testing.T) {
 	}
 	// 整份 state.json；改的多于 5 项写“等 N 项”
 	st := workspace.Default()
-	st.Settings = workspace.Settings{Theme: "light", Accent: "teal", EditorSize: 14, SoftWrap: true, Shell: "/bin/sh", TermDock: "right", AutoPush: true}
+	st.Settings = workspace.Settings{Theme: "light", Accent: "teal", EditorSize: 14, Wrap: "all", Shell: "/bin/sh", TermDock: "right", AutoPush: true}
 	whole, _ := json.Marshal(st)
 	imp("state.json", string(whole))
 	if c = a.Confirm; c == nil || !strings.HasPrefix(c.Message, "会改 7 项：强调色、编辑器字号、软换行、Shell、终端位置等 7 项。") {

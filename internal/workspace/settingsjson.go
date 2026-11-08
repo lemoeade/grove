@@ -133,6 +133,12 @@ func ReadSettingsFile(data []byte) (s Settings, ignored []string, err error) {
 	keep := map[string]json.RawMessage{}
 	for _, k := range objectKeys(body) {
 		v := all[k]
+		if k == "softWrap" { // 老版本的软换行开关（legacySoftWrap）：开着的是 "all"，没开的就是新的默认
+			if _, ok := all["wrap"]; !ok && string(bytes.TrimSpace(v)) == "true" {
+				keep["wrap"] = json.RawMessage(`"all"`)
+			}
+			continue
+		}
 		var probe Settings
 		if !keys[k] || json.Unmarshal(append(append([]byte(`{"`+k+`":`), v...), '}'), &probe) != nil {
 			ignored = append(ignored, k)

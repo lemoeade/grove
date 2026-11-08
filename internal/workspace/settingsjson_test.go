@@ -30,7 +30,7 @@ func TestSettingsJSON(t *testing.T) {
 		t.Error("零值的 JSON 末尾没换行，或键没照结构体的顺序")
 	}
 
-	s := Settings{Theme: "dark", Zoom: 125, EditorSize: 15, SoftWrap: true, Shell: "/bin/sh", TermSize: 13.5,
+	s := Settings{Theme: "dark", Zoom: 125, EditorSize: 15, Wrap: "all", Shell: "/bin/sh", TermSize: 13.5,
 		TermProfiles: []TermProfile{{Name: "login", Shell: "/bin/sh", Args: []string{"-l"}}},
 		WebHosts:     []WebHost{{Host: "git.example.com", Kind: "gitlab"}},
 		Formatters:   map[string]string{"Go": "gofmt", "Markdown": "-"}}
@@ -41,7 +41,7 @@ func TestSettingsJSON(t *testing.T) {
 	if ch := ChangedKeys(s, back); len(ch) != 0 {
 		t.Fatalf("写出来再解回去变了：%v", ch)
 	}
-	if ch := ChangedKeys(Settings{}, s); !slices.Equal(ch, []string{"theme", "zoom", "editorSize", "softWrap", "shell", "termSize", "termProfiles", "webHosts", "formatters"}) {
+	if ch := ChangedKeys(Settings{}, s); !slices.Equal(ch, []string{"theme", "zoom", "editorSize", "wrap", "shell", "termSize", "termProfiles", "webHosts", "formatters"}) {
 		t.Fatalf("ChangedKeys = %v", ch)
 	}
 	if ch := ChangedKeys(Settings{Formatters: map[string]string{}}, Settings{}); len(ch) != 0 {
@@ -56,7 +56,7 @@ func TestSettingsJSON(t *testing.T) {
 	}{
 		{"{\n  \"theme\": \"dark\",\n  \"colour\": 1\n}\n", "unknown", "colour", 3, 3},
 		{"{\n  \"editorSize\": \"大\"\n}", "type", "editorSize", 2, 17},
-		{"{\"shell\": \"/bin/sh\", \"editorFont\": \"a:b\", \"softWrap\": \"是:否\"}", "type", "softWrap", 1, 55},
+		{"{\"shell\": \"/bin/sh\", \"editorFont\": \"a:b\", \"trimTrailing\": \"是:否\"}", "type", "trimTrailing", 1, 59},
 		{"{\"termProfiles\": [{\"name\": \"x\", \"shel\": \"/bin/sh\"}]}", "unknown", "shel", 1, 33},
 		{"[1, 2]", "notObject", "", 1, 1},
 		{"\n  42", "notObject", "", 2, 3},
@@ -80,6 +80,10 @@ func TestSettingsJSON(t *testing.T) {
 	got, ignored, err := ReadSettingsFile([]byte(exported))
 	if err != nil || got.Theme != "light" || got.Zoom != 150 || got.EditorSize != 0 || !slices.Equal(ignored, []string{"colour", "editorSize"}) {
 		t.Fatalf("读导出的文件：%+v 忽略 %v（%v）", got, ignored, err)
+	}
+	// 老版本导出的 softWrap 开关：开着的成了 wrap "all"，不算忽略
+	if got, ignored, err := ReadSettingsFile([]byte(`{"settings": {"softWrap": true, "zoom": 150}}`)); err != nil || got.Wrap != "all" || len(ignored) != 0 {
+		t.Fatalf("老版本的 softWrap：%+v 忽略 %v（%v）", got, ignored, err)
 	}
 	state, _ := json.Marshal(State{Version: 3, RecentWs: []string{"/x"}, Settings: Settings{PullMode: "rebase", TermDock: "right"}})
 	if got, ignored, err = ReadSettingsFile(state); err != nil || got.PullMode != "rebase" || got.TermDock != "right" || len(ignored) != 0 {

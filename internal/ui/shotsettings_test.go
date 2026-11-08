@@ -68,9 +68,9 @@ func TestScreenshotSettingsSearch(t *testing.T) {
 	wait("main.go 打开", func() bool { d := a.CurrentDoc(); return d != nil && d.Buf != nil })
 	a.Exec("app.settingsJSON")
 	d := a.CurrentDoc()
-	old := `"softWrap": false`
+	old := `"wrap": ""`
 	i := strings.Index(d.Buf.String(), old)
-	d.Buf.Edit(editor.Edit{Start: i, End: i + len(old), Text: `"softWrap": true`})
+	d.Buf.Edit(editor.Edit{Start: i, End: i + len(old), Text: `"wrap": "all"`})
 	for _, dark := range []bool{false, true} {
 		shot("settings-json", dark)
 	}

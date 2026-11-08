@@ -109,13 +109,16 @@ func TestSettingsWindow(t *testing.T) {
 		t.Fatalf("换回默认应存成空：%q %v", a.St.Settings.Accent, a.St.Settings.SolidSelection)
 	}
 
-	// 编辑器：缩进按语言（Go 用 Tab）→ 2 个空格；软换行
+	// 编辑器：缩进按语言（Go 用 Tab）→ 2 个空格；软换行默认只给文字文件，换成所有文件后 Go 也换行
 	if !tt.HasText("Tab 4") {
 		t.Fatalf("Go 文件按语言应是 Tab 4：%q", tt.Texts())
 	}
 	mustClick(t, st, "编辑器")
 	pick("按语言", "2 个空格")
-	mustClick(t, st, "软换行")
+	if d.St.SoftWrap {
+		t.Fatal("Go 文件默认不该软换行")
+	}
+	pick("Markdown 和纯文本", "所有文件")
 	tt.Frame()
 	if !tt.HasText("空格 2") || d.St.TabSize != 2 || !d.St.SoftWrap {
 		t.Fatalf("编辑器没跟上：TabSize=%d SoftWrap=%v", d.St.TabSize, d.St.SoftWrap)

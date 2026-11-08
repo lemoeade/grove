@@ -23,7 +23,7 @@ type Settings struct {
 	EditorFont   string  `json:"editorFont,omitempty"`   // "" 为内置的等宽字体
 	EditorSize   float32 `json:"editorSize,omitempty"`   // 0 为 12.5
 	Indent       string  `json:"indent,omitempty"`       // "" 按语言、"tab"、"2"、"4"、"8"（空格）
-	SoftWrap     bool    `json:"softWrap,omitempty"`     // 软换行（⌥Z）
+	Wrap         string  `json:"wrap,omitempty"`         // 软换行："" 只给 Markdown 和纯文本（docs.IsProse）、"all" 所有文件、"off" 都不；⌥Z 只换当前标签（Doc.Wrap）
 	Whitespace   string  `json:"whitespace,omitempty"`   // 显示空白字符："" 只在选中的文字里、"all"、"trailing"、"none"
 	AutoSave     string  `json:"autoSave,omitempty"`     // "" 不自动保存、"blur"（窗口切走时）、"delay"（停手 1 秒后）
 	TrimTrailing bool    `json:"trimTrailing,omitempty"` // 保存时去掉行尾空白（光标所在的行、Markdown 的两空格硬换行不动）
@@ -168,6 +168,7 @@ var (
 	Materials   = []string{"", "under-window", "popover", "menu", "glass"} // "" 是 sidebar；hud、glass-clear 去掉了（HUD 把侧栏的字洗淡），存过的读回来是空
 	Accents     = accents()
 	Indents     = []string{"", "tab", "2", "4", "8"}
+	Wraps       = []string{"", "all", "off"}
 	Whitespaces = []string{"", "all", "trailing", "none"}
 	AutoSaves   = []string{"", "blur", "delay"}
 	TermThemes  = []string{"", "light", "dark"} // 后面还可以是 Ghostty 的主题名，Clamp 不查
@@ -222,7 +223,7 @@ func (s *Settings) Clamp() {
 		v  *string
 		ok []string
 	}{
-		{&s.Theme, Themes}, {&s.Backdrop, Backdrops}, {&s.Material, Materials}, {&s.Accent, Accents}, {&s.Indent, Indents}, {&s.Whitespace, Whitespaces}, {&s.AutoSave, AutoSaves},
+		{&s.Theme, Themes}, {&s.Backdrop, Backdrops}, {&s.Material, Materials}, {&s.Accent, Accents}, {&s.Indent, Indents}, {&s.Wrap, Wraps}, {&s.Whitespace, Whitespaces}, {&s.AutoSave, AutoSaves},
 		{&s.TermDock, TermDocks}, {&s.PullMode, PullModes}, {&s.Lang, Langs},
 	} {
 		if !contains(f.ok, *f.v) {

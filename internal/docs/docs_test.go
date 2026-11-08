@@ -236,3 +236,27 @@ func TestModifiedCache(t *testing.T) {
 		t.Error("换了缓冲区还用旧结果")
 	}
 }
+
+// 软换行默认只给文字文件：Markdown、纯文本这些按后缀，没后缀的认几个常见的名字；状态栏手动选了语言的按选的。
+func TestProse(t *testing.T) {
+	for name, want := range map[string]bool{
+		"README.md": true, "notes.TXT": true, "guide.rst": true, "book.adoc": true, "todo.org": true,
+		"LICENSE": true, "readme": true, "CHANGELOG": true,
+		"main.go": false, "Makefile": false, "Dockerfile": false, "a.json": false, "x.md.go": false,
+	} {
+		if got := IsProse(name); got != want {
+			t.Errorf("IsProse(%q) = %v", name, got)
+		}
+	}
+	d := &Doc{Rel: "main.go"}
+	if d.Prose() {
+		t.Error("main.go 不是文字文件")
+	}
+	if d.Lang = PlainLang; !d.Prose() {
+		t.Error("手动选了纯文本该算文字文件")
+	}
+	d.Rel, d.Lang = "notes.txt", "Go"
+	if d.Prose() {
+		t.Error("手动选了 Go 不该算文字文件")
+	}
+}

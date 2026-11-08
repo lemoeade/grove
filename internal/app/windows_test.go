@@ -583,7 +583,7 @@ func TestWindowsRouting(t *testing.T) {
 	h.idle()
 
 	// 设置：改了每个窗口都换（外观、语言在 main 的 OnSettings 里套到每个窗口上）
-	a.St.Settings.SoftWrap = !a.St.Settings.SoftWrap
+	a.St.Settings.Wrap = "all"
 	a.SettingsChanged()
 	for _, o := range h.w.Apps {
 		if !reflect.DeepEqual(o.St.Settings, a.St.Settings) {
