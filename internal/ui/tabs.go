@@ -494,7 +494,7 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 			mergeBar(a, c, d, blocks, flagged)
 		}
 		conflictMarks(c, &d.St, blocks)
-		a.EditorOptions(&d.St, d.Indent)
+		a.EditorOptions(d)
 		// 选中里的空白符号画淡些；光标在词上停稳后高亮这个词的其他出现
 		codeTheme(&d.St, c.Theme())
 		occurMarks(c, d)

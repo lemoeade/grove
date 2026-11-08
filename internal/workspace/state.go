@@ -351,6 +351,7 @@ func LoadState(dir string) (State, error) {
 			dropFoldedStash(&st)
 		}
 		legacyTreeColors(data, &st)
+		legacySoftWrap(data, &st)
 		legacySearches(data, &st)
 	} else {
 		// 原型时期的文件：只认仓库列表、diff 设置和侧栏宽度，面板按规则迁移。
@@ -378,6 +379,19 @@ func legacyTreeColors(data []byte, st *State) {
 	}
 	if json.Unmarshal(data, &v) == nil && v.Settings.TreeStatusColors != nil && !*v.Settings.TreeStatusColors {
 		st.Settings.TreeNoStatusColors = true
+	}
+}
+
+// legacySoftWrap 认老版本的 softWrap（开关，默认关、所有文件一起）：开着的成了 wrap "all"，没开的照新的默认
+// （只给 Markdown 和纯文本换行）。
+func legacySoftWrap(data []byte, st *State) {
+	var v struct {
+		Settings struct {
+			SoftWrap bool `json:"softWrap"`
+		} `json:"settings"`
+	}
+	if json.Unmarshal(data, &v) == nil && v.Settings.SoftWrap && st.Settings.Wrap == "" {
+		st.Settings.Wrap = "all"
 	}
 }
 

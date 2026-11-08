@@ -26,6 +26,7 @@ var (
 	materialNames   = map[string]string{"": "侧栏", "under-window": "窗口下", "popover": "弹出层", "menu": "菜单", "glass": "玻璃"}
 	accentNames     = withDefault(map[string]string{"system": "跟随系统", "forest": "森绿", "steel": "钢蓝", "ink": "墨蓝", "graphite": "石墨", "teal": "青绿", "indigo": "靛紫"}, workspace.DefaultAccent)
 	indentNames     = map[string]string{"": "按语言", "tab": "Tab", "2": "2 个空格", "4": "4 个空格", "8": "8 个空格"}
+	wrapNames       = map[string]string{"": "Markdown 和纯文本", "all": "所有文件", "off": "关"}
 	whitespaceNames = map[string]string{"": "只在选中的文字里", "all": "全部", "trailing": "只在行尾", "none": "不显示"}
 	autoSaveNames   = map[string]string{"": "关", "blur": "窗口切走时", "delay": "停手 1 秒后"}
 	termThemeNames  = map[string]string{"": "跟随外观", "light": "浅色", "dark": "深色"}
@@ -130,7 +131,9 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 			{1, "字体", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.EditorFont, mono(), nil, done, fontName) }},
 			{1, "字号", "", func(c *wui.Context, l, d string) { number(c, l, d, &s.EditorSize, 12.5, 9, 32, 0.5, done) }},
 			{1, "缩进", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Indent, workspace.Indents, indentNames, done) }},
-			{1, "软换行", "长行折到窗口宽度", func(c *wui.Context, l, d string) { toggle(c, l, app.Tip(d, "view.softWrap"), &s.SoftWrap, done) }},
+			{1, "软换行", "长行折到窗口宽度；快捷键只切换当前文件", func(c *wui.Context, l, d string) {
+				choice(c, l, app.Tip(d, "view.softWrap"), &s.Wrap, workspace.Wraps, wrapNames, done)
+			}},
 			{1, "粘性滚动", "滚动时把当前函数 / 类 / 标题吸在编辑器顶上", func(c *wui.Context, l, d string) {
 				sticky := !s.NoStickyScroll
 				toggle(c, l, d, &sticky, func() {

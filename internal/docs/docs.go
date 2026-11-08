@@ -122,6 +122,8 @@ type Doc struct {
 	Lang string
 	// Indent 是状态栏手动选的这个文件的缩进（IndentAuto 按语言、"tab"、"2"、"4"、"8"），"" 为跟设置；文件标签的记进会话（Tab.Indent）
 	Indent string
+	// Wrap 是 ⌥Z 给这个标签自己定的软换行：0 跟设置（app.WrapOf）、1 换行、-1 不换；各个镜像各管各的，不记进会话
+	Wrap int8
 	// savedEOL 是状态栏换了换行（SetEOL）之前磁盘上那份的换行，"" 为没换过：SetLineEnding 不动内容版本，Modified 看它
 	savedEOL string
 	cursor   cursorInfo // CursorInfo 上次算的
@@ -628,6 +630,35 @@ func (d *Doc) Share(o *Doc) {
 func IsMarkdown(name string) bool {
 	switch strings.ToLower(path.Ext(name)) {
 	case ".md", ".markdown", ".mdown", ".mkd":
+		return true
+	}
+	return false
+}
+
+// IsProse 是不是一段段的文字（Markdown、纯文本、reStructuredText、AsciiDoc、Org，还有没后缀的 README、LICENSE 这些）：
+// 一段话常常就是很长的一行，设置里软换行的默认就是只给它们换行。
+func IsProse(name string) bool {
+	if IsMarkdown(name) {
+		return true
+	}
+	switch strings.ToLower(path.Ext(name)) {
+	case ".txt", ".text", ".rst", ".adoc", ".asciidoc", ".org":
+		return true
+	case "":
+		switch strings.ToUpper(name) {
+		case "README", "LICENSE", "LICENCE", "COPYING", "NOTICE", "AUTHORS", "CONTRIBUTORS", "CHANGELOG", "CHANGES", "TODO":
+			return true
+		}
+	}
+	return false
+}
+
+// Prose 是 d 算不算文字文件（IsProse）：状态栏手动选了语言的按选的，纯文本和 Markdown 算。
+func (d *Doc) Prose() bool {
+	switch d.Lang {
+	case "":
+		return IsProse(d.Name())
+	case PlainLang, "Markdown":
 		return true
 	}
 	return false

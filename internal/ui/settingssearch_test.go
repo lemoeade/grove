@@ -220,11 +220,11 @@ func TestSettingsDoc(t *testing.T) {
 
 	// 改两项，⌘S 套上
 	replace(`"theme": ""`, `"theme": "dark"`)
-	replace(`"softWrap": false`, `"softWrap": true`)
+	replace(`"wrap": ""`, `"wrap": "all"`)
 	mustText(t, tt, "没应用 · ⌘S")
 	save()
-	if s := a.St.Settings; s.Theme != "dark" || !s.SoftWrap || d.Modified() || !toasted("已应用 2 项设置") {
-		t.Fatalf("⌘S 后：主题 %q 软换行 %v 改过 %v 提示 %q", s.Theme, s.SoftWrap, d.Modified(), a.Toast)
+	if s := a.St.Settings; s.Theme != "dark" || s.Wrap != "all" || d.Modified() || !toasted("已应用 2 项设置") {
+		t.Fatalf("⌘S 后：主题 %q 软换行 %q 改过 %v 提示 %q", s.Theme, s.Wrap, d.Modified(), a.Toast)
 	}
 	if st, _ := workspace.LoadState(stateDir); st.Settings.Theme != "dark" {
 		t.Fatal("套上的设置没存进 state.json")

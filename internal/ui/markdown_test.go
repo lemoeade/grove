@@ -157,23 +157,64 @@ func TestMarkdownPreview(t *testing.T) {
 	}
 }
 
-// 软换行（⌥Z，编辑器有焦点时也能按）和显示空白字符：改了马上套到编辑器上，存进 state.json。
+// 软换行按文件类型：默认只给 Markdown 和纯文本换行；⌥Z（编辑器有焦点时也能按）只换当前标签，设置不动，
+// 切回和设置一样就又跟着设置；设置改成"所有文件""关"，没按过 ⌥Z 的标签跟着变。显示空白字符改了马上套上、存进 state.json。
 func TestEditorDisplayOptions(t *testing.T) {
-	_, ws := testutil.TempRepo(t)
+	root, ws := testutil.TempRepo(t)
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	stateDir := t.TempDir()
 	a, tt, wait := newUI(t, ws, stateDir)
 	r := a.Repos[0]
-	a.OpenFile(r, "a.txt", true)
-	a.FocusDoc = true
-	wait("打开 a.txt", func() bool { return tt.Focused("编辑 a.txt") })
-	d := a.CurrentDoc()
+	open := func(name string) *docs.Doc {
+		t.Helper()
+		a.OpenFile(r, name, true)
+		a.FocusDoc = true
+		wait("打开 "+name, func() bool { return tt.Focused("编辑 " + name) })
+		return a.CurrentDoc()
+	}
+	checked := func() bool { return app.Find("view.softWrap").Checked(a) }
+	d := open("a.txt")
 	text := d.Buf.String()
+	if !d.St.SoftWrap || !checked() {
+		t.Fatal("纯文本默认该软换行")
+	}
 
 	tt.Key(wui.Alt, wui.KeyZ)
-	wait("软换行", func() bool { return a.St.Settings.SoftWrap && d.St.SoftWrap })
+	wait("a.txt 关软换行", func() bool { return !d.St.SoftWrap && !checked() })
 	if d.Buf.String() != text {
 		t.Fatal("⌥Z 往文件里打了字")
 	}
+	if a.St.Settings.Wrap != "" {
+		t.Fatalf("⌥Z 改了设置：%q", a.St.Settings.Wrap)
+	}
+
+	g := open("main.go")
+	if g.St.SoftWrap || checked() {
+		t.Fatal("代码文件默认不该软换行")
+	}
+	tt.Key(wui.Alt, wui.KeyZ)
+	wait("main.go 软换行", func() bool { return g.St.SoftWrap && checked() })
+	if d.St.SoftWrap {
+		t.Fatal("⌥Z 连别的标签也换了")
+	}
+
+	// 设置改成都不换：按过 ⌥Z 的照它自己的；main.go 再按一次和设置一样了，又跟着设置
+	a.St.Settings.Wrap = "off"
+	tt.Frame()
+	if !g.St.SoftWrap || d.St.SoftWrap {
+		t.Fatalf("设置关：main.go %v a.txt %v", g.St.SoftWrap, d.St.SoftWrap)
+	}
+	tt.Key(wui.Alt, wui.KeyZ)
+	wait("main.go 关软换行", func() bool { return !g.St.SoftWrap })
+	a.St.Settings.Wrap = "all"
+	tt.Frame()
+	if !g.St.SoftWrap || d.St.SoftWrap {
+		t.Fatalf("设置所有文件：main.go %v（该跟着设置）a.txt %v（按过 ⌥Z 关的）", g.St.SoftWrap, d.St.SoftWrap)
+	}
+
+	d = open("a.txt")
 	a.Exec("view.whitespace")
 	tt.Frame()
 	if d.St.Whitespace != editor.WhitespaceAll {
@@ -183,11 +224,9 @@ func TestEditorDisplayOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !st.Settings.SoftWrap || st.Settings.Whitespace != "all" {
+	if st.Settings.Whitespace != "all" {
 		t.Fatalf("没存：%+v", st.Settings)
 	}
-	tt.Key(wui.Alt, wui.KeyZ)
-	wait("关软换行", func() bool { return !a.St.Settings.SoftWrap && !d.St.SoftWrap })
 
 	// 缩进：纯文本按语言是 4 个空格；设置里改成 8 个空格，状态栏和编辑器马上跟上
 	mustText(t, tt, "空格 4")

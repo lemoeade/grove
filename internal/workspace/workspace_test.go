@@ -257,6 +257,25 @@ func TestStateSessions(t *testing.T) {
 		}
 	}
 
+	// 老版本的 softWrap 开关（所有文件一起）：开着的读成 wrap "all"，没开、没写的照新的默认（只给文字文件换行）；
+	// 已经写了 wrap 的照 wrap
+	for data, want := range map[string]string{
+		`{"version":4,"settings":{"softWrap":true}}`:              "all",
+		`{"version":4,"settings":{"softWrap":false}}`:             "",
+		`{"version":4,"settings":{}}`:                             "",
+		`{"version":4,"settings":{"softWrap":true,"wrap":"off"}}`: "off",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, StateFile), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if st, err = LoadState(dir); err != nil {
+			t.Fatal(err)
+		}
+		if st.Settings.Wrap != want {
+			t.Errorf("%s 读成 wrap=%q", data, st.Settings.Wrap)
+		}
+	}
+
 	bad := `{"version":3,"sessions":{"/w/x.code-workspace":{"tabs":[{"path":"rel.go"},{"path":"/ok.go","line":-1},{"path":"/ok.go","line":2}],"active":7},"/w/nil.code-workspace":null}}`
 	if err := os.WriteFile(filepath.Join(dir, StateFile), []byte(bad), 0o644); err != nil {
 		t.Fatal(err)

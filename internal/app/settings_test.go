@@ -37,7 +37,7 @@ func TestSettingsApplyAndPersist(t *testing.T) {
 	a.OpenSettings = func() { opened++ }
 
 	s := &a.St.Settings
-	s.Theme, s.EditorSize, s.Indent, s.SoftWrap, s.TermDock, s.PullMode, s.Lang = "dark", 15, "4", true, "right", "rebase", "en"
+	s.Theme, s.EditorSize, s.Indent, s.Wrap, s.TermDock, s.PullMode, s.Lang = "dark", 15, "4", "all", "right", "rebase", "en"
 	a.SettingsChanged()
 	if len(got) != 1 || got[0].Theme != "dark" {
 		t.Fatalf("OnSettings 收到 %+v", got)

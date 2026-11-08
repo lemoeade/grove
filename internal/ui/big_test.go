@@ -283,7 +283,7 @@ func TestMeasureBigFile(t *testing.T) {
 		for _, ext := range []string{"log", "go"} {
 			name := fmt.Sprintf("big%d.%s", mb, ext)
 			for _, wrap := range []bool{false, true} {
-				a.St.Settings.SoftWrap = wrap
+				a.St.Settings.Wrap = map[bool]string{false: "off", true: "all"}[wrap]
 				h0 := heapMB()
 				d, first := open(name)
 				t.Logf("%s（换行 %v）：读到第一帧 %s，最长回调 %s，最长一帧 %s", name, wrap, ms(first), ms(m.step), ms(m.frame))
