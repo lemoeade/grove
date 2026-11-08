@@ -252,6 +252,12 @@ func (r *keyRec) start(a *app.App, cmd *app.Command) {
 	a.SetKeyRecording(true)
 }
 
+// unnamedKey 是只有位置、没有名字的键：单按的修饰键、Caps Lock、F13 这些。mygo v0.8 起它们也作为 InputKeyDown 送到 HandleInput / OnInput
+// （Key 和 PhysicalKey 都是 KeyUnknown，只有 Code），不想对"按了随便一个键"起反应的地方先用它滤掉。
+func unnamedKey(ev wui.InputEvent) bool {
+	return ev.Kind == wui.InputKeyDown && ev.Key == wui.KeyUnknown && ev.PhysicalKey == wui.KeyUnknown
+}
+
 // editKeys 是菜单栏"编辑"里那几项的键：录着的时候它们照样先被菜单接到，作为命令（InputCommand）送到有焦点的元素。
 var editKeys = map[string]struct {
 	mods wui.Modifiers
@@ -261,12 +267,15 @@ var editKeys = map[string]struct {
 	"copy": {wui.Cmd, wui.KeyC}, "paste": {wui.Cmd, wui.KeyV}, "selectAll": {wui.Cmd, wui.KeyA},
 }
 
-// input 是录键卡片里按下的键：只按修饰键不算（mygo 不当按键送）；Esc 取消；还没按过时 ⏎ 是录的键，按过以后 ⏎ 是确定；
-// 单按 ⌫ / ⌦ 是不要快捷键；没有名字的键（KeyBack 这些）不让录。
+// input 是录键卡片里按下的键：只按修饰键、Caps Lock 这些不算（unnamedKey，按组合键时先到的那个 ⌘ 不能把卡片标成"不能用"）；
+// Esc 取消；还没按过时 ⏎ 是录的键，按过以后 ⏎ 是确定；单按 ⌫ / ⌦ 是不要快捷键；没有名字的键（KeyBack 这些）不让录。
 func (r *keyRec) input(ev wui.InputEvent, save func()) bool {
 	k, mods := ev.Key, ev.Mods&(wui.Shift|wui.Ctrl|wui.Alt|wui.Super)
 	switch ev.Kind {
 	case wui.InputKeyDown:
+		if unnamedKey(ev) {
+			return true
+		}
 	case wui.InputCommand:
 		e, ok := editKeys[ev.Text]
 		if !ok {

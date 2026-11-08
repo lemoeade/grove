@@ -12,7 +12,7 @@ import (
 	"github.com/lemoeade/grove/internal/workspace"
 )
 
-// 设置 → 快捷键：搜到命令面板，选中点“改…”开录键卡片；按 ⌘K 提示和“运行 git 命令…”冲突，回车写进 keybindings.json，
+// 设置 → 快捷键：搜到命令面板，选中点“改…”开录键卡片；单按 ⌘ 不算；按 ⌘K 提示和“运行 git 命令…”冲突，回车写进 keybindings.json，
 // 行上换成 ⌘K、有“自定义”，git.command 那行写着被谁占了；录着的时候菜单栏不带键。再录 ⌫ 是去掉、Esc 不改、
 // 菜单栏“编辑”的键（⌘C 作为命令送来）也录得到；“重置”回到默认。设置的搜索框里也搜得到命令。
 func TestKeyRecorder(t *testing.T) {
@@ -50,6 +50,12 @@ func TestKeyRecorder(t *testing.T) {
 	mustClick(t, st, "改…")
 	if !st.HasText("按下新的快捷键") || !st.HasText("等你按…") || !app.KeyRecording {
 		t.Fatalf("录键卡片没开（录着 %v）：%q", app.KeyRecording, st.Texts())
+	}
+	// mygo v0.8 起单按的修饰键也作为按键送来：按 ⌘K 时先到的 ⌘ 不算录了键，更不是"不能用"
+	st.CodeDown(wui.Cmd, wui.CodeSuperLeft)
+	st.Frame()
+	if !st.HasText("等你按…") || st.HasText("这个键不能用") {
+		t.Fatalf("单按 ⌘：%q", st.Texts())
 	}
 	st.Key(wui.Cmd, wui.KeyK)
 	st.Frame()

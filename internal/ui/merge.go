@@ -139,6 +139,9 @@ func keyIs(ev wui.InputEvent, cmd *app.Command) bool {
 func docKeys(a *app.App, d *docs.Doc, blocks []docs.ConflictBlock) func(wui.InputEvent) bool {
 	merge := mergeKeys(a, d, blocks)
 	return func(ev wui.InputEvent) bool {
+		if unnamedKey(ev) {
+			return false
+		}
 		switch ev.Kind {
 		case wui.InputText:
 			if d.EatText {

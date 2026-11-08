@@ -32,6 +32,9 @@ func restingEditor(c *wui.Context, key any, st *editor.State, r *docs.Rest, keys
 	rest(c, r, focused, moved || n != r.NSel)
 	r.Ver, r.Sel, r.NSel = ver, sel, n
 	st.OnInput = func(ev wui.InputEvent) bool {
+		if unnamedKey(ev) { // 单按 ⇧ 这些不算敲了键：不叫醒、不补滚动余量
+			return false
+		}
 		switch ev.Kind {
 		case wui.InputKeyDown, wui.InputText, wui.InputCommand, wui.InputPointerDown:
 			if r.Resting {
