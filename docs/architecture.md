@@ -227,7 +227,7 @@ Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.g
 
 选几行再暂存是行级（`app/lines.go`）：`LinesEdits` 把选中的删除行和新增行配对，`git.LinesPatch` 生成只含这些行的补丁，总是正向套到 index 上（取消暂存时反过来算一份正向的），这样不用处理反向补丁的上下文问题。
 
-编辑器左边的改动条可以点开看那块的原文（`app/peek.go`：`Peek`、`DocHunks`、`HunkAt`、`OnGutterClick`），里面能还原那块（直接改缓冲区，⌘Z 能撤）或者暂存它（要先保存，同样走 `HunkPatch`）。块是编辑器的 `DiffState{Old: d.Base, New: d.Buf}` 算的，和改动条同一种算法；`DiffState` 按标签留着（最近 4 个），缓冲区改了 mygo 只重比改动附近的行，不每次整篇 diff（装订线接管点击每帧都要问有没有块）。编辑器里的块随缓冲区重算，`SyncPeek` 跟着挪。
+编辑器左边的改动条可以点开看那块的原文（`app/peek.go`：`Peek`、`DocHunks`、`HunkAt`、`OnGutterClick`），里面能还原那块（直接改缓冲区，⌘Z 能撤）或者暂存它（要先保存，同样走 `HunkPatch`）。块是编辑器的 `DiffState{Old: d.Base, New: d.Buf}` 算的，和改动条同一种算法；`DiffState` 按标签留着（最近 4 个），缓冲区改了 mygo 只重比改动附近的行，不每次整篇 diff（装订线接管点击每帧都要问有没有块）。编辑器里的块随缓冲区重算，`SyncPeek` 跟着挪。卡是叠在代码上的（盖住块下面几行）：想像 VS Code 那样插在两行之间、把下面的代码推下去，要 mygo 普通编辑器（`editor.State`）能在行间留一块高度给调用方画；现在只有 Diff 查看器有（`DiffState.Annotations` + `RenderAnnotation`，内部是 `blockAnnotation`），`State` 没有对应的口子，等 mygo 加了再改。
 
 Diff 里 ⌥J / ⌥K 跳上一个 / 下一个文件，上下一处改动是 `app/diffnav.go` 的 `GoToHunk`。
 

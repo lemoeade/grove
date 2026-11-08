@@ -147,6 +147,10 @@
 
 ## 键盘和快捷键
 
+- mygo v0.8 起所有键都送到 `HandleInput` / `ObserveInput` / 编辑器的 `OnInput`：单按的修饰键、Caps Lock、F13 这些没有名字的键也作为 `InputKeyDown` 来，
+  `Key` 和 `PhysicalKey` 都是 `KeyUnknown`，只有 `Code`（`CodeShiftLeft` 等）。用 `switch` 挑键的不受影响；对"按了随便一个键"起反应的地方
+  （录键卡片、`restingEditor` 叫醒光标、`docKeys` 清 `EatText`）先用 `ui/keybind.go` 的 `unnamedKey` 滤掉，不然按 ⌘K 时先到的 ⌘ 就把录键卡片标成"不能用"。
+  Tester 里用 `CodeDown(mods, wui.CodeSuperLeft)` 模拟单按。终端的 `OnKey` 收不到这类键（插件自己滤掉了）。
 - 菜单快捷键先于编辑器接到按键（mygo 在 darwin 上没有覆盖 performKeyEquivalent）：编辑器有焦点时 ⌘K 照样打开 `>git ` 面板，
   mygo 编辑器的 ⌘K 和弦（⌘K ⌘0 等）一个都到不了编辑器。没有菜单栏的地方（测试、`OnShortcut`）才是编辑器先接，因此测试中能使用 ⌘K 和弦，不代表真实窗口中也能使用。
 - 窗口快捷键会盖掉 mygo 编辑器自带的同一个键：⇧⌘G（找上一个）给了 Git 侧栏，⇧⌘H（替换）给了搜索页的替换（当前文件里的替换走 ⌥⌘F），
@@ -213,6 +217,8 @@
 - `editor.NewBuffer` 可以在后台建：它只建 rope、不碰界面，`Buffer` 的方法从哪个 goroutine 调都安全。大文件的缓冲区在 `ReadFile` 里建好，主线程只换指针。
   换 `St.Buffer` 的指针时 mygo 会重设选区、折叠、查找和滚动，要留着的（光标、`ScrollY`）先记下、换上后放回去（`docs.setText`）。
 - `Buffer.Reset` 把整段旧文字记进撤销日志（mygo 留 256 条），重读几 MB 的文件每次都多留一份旧的。大文件重读不走 Reset，换一个后台建好的新缓冲区。
+- 普通编辑器（`editor.State`）不能在两行之间留一块高度给调用方画东西：mygo 内部有这种块（`blockAnnotation`，排版时把下面的行往下推），但只经 `DiffState.Annotations` + `RenderAnnotation` 开放给 Diff 查看器。
+  所以改动预览卡（`ui/peek.go`）只能叠在代码上、盖住块下面几行，做不成 VS Code 那样插在行间。要做得跟 mygo 要一个 `State` 上的同类接口（行号、高度、Key，行号随编辑挪），记作 mygo 的需求。
 - 重读时 `Loading` 不置上：标签已经有缓冲区时重读不清空它。测试里等重读完成要看内容（`strings.HasSuffix(d.Buf.String(), …)`）或 `Gen`，别等 `!d.Loading`。
 - `unsafe.String` 仅用于调用方独占的字节数据：`decode(data, …, owned=true, …)` 把 UTF-8 的 `data` 直接借成字符串、不拷，调用方之后不能再改 `data`
   （`ReadFile` 读的、`git.Blob` 返回的可以）。别人传进来的字节用 `Decode`（会拷一份），由 `TestSameBaseHash` 检查这一约定。
@@ -520,7 +526,7 @@
 - Tester `SetVibrancy(true)` 时材质那块是透明像素（和 `WORKBENCH_CAPTURE` 一样）。截图测试用 `writeMaterialShot` 铺一块合成的毛玻璃，只是近似，真窗口透出来的样子要手测。
 - 原生菜单（右键、按钮的 `Menu`）不在 `tt.Image()` / `WORKBENCH_CAPTURE` 里，测试用 `tt.Menu()`、`tt.ChooseMenuItem(…)`、`tt.CloseMenu()`。
   `WORKBENCH_CAPTURE` 的图里也没有红绿灯。
-- 系统右键菜单（`ContextMenu`）在窗口靠下的地方会折起来（issue #6）：mygo 的 darwin 后端用 `popUpMenuPositioningItem:nil atLocation:inView:` 弹（v0.7.4 到 main `6121009b` 都是，`internal/darwin/menu.go` 第一个参数还是 0），
+- 系统右键菜单（`ContextMenu`）在窗口靠下的地方会折起来（issue #6）：mygo 的 darwin 后端用 `popUpMenuPositioningItem:nil atLocation:inView:` 弹（v0.7.4 到 v0.8.3 都是，`internal/darwin/menu.go` 第一个参数还是 0），
   左上角钉在点的地方，下面（到屏幕底 / Dock）放不下时 AppKit 不往上翻，而是把菜单截短、底下出滚动箭头。Grove 碰不到这个调用（位置也改不了），
   所以文件树的右键菜单（`treeMenu`、`rowMenu`、仓库行、钉在顶上的行、压缩目录的每一段）画在窗口里（先是 `PopoverMenu`，issue #48 起是 Grove 自己画的
   `ui/gmenu.go`），下面放不下就往上开，窗口本身都放不下才滚。代价是样子跟着主题、不是系统菜单的毛玻璃。别处的右键菜单还是系统的。
