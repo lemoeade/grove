@@ -22,13 +22,39 @@ const occurMax = 2000
 // mygo 默认 0.45，一选一大片箭头比字还抢眼，降到和缩进参考线差不多淡。
 const whitespaceAlpha = 0.22
 
-// codeTheme 给编辑器套 Grove 改过的代码颜色：现在只有空白符号；别的字段留零，mygo 按窗口外观补默认的。
-// 颜色没变就沿用原来那个，不每帧新建。
-func codeTheme(st *editor.State, t *wui.Theme) {
+// codeTheme 给编辑器套 Grove 改过的代码颜色（softTokens）：选中里的空白符号画淡些，运算符和标点降成灰色；
+// 别的字段留零，mygo 按窗口外观补默认的。颜色没变就沿用原来那个，不每帧新建。
+func codeTheme(st *editor.State, t *wui.Theme) { softTheme(&st.Theme, t) }
+
+// softTheme 把 *th 换成 Grove 改过的那几种颜色（照 t），已经是了就不动；Diff 视图（DiffState.Theme）也用。
+func softTheme(th **editor.Theme, t *wui.Theme) {
 	ws := t.TextMuted.Alpha(whitespaceAlpha)
-	if st.Theme == nil || st.Theme.Whitespace != ws {
-		st.Theme = &editor.Theme{Whitespace: ws}
+	if ct := *th; ct != nil && ct.Whitespace == ws && ct.Tokens[editor.TokenOperator].Color == t.TextMuted {
+		return
 	}
+	ct := &editor.Theme{Whitespace: ws}
+	// mygo 补零颜色时不补粗体、斜体：照默认的抄过来，不然 Markdown 的标题不粗、*强调* 不斜
+	for k, s := range editor.DefaultTheme(t).Tokens {
+		ct.Tokens[k].Bold, ct.Tokens[k].Italic = s.Bold, s.Italic
+	}
+	softTokens(ct, t)
+	*th = ct
+}
+
+// fullCodeTheme 是 mygo 的默认代码颜色套上 Grove 改的那几种：自己按词上色的地方（吸顶的那几行、改动预览）用，
+// 和编辑器里一样。
+func fullCodeTheme(t *wui.Theme) *editor.Theme {
+	ct := editor.DefaultTheme(t)
+	ct.Whitespace = t.TextMuted.Alpha(whitespaceAlpha)
+	softTokens(ct, t)
+	return ct
+}
+
+// softTokens 是 Grove 的“柔和”代码配色：色相照 mygo 的默认（GitHub），运算符和标点降成 TextMuted——
+// GitHub 的运算符和关键字一样红，Python 的 : =、JavaScript 的 => 满屏都是，压过了真正的关键字。
+func softTokens(ct *editor.Theme, t *wui.Theme) {
+	ct.Tokens[editor.TokenOperator].Color = t.TextMuted
+	ct.Tokens[editor.TokenPunctuation].Color = t.TextMuted
 }
 
 // occurMarks 高亮光标下那个标识符在本文件里的其他出现（整词、区分大小写），画成 St.TextBackgrounds：

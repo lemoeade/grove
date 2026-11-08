@@ -88,7 +88,7 @@ func peekCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element, left flo
 	}
 	g := stickyGutter(c, st, lines, lh)
 	t := c.Theme()
-	ct := editor.DefaultTheme(t)
+	ct := fullCodeTheme(t)
 	clip := wui.Box(c.Key(peekClipKey{d})).Absolute().Top(0).Bottom(0).Left(left + g.textX - 4).Right(8).Clip().PassThrough().Draw(check)
 	clip.Children(func() {
 		card := wui.Column(c.Key(peekKey{d})).Absolute().Top(top).Left(0).Right(0).MaxHeight(maxH).Clip().
@@ -107,7 +107,7 @@ func peekCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element, left flo
 // peekHead 是卡的头一行：第 k / n 处改动 · −a +b，右边 ↑ ↓、还原、暂存、在 Diff 中打开、✕。
 func peekHead(a *app.App, c *wui.Context, d *docs.Doc, h editor.DiffHunk, i, n int) {
 	t := c.Theme()
-	ct := editor.DefaultTheme(t)
+	ct := fullCodeTheme(t)
 	wui.Row(c).Padding(4, 6, 4, 10).Gap(4).AlignItems(wui.Center).Shrink(0).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 		wui.Text(c, i18n.Tf("第 %d / %d 处改动", i+1, n)).FontSize(11.5).FontWeight(500).SingleLine().Shrink(0)
 		wui.Text(c, "·").FontSize(11.5).TextColor(t.TextMuted).Shrink(0)
