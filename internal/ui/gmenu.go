@@ -87,8 +87,9 @@ const (
 // 按着时的移动和松开转给菜单。el 是装它的元素（建的时候取它上一帧的位置，事件里换算成窗口坐标）；other 是这个元素原来的 HandleInput（可以为空），
 // 不是右键的事件照旧交给它。
 func menuPress(a *app.App, c *wui.Context, el wui.Element, owner any, build func(menu), other func(wui.InputEvent) bool) {
-	held := false    // 这次右键按下是这个元素接的
-	b := el.Bounds() // 上一帧的位置（事件里不能再用元素）
+	held := false             // 这次右键按下是这个元素接的
+	b := el.Bounds()          // 上一帧的位置（事件里不能再用元素）
+	root := c.Root().Bounds() // 上一帧的窗口大小：事件里再取是 0×0，菜单会按空窗口排成一小块（docs/mygo-pitfalls.md）
 	// 登记成能开菜单的地方：菜单开着时右键这里，关掉那份、在这里开新的（接收层盖着，事件到不了这个元素）
 	a.Menu.AddTarget(app.MenuRect{X: b.X, Y: b.Y, W: b.W, H: b.H}, menuZ(owner), owner, build)
 	el.HandleInput(func(ev wui.InputEvent) bool {
@@ -98,7 +99,6 @@ func menuPress(a *app.App, c *wui.Context, el wui.Element, owner any, build func
 		case wui.InputPointerDown:
 			if ev.Button == 1 || ev.Button == 0 && ev.Mods&wui.Ctrl != 0 {
 				a.TreeTip.Dismiss()
-				root := c.Root().Bounds()
 				gmenuMeasure(a, c)
 				m.OpenRow(owner, build, x, y, app.MenuRect{X: b.X, Y: b.Y, W: b.W, H: b.H}, root.W, root.H, true, ev.Time)
 				held = true
@@ -212,10 +212,10 @@ func isMenuKey(ev wui.InputEvent) bool {
 
 // openTreeMenuByKey 是文件树有键盘时按了 ⇧F10 / 菜单键：在光标那一行左边、紧挨着它下面打开那一行的菜单
 // （和右键它的一样，多选里的一行对选中的全部），第一个能选的项高亮着；没有光标行（或它不在视野里）时开空白处的菜单，
-// 在列表左上角。关菜单时没选什么（Esc、点外面）键盘回到文件树（gmenuView）。list 是列表上一帧的位置。
-func openTreeMenuByKey(a *app.App, c *wui.Context, rows []app.TreeRow, list wui.Rect, now time.Time) {
+// 在列表左上角。关菜单时没选什么（Esc、点外面）键盘回到文件树（gmenuView）。list 是列表上一帧的位置，root 是上一帧的窗口
+// （它在按键的事件里调，那里取不到窗口大小，建元素时取好传进来）。
+func openTreeMenuByKey(a *app.App, c *wui.Context, rows []app.TreeRow, list, root wui.Rect, now time.Time) {
 	a.TreeTip.Dismiss()
-	root := c.Root().Bounds()
 	gmenuMeasure(a, c)
 	owner, build := any(treeOwner{Blank: true}), func(m menu) { treeMenu(a, m) }
 	x, y := list.X+8, list.Y+4
@@ -301,7 +301,9 @@ func gmenuView(a *app.App, c *wui.Context, chose bool) {
 		} else {
 			c.Invalidate()
 		}
-		if a.MenuShown > 2 && !catcher.Focused() { // 窗口失去焦点（或者焦点被别处拿走）
+		// 窗口不再是输入去的那个（切到别的窗口 / 应用）才关。不看接收层有没有键盘：窗口里别的元素会在按下时自己拿键盘
+		// （列表），系统的浮层拿键盘时窗口也还活跃，这些时候菜单留着，下一帧接收层把键盘拿回来
+		if a.MenuShown > 2 && !c.WindowActive() {
 			m.Close()
 			c.Invalidate()
 		}

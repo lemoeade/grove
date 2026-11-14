@@ -204,6 +204,14 @@ func TestPopMenuEscScrollBlur(t *testing.T) {
 	if k.m.IsOpen() {
 		t.Fatal("在菜单外面滚（滚文件树）该关掉")
 	}
+	// 0 的滚动不算滚（macOS 的右键、触摸板的相位事件会送来 dy=0 的滚动）：菜单留着
+	k.open(false)
+	k.m.Scroll(10, 10, 0)
+	k.m.Scroll(10, 10, 0.001)
+	k.m.Scroll(10, 10, -0.001)
+	if !k.m.IsOpen() {
+		t.Fatal("0 的滚动不该关菜单")
+	}
 	k.open(false)
 	k.m.Close()
 	if k.m.IsOpen() {
@@ -672,5 +680,52 @@ func TestPopMenuPress(t *testing.T) {
 	k.run()
 	if len(k.chosen) != 1 {
 		t.Fatalf("关了以后按：%q", k.chosen)
+	}
+}
+
+// 菜单就开在指针处（右键的不是一行，比如列表的空白处），上下都放不下整份时贴着窗口边排，指针就压在某一项上：
+// 按住不动过了 150 ms 再松开，不算拖到项上选它，菜单留着（不然看着像"闪一下就消失"，还误做了那一项）；
+// 松开以后点、或者按住拖到项上再松开，照旧选它。
+func TestPopMenuPointerHoldStill(t *testing.T) {
+	k := newPopKit(t)
+	short := func() { k.m.Open("row", k.build, 100, 100, 1000, 200, true, k.now) } // 窗口高 200：下面、上面都放不下 137 高的菜单
+	short()
+	if lv, idx := k.m.hit(100, 100); lv != 0 || idx != 4 {
+		t.Fatalf("指针该压在 Copy 上：层 %d 项 %d，菜单 %+v", lv, idx, k.m.Levels()[0].Rect)
+	}
+	k.now = k.now.Add(300 * time.Millisecond)
+	k.m.Up(100, 100, 1, k.now)
+	k.run()
+	if len(k.chosen) != 0 || !k.m.IsOpen() {
+		t.Fatalf("按住不动松开：选了 %q，开着 %v", k.chosen, k.m.IsOpen())
+	}
+	// 松开以后点它照样选
+	k.m.Down(100, 100, 0, k.now)
+	k.m.Up(100, 100, 0, k.now)
+	k.run()
+	if len(k.chosen) != 1 || k.chosen[0] != "Copy" {
+		t.Fatalf("松开后点 Copy：选了 %q", k.chosen)
+	}
+	// 按住拖到别的项上松开：选它
+	k.chosen = nil
+	short()
+	x, y := k.center(0, 5)
+	k.m.Move(x, y, k.now)
+	k.now = k.now.Add(300 * time.Millisecond)
+	k.m.Up(x, y, 1, k.now)
+	k.run()
+	if len(k.chosen) != 1 || k.chosen[0] != "Delete" {
+		t.Fatalf("拖到 Delete 上松开：选了 %q", k.chosen)
+	}
+	// 拖出去又回到打开的那一点松开：动过了，选指针下的那一项
+	k.chosen = nil
+	short()
+	k.m.Move(x, y, k.now)
+	k.m.Move(100, 100, k.now)
+	k.now = k.now.Add(300 * time.Millisecond)
+	k.m.Up(100, 100, 1, k.now)
+	k.run()
+	if len(k.chosen) != 1 || k.chosen[0] != "Copy" {
+		t.Fatalf("拖回 Copy 上松开：选了 %q", k.chosen)
 	}
 }

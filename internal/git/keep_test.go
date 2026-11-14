@@ -114,7 +114,7 @@ func TestOpTimeoutKeep(t *testing.T) {
 // 一段时间没有新进度就停，返回没有进展的错误；取消返回 ErrCanceled。
 func TestRunStream(t *testing.T) {
 	root, _ := testutil.TempRepo(t)
-	shortTimeout(t, 400*time.Millisecond)
+	shortTimeout(t, testutil.Budget(800*time.Millisecond)) // 原先写死 400 ms：机器忙、-race 下起进程慢一点就被当成“没有进展”
 	ctx := context.Background()
 
 	body := "echo out\nfor i in 10 20 30 40 50 60 70 80 90 100; do printf 'Receiving objects: %s%%\\r' $i >&2; sleep 0.1; done\necho 'Receiving objects: 100%, done.' >&2"

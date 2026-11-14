@@ -80,6 +80,14 @@
   行高 24 的列表看着一顿一顿的；`Tester.Wheel` 发这种滚轮、`Tester.Scroll` 发触控板的。
 - 元素的 `Bounds()` 是上一帧的布局；拿它当行的位置画叠在列表上的东西（吸顶栈）会比行晚一帧，要按列表两帧偏移之差挪一下。
 - 输入回调里 `Context.Now()` 不是事件的时间，用 `InputEvent.Time`。
+- 输入回调（`HandleInput`）里取 `c.Root().Bounds()` 是 0×0：那个 `c` 是建树时的，事件来的时候根还没排。右键菜单的 `PopMenu.OpenRow`
+  按 0×0 的窗口排，菜单只剩一小块、还压在指针上，看着就是“闪一下”。窗口大小和元素自己上一帧的位置都在**建元素时**取好
+  （`b := el.Bounds()`、`root := c.Root().Bounds()`），闭包里只用这两个快照（`menuPress`、`openTreeMenuByKey`）。
+  无头的 Tester 里事件处理时取得到窗口大小，这一条测不出来，只能靠约定（真窗口里用日志查到的，mygo v0.8.x；v0.9.0 上没有再验，快照的写法两边都对）。
+- macOS 的右键、触摸板的相位事件会送来 `DY` 是 0 的 `InputScroll`。“在菜单外面滚就关菜单”这类逻辑要先滤掉它
+  （`PopMenu.Scroll` 里 `dy` 小于 0.01 当没滚），不然菜单在打开的那一帧就被关掉。
+- 判断“窗口失焦”用 `c.WindowActive()`，不要用某个元素的 `Focused()`：窗口里别的元素会在按下时自己拿键盘（列表），
+  系统的浮层（快速查看、输入法）拿键盘时窗口也还活跃。测试里对应 `tt.SetWindowActive(false)`，`tt.SetFocused(false)` 只是键盘离开。
 - `SetMenuPresentation(PopoverMenus)` 下 `ContextMenu` / `Menu` 的菜单每帧重建（系统菜单是打开时的快照）：开着时状态变了，项跟着变灰；
   测试里"选了打开时还能用、现在不能用的项"这种场景不再有，`Tester.Menu` / `ChooseMenuItem` 照样能用。
   Grove 画的菜单（`app.PopMenu`）也每帧重建：建菜单时按打开那一帧的下标取切片（搜索结果的 `s.Res.Matches[sr.Match]`），
