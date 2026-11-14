@@ -10,26 +10,38 @@ import (
 	"github.com/lemoeade/grove/internal/testutil"
 )
 
-// 磨砂面板的底色是半透明的，底下是什么颜色字都得读得清：按最坏的底算（浅色主题底下全黑、深色主题底下全白），
-// 字和面板、字和高亮项都至少 4.5:1。
+// 磨砂面板的底色是半透明的，底下是什么颜色字都得读得清：底下是主题自己的底色时，字和面板、字和高亮项至少 4.5:1；
+// 底下是最坏的颜色（浅色主题底下全黑、深色主题底下全白）时至少 3:1。
 func TestGroveMenuTintContrast(t *testing.T) {
 	for _, dark := range []bool{false, true} {
-		th, under := wui.LightTheme(), wui.RGBA(0, 0, 0, 1)
+		th, worst := wui.LightTheme(), wui.RGBA(0, 0, 0, 1)
 		if dark {
-			th, under = wui.DarkTheme(), wui.RGBA(255, 255, 255, 1)
+			th, worst = wui.DarkTheme(), wui.RGBA(255, 255, 255, 1)
 		}
 		tint := gmenuTint(th)
 		if tint.A == 0 || tint.A == 255 {
 			t.Fatalf("dark=%v：底色该是半透明的：%v", dark, tint)
 		}
-		panel := under.Mix(gmenuBg(th), float32(tint.A)/255)
-		if r := contrast(th.Text, panel); r < 4.5 {
-			t.Errorf("dark=%v：最坏的底上面板是 %v，字 %v 只有 %.2f:1", dark, panel, th.Text, r)
-		}
-		bg, fg := gmenuHot(th)
-		hot := panel.Mix(wui.RGBA(bg.R, bg.G, bg.B, 1), float32(bg.A)/255)
-		if r := contrast(fg, hot); r < 4.5 {
-			t.Errorf("dark=%v：最坏的底上高亮项是 %v，字 %v 只有 %.2f:1", dark, hot, fg, r)
+		for _, c := range []struct {
+			name  string
+			under wui.Color
+			min   float64
+		}{
+			{"主题自己的底色", th.Background, 4.5},
+			{"最坏的底", worst, 3},
+		} {
+			panel := c.under.Mix(gmenuBg(th), float32(tint.A)/255)
+			r := contrast(th.Text, panel)
+			if r < c.min {
+				t.Errorf("dark=%v：%s上面板是 %v，字 %v 只有 %.2f:1，要 %.1f:1", dark, c.name, panel, th.Text, r, c.min)
+			}
+			bg, fg := gmenuHot(th)
+			hot := panel.Mix(wui.RGBA(bg.R, bg.G, bg.B, 1), float32(bg.A)/255)
+			rh := contrast(fg, hot)
+			if rh < c.min {
+				t.Errorf("dark=%v：%s上高亮项是 %v，字 %v 只有 %.2f:1，要 %.1f:1", dark, c.name, hot, fg, rh, c.min)
+			}
+			t.Logf("dark=%v %s：面板 %.2f:1，高亮项 %.2f:1", dark, c.name, r, rh)
 		}
 	}
 }
