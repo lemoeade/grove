@@ -168,13 +168,13 @@ func filesView(a *app.App, c *wui.Context, tools bool) {
 						a.TreeSpans[i] = r
 					}
 				}
-				cmds, lb := treeCommands(a), list.Bounds()
+				cmds, lb, win := treeCommands(a), list.Bounds(), c.Root().Bounds()
 				menuPress(a, c, list, treeOwner{Blank: true}, func(m menu) { treeMenu(a, m) }, func(ev wui.InputEvent) bool { // 行下面的空白处
 					if sideWheel(a, c, &a.FileList, ev) { // menuPress 换掉了 sideList 装的 HandleInput
 						return true
 					}
 					if isMenuKey(ev) && a.Edit == nil {
-						openTreeMenuByKey(a, c, rows, lb, ev.Time)
+						openTreeMenuByKey(a, c, rows, lb, win, ev.Time)
 						return true
 					}
 					return cmds(ev)

@@ -68,8 +68,9 @@ const (
 	MenuMinW     = 180
 	MenuSubDelay = 200 * time.Millisecond // 指针停在有子菜单的项上多久才开
 	MenuTipDelay = 500 * time.Millisecond // 灰着的项停多久出原因
-	MenuHoldMin  = 150 * time.Millisecond // 右键按下后过了这么久（或动过）再松开，才算拖到项上松开选它
-	menuMoveSlop = 4
+	menuMoveSlop = 4                      // 右键按着挪出这么远才算动过：动过再松在项上才选它
+
+	menuScrollSlop = 0.01 // 比这小的滚动当没滚（macOS 的右键、触摸板的相位事件会送来 dy=0 的滚动）
 	// 带筛选框的菜单（Filterable）：框高 32，钉在面板顶上不跟着滚；面板最多露 12 项，多的滚。
 	// 打字时面板的位置和宽按全部项算、不变，框不会在手底下挪地方；项少了面板从底下收短。
 	MenuFilterH    = 32
@@ -146,7 +147,6 @@ type PopMenu struct {
 
 	// 按住右键打开的：这次按下松开之前，松开在项上就选它（按住拖到项上松开）
 	held    bool
-	openAt  time.Time
 	moved   bool
 	downLvl int // 菜单里左键按下的那层 / 项（松开在同一项上才选）
 	downIdx int
@@ -226,7 +226,7 @@ func (m *PopMenu) reset() {
 // Open 在窗口的 (x, y) 打开菜单，build 建它的项；held 是右键按下打开的（还按着）。
 func (m *PopMenu) Open(owner any, build func(MenuSink), x, y, winW, winH float32, held bool, now time.Time) {
 	*m = PopMenu{Owner: owner, build: build, open: true, Measure: m.Measure, winW: winW, winH: winH, ax: x, ay: y,
-		held: held, openAt: now, downLvl: -1, downIdx: -1, px: x, py: y, hasPtr: true, hotSince: now,
+		held: held, downLvl: -1, downIdx: -1, px: x, py: y, hasPtr: true, hotSince: now,
 		targets: m.targets, nextTargets: m.nextTargets}
 	m.Refresh(winW, winH)
 	m.revealChecked()
@@ -725,8 +725,8 @@ func (m *PopMenu) Down(x, y float32, button int, now time.Time) bool {
 	return true
 }
 
-// Up 是指针在窗口的 (x, y) 松开。右键按下打开菜单的那一下：过了 MenuHoldMin 或者动过再松在项上就选它，
-// 刚按下就松开（没动）菜单留着。之后在菜单里点：按下和松开在同一项上才选。
+// Up 是指针在窗口的 (x, y) 松开。右键按下打开菜单的那一下：按着挪动过（menuMoveSlop）再松在项上就选它，
+// 没动过就松开（不管按了多久）菜单留着。之后在菜单里点：按下和松开在同一项上才选。
 func (m *PopMenu) Up(x, y float32, button int, now time.Time) {
 	if !m.open {
 		return
@@ -734,7 +734,9 @@ func (m *PopMenu) Up(x, y float32, button int, now time.Time) {
 	lv, idx := m.hit(x, y)
 	if m.held {
 		m.held = false
-		if now.Sub(m.openAt) < MenuHoldMin && !m.moved {
+		if !m.moved {
+			// 没动过：不算拖到项上，菜单留着。菜单贴着窗口边排的时候指针会正好压在某一项上，
+			// 按住多久松开都不该选它（看着像"闪一下就消失"，还误做了那一项）
 			return
 		}
 		m.activate(lv, idx, now)
@@ -796,6 +798,9 @@ func (m *PopMenu) RunChoice() {
 // Scroll 是在窗口的 (x, y) 滚动 dy：在窗口都放不下、能滚的那层上滚它；别的地方关掉菜单（滚文件树也关）。
 func (m *PopMenu) Scroll(x, y, dy float32) {
 	if !m.open {
+		return
+	}
+	if abs32(dy) < menuScrollSlop { // macOS 的右键、触摸板的相位事件会送来 0 的滚动：不算滚，不关菜单
 		return
 	}
 	lv, _ := m.hit(x, y)
