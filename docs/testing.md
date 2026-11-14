@@ -13,6 +13,7 @@ mkdir -p <目录> && WORKBENCH_SHOT=<目录> GOTOOLCHAIN=auto go test -run 'Test
 GOTOOLCHAIN=auto go test -run TestCatalog ./internal/i18n/   # 改了界面文案先 -update 收集 zh-CN.json，再给 en.json 补译文
 GOTOOLCHAIN=auto go test -run '^$' -bench . -benchtime 20x ./internal/search/ ./internal/fuzzy/   # 搜索 / 模糊匹配的速度
 GOTOOLCHAIN=auto go tool mygo build -skip-dmg -skip-notarize -sign -
+WORKBENCH_STATE=<目录> WORKBENCH_LOGS=<目录> GOTOOLCHAIN=auto go tool mygo dev -background -sign -   # 边改边看：存了 Go 代码就重编、重开 "Grove Dev"（在 .mygo/dev），-background 让它每次都在后台起、不抢到最前；Ctrl+C 停。一定带 WORKBENCH_STATE，别碰平时用的那份状态
 open -n -g -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WORKBENCH_LOGS=<目录>   # 30 秒后 footprint -p <pid> --noCategories -f bytes，然后只杀这个 pid
 open -n -g -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env "WORKBENCH_ALLOPEN=async def"   # "全开"的内存（两个 Diff、搜索、当前仓库的终端都起）
 open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WORKBENCH_FOCUS=editor   # 有焦点的内存（editor 或 terminal，lsappinfo front 核对在最前），无焦点加 -g；--env WORKBENCH_CARET_REST=off 对比不歇的光标
