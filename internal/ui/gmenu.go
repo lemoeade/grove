@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/egoist/mygo/plugins/glass"
 	wui "github.com/egoist/mygo/ui"
 
 	"github.com/lemoeade/grove/internal/app"
@@ -393,6 +394,25 @@ func gmenuBg(t *wui.Theme) wui.Color {
 	return wui.RGBA(255, 255, 255, 1)
 }
 
+// 面板是磨砂的：窗口画在它底下的东西糊开（gmenuBlur，mygo 的 glass.Blur），上面盖一层半透明的底色（gmenuTint）。
+// 糊的是窗口自己画的内容，不是窗口后面的桌面。
+const gmenuBlur = 20
+
+// gmenuTint 是盖在糊开的内容上的那层底色：gmenuBg 的颜色，浅色 66%、深色 78% 不透明。这两个数是按最坏的底算的
+// （浅色主题底下全黑、深色主题底下全白，比如看图），那时字还够 4.5:1（TestGroveMenuTintContrast）。
+func gmenuTint(t *wui.Theme) wui.Color {
+	if t.Dark {
+		return gmenuBg(t).Alpha(0.78)
+	}
+	return gmenuBg(t).Alpha(0.66)
+}
+
+// gmenuFrosted 报面板要不要磨砂：系统开了“减少透明度”或“增强对比度”时不要，用不透明的 gmenuBg。
+func gmenuFrosted(c *wui.Context) bool {
+	p := c.Preferences()
+	return !p.ReduceTransparency && !p.HighContrast
+}
+
 // gmenuPanel 画一层：open 是这一层里开着子菜单的那项（高亮着）。l.Head 不为 0 的那层顶上钉着筛选框
 // （query 是打的字，hint 是没字时的灰字），项在它下面滚。press 是无障碍树里按了第 i 项（读屏、按名字按；指针和键盘走接收层）。
 func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, hint string, press func(i int)) wui.Element {
@@ -401,8 +421,14 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, 
 	if t.Dark {
 		shadow = wui.RGBA(0, 0, 0, 0.45)
 	}
+	frosted := gmenuFrosted(c)
 	panel := wui.Column(c).Absolute().Left(r.X).Top(r.Y).Width(r.W).Height(r.H).Radius(gmenuRadius).
-		Background(gmenuBg(t)).Border(1, t.Border.Alpha(0.9)).Shadow(0, 6, 18, 0, shadow).Clip().Role(wui.RoleMenu)
+		Border(1, t.Border.Alpha(0.9)).Shadow(0, 6, 18, 0, shadow).Clip().Role(wui.RoleMenu)
+	if frosted {
+		panel.Material(glass.Blur{Radius: gmenuBlur})
+	} else {
+		panel.Background(gmenuBg(t))
+	}
 	items := func() {
 		col := wui.Column(c).Absolute().Left(0).Top(-l.Scroll).Width(r.W).Padding(app.MenuPad)
 		col.Children(func() {
@@ -421,6 +447,10 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, 
 		})
 	}
 	panel.Children(func() {
+		if frosted {
+			// 底色自己带圆角：Metal 里只有最里面那层裁剪是圆的，不靠面板的 Clip 修角
+			wui.Column(c).Absolute().Left(0).Top(0).Width(r.W).Height(r.H).Radius(gmenuRadius).Background(gmenuTint(t)).PassThrough()
+		}
 		if l.Head == 0 {
 			items()
 			return

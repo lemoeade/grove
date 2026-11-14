@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"testing"
@@ -440,7 +441,12 @@ func TestGroveMenuShots(t *testing.T) {
 	}
 	alpha, beta, gamma, _ := testutil.ThreeRepos(t)
 	alpha.Git("branch", "topic/menu")
-	alpha.Write("dirty.go", "package alpha\n")
+	// 编辑器里铺满代码：语言菜单盖在上面，看得出面板是磨砂的
+	src := "package alpha\n\nimport \"fmt\"\n"
+	for i := range 40 {
+		src += fmt.Sprintf("\n// Step%d 打印第 %d 步，返回它的平方。\nfunc Step%d(n int) int {\n\tfmt.Println(\"step\", %d, n)\n\treturn n * n\n}\n", i, i, i, i)
+	}
+	alpha.Write("dirty.go", src)
 	k := newTreeKit(t, alpha.Root, beta.Root, gamma.Root)
 	tt, a := k.tt, k.a
 	r := k.repo("alpha")
