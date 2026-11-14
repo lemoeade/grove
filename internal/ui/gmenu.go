@@ -396,15 +396,16 @@ func gmenuBg(t *wui.Theme) wui.Color {
 
 // 面板是磨砂的：窗口画在它底下的东西糊开（gmenuBlur，mygo 的 glass.Blur），上面盖一层半透明的底色（gmenuTint）。
 // 糊的是窗口自己画的内容，不是窗口后面的桌面。
-const gmenuBlur = 20
+const gmenuBlur = 12
 
-// gmenuTint 是盖在糊开的内容上的那层底色：gmenuBg 的颜色，浅色 66%、深色 78% 不透明。这两个数是按最坏的底算的
-// （浅色主题底下全黑、深色主题底下全白，比如看图），那时字还够 4.5:1（TestGroveMenuTintContrast）。
+// gmenuTint 是盖在糊开的内容上的那层底色：gmenuBg 的颜色，浅色 44%、深色 60% 不透明。再透字就不清楚了：
+// 底下是主题自己的底色时字（面板上的、高亮项上的）要够 4.5:1，底下是最坏的颜色（浅色主题底下全黑、深色主题底下全白，比如看图）时
+// 也要够 3:1（TestGroveMenuTintContrast）。
 func gmenuTint(t *wui.Theme) wui.Color {
 	if t.Dark {
-		return gmenuBg(t).Alpha(0.78)
+		return gmenuBg(t).Alpha(0.60)
 	}
-	return gmenuBg(t).Alpha(0.66)
+	return gmenuBg(t).Alpha(0.44)
 }
 
 // gmenuFrosted 报面板要不要磨砂：系统开了“减少透明度”或“增强对比度”时不要，用不透明的 gmenuBg。
