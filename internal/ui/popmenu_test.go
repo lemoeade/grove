@@ -103,6 +103,25 @@ func chooseMenu(t *testing.T, tt *wui.Tester, path ...string) error {
 		case found.States&accessDisabled != 0:
 			return fmt.Errorf("ui: the item %q is disabled", strings.Join(path[:i+1], " > "))
 		}
+		// 窗口都放不下的菜单（比如状态栏的语言菜单）：那一项在面板外面时先在面板上滚到它露出来，和人滚轮一样
+		if p := ms[i].Panel; found.Y < p.Y || found.Y+found.H > p.Y+p.H {
+			dy := found.Y + found.H - (p.Y + p.H) + 4
+			if found.Y < p.Y {
+				dy = found.Y - p.Y - 4
+			}
+			tt.Scroll(float32(p.X+p.W/2), float32(p.Y+p.H/2), 0, float32(dy))
+			tt.Frame()
+			found = nil
+			for _, it := range popMenus(t, tt)[i].Items {
+				if it.Label == label {
+					found = &it
+					break
+				}
+			}
+			if found == nil || found.Y < p.Y || found.Y+found.H > p.Y+p.H {
+				return fmt.Errorf("%q 滚不进菜单里", strings.Join(path[:i+1], " > "))
+			}
+		}
 		x, y := float32(found.X+found.W/2), float32(found.Y+found.H/2)
 		tt.Move(x, y)
 		tt.ClickAt(x, y)
