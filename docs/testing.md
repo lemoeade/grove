@@ -25,7 +25,7 @@ open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WOR
 行为变更后，同步更新 README（功能、快捷键）、`CHANGELOG.md` 的“## 未发布”、`docs/architecture.md`、
 `docs/shortcuts.md`（`go test -run TestShortcutDoc ./internal/app/ -update`）。新遇到的问题记入 [mygo-pitfalls.md](mygo-pitfalls.md)。
 
-整套测试并行运行且机器负载较高时，部分计时测试偶尔会超时（`internal/watch` 的监听测试、`internal/git` 的 `TestOpTimeoutKeep`）。
+整套测试并行运行且机器负载较高时，部分计时测试偶尔会超时（`internal/watch` 的监听测试）。
 可以先单独重跑，判断是否受负载影响；单独运行仍失败时，再进一步排查。
 
 ## 测试的分工
