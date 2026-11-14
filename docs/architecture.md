@@ -353,6 +353,10 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 - 状态机是 `app.PopMenu`（`app/popmenu.go`，每个窗口一个 `App.Menu`），不碰界面：项由建菜单的函数经 `app.MenuSink` 收集（每帧重收，灰不灰跟着状态），
   位置、命中、子菜单延迟（`MenuSubDelay` 0.2 s）、安全三角、灰项提示（`MenuTipDelay` 0.5 s）、按住拖松开（挪出 4 pt 才算动过，没动过就松开菜单留着）、零滚动不关（`dy` 小于 0.01 不算滚）、键盘都在里面，
   `popmenu_test.go` 直接喂事件测（Tester 按不住右键）。选中一项后再跑一遍建菜单的函数，选中那项的 `Chosen()` 报真（和 mygo 的菜单一样）。
+- 面板是磨砂的（`gmenuPanel`）：`Material(glass.Blur{Radius: gmenuBlur})` 把窗口画在它底下的内容糊开（mygo 的 `plugins/glass`，和 mygo 同一个模块），
+  里面第一个子元素是一层半透明的底色（`gmenuTint`：`gmenuBg` 的颜色，浅色 66%、深色 78% 不透明，自己带圆角）。两个不透明度按最坏的底定的
+  （浅色主题底下全黑、深色底下全白时字还够 4.5:1，`TestGroveMenuTintContrast`）。系统的“减少透明度”/“增强对比度”开着时（`gmenuFrosted`）
+  不糊，直接用不透明的 `gmenuBg`（`TestGroveMenuFrosted`）。
 - 菜单项在无障碍树里是能按的（`gmenuItem` 那一行的 `Clicked()`）：辅助技术按了走 `PopMenu.Press`，和键盘回车一样选它（有子菜单的开子菜单）。
   鼠标的按下松开不走这条，还是接收层交给 `PopMenu` 的那一套。
 - 项很多的菜单带筛选框（`PopMenu.Filterable`，界面是 `filterMenuButton`，现在只有状态栏的语言）：框钉在面板顶上（`MenuLevel.Head`，
