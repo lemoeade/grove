@@ -61,12 +61,16 @@ func shortTimeout(t *testing.T, d time.Duration) {
 }
 
 // 超时钟：没有 Keep 时到点就停（返回超时的错误）；Hold 着的时候不算，Release 后重新算一整段。
+// 时限是 1 s、命令跑 1.2 s：命令比时限长，所以不 Hold / 不 Touch 一定超时；Release 在 1 s 时，之后还有一整段 1 s，
+// 命令只剩 0.2 s 加 git 起子进程的时间。原先是 400 ms 的时限、只留 300 ms 给起进程，整套测试并行、机器忙时不够。
 func TestOpTimeoutKeep(t *testing.T) {
 	root, _ := testutil.TempRepo(t)
-	shortTimeout(t, 400*time.Millisecond)
+	limit := testutil.Budget(time.Second)
+	shortTimeout(t, limit)
 	ctx := context.Background()
+	long := fmt.Sprintf("sleep %.1f; echo done", (limit + limit/5).Seconds())
 
-	_, err := RunOpKeep(ctx, root, "", nil, nil, slowAlias(t, "sleep 3")...)
+	_, err := RunOpKeep(ctx, root, "", nil, nil, slowAlias(t, long)...)
 	if err == nil || !strings.Contains(err.Error(), "没结束，已终止") {
 		t.Fatalf("没 Hold：%v，应超时", err)
 	}
@@ -74,14 +78,14 @@ func TestOpTimeoutKeep(t *testing.T) {
 	k := &Keep{}
 	k.Hold() // 开始前就 Hold：像凭据框一开始就弹出来
 	go func() {
-		time.Sleep(testutil.Budget(900 * time.Millisecond))
+		time.Sleep(limit)
 		k.Release()
 	}()
-	if out, err := RunOpKeep(ctx, root, "", nil, k, slowAlias(t, "sleep 1; echo done")...); err != nil || out != "done" {
+	if out, err := RunOpKeep(ctx, root, "", nil, k, slowAlias(t, long)...); err != nil || out != "done" {
 		t.Fatalf("Hold 着：%q %v，应跑完", out, err)
 	}
 
-	// Touch 让它多活：每 150 ms 碰一下，跑 1 s 的命令不会在 400 ms 时被停
+	// Touch 让它多活：每 150 ms 碰一下，比时限长的命令不会到点被停
 	k2 := &Keep{}
 	stop := make(chan struct{})
 	go func() {
@@ -94,7 +98,7 @@ func TestOpTimeoutKeep(t *testing.T) {
 			}
 		}
 	}()
-	out, err := RunOpKeep(ctx, root, "", nil, k2, slowAlias(t, "sleep 1; echo done")...)
+	out, err := RunOpKeep(ctx, root, "", nil, k2, slowAlias(t, long)...)
 	close(stop)
 	if err != nil || out != "done" {
 		t.Fatalf("Touch 着：%q %v，应跑完", out, err)

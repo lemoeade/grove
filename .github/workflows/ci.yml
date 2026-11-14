@@ -75,5 +75,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # internal/ui 带 -race 要十几分钟，过了 go test 默认的 10 分钟一个包的上限，所以放到 30 分钟
       - name: go test -race
-        run: go test -count=1 -race ./internal/...
+        run: go test -count=1 -race -timeout 30m ./internal/...
