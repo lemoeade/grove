@@ -345,7 +345,7 @@ func gmenuView(a *app.App, c *wui.Context, chose bool) {
 				if lv < len(path) {
 					open = path[lv]
 				}
-				gmenuPanel(c, t, l, open, query, hint)
+				gmenuPanel(c, t, l, open, query, hint, func(i int) { m.Press(lv, i, now); c.Invalidate() })
 				if tip && lv == tipLv {
 					gmenuTip(c, t, l, tipIdx, why, root.W)
 				}
@@ -392,8 +392,8 @@ func gmenuBg(t *wui.Theme) wui.Color {
 }
 
 // gmenuPanel 画一层：open 是这一层里开着子菜单的那项（高亮着）。l.Head 不为 0 的那层顶上钉着筛选框
-// （query 是打的字，hint 是没字时的灰字），项在它下面滚。
-func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, hint string) wui.Element {
+// （query 是打的字，hint 是没字时的灰字），项在它下面滚。press 是无障碍树里按了第 i 项（读屏、按名字按；指针和键盘走接收层）。
+func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, hint string, press func(i int)) wui.Element {
 	r := l.Rect
 	shadow := wui.RGBA(0, 0, 0, 0.18)
 	if t.Dark {
@@ -412,7 +412,9 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, 
 					continue
 				}
 				hot := l.Hot == i || open == i
-				gmenuItem(c, t, it, hot, l.TextL())
+				if gmenuItem(c, t, it, hot, l.TextL()).Clicked() {
+					press(i)
+				}
 			}
 		})
 	}
@@ -452,7 +454,7 @@ func gmenuFilter(c *wui.Context, t *wui.Theme, l app.MenuLevel, query, hint stri
 }
 
 // gmenuItem 画一项；textL 是字左边留的（这一层有勾选项时留出勾的位置，见 MenuLevel.TextL）。
-func gmenuItem(c *wui.Context, t *wui.Theme, it app.MenuEntry, hot bool, textL float32) {
+func gmenuItem(c *wui.Context, t *wui.Theme, it app.MenuEntry, hot bool, textL float32) wui.Element {
 	fg, muted := t.Text, t.TextMuted
 	row := wui.Row(c).Height(app.MenuItemH).Shrink(0).AlignItems(wui.Center).Radius(gmenuItemRad).
 		Padding(0, app.MenuTextR, 0, 0).Label(it.Label)
@@ -494,6 +496,7 @@ func gmenuItem(c *wui.Context, t *wui.Theme, it app.MenuEntry, hot bool, textL f
 			})
 		}
 	})
+	return row
 }
 
 // gmenuTip 是灰着的项的原因：画在那项右边（右边放不下画在左边），和树行提示一样的反色小块。

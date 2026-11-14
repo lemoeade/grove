@@ -650,3 +650,27 @@ func TestPopMenuKeyReveal(t *testing.T) {
 		t.Fatalf("↑ 转到最后一项：高亮 %d，滚了 %v", l.Hot, l.Scroll)
 	}
 }
+
+// 无障碍树里按一项（读屏、按名字按）：和回车一样选它；有子菜单的开它；灰着的不理；关了再按不理。
+func TestPopMenuPress(t *testing.T) {
+	k := newPopKit(t)
+	k.open(false)
+	k.m.Press(0, 1, k.now) // 灰着
+	if !k.m.IsOpen() {
+		t.Fatal("按灰项不该关")
+	}
+	k.m.Press(0, 3, k.now) // 更多 ▸
+	if len(k.m.Levels()) != 2 || k.m.Levels()[1].Hot != 0 {
+		t.Fatalf("按有子菜单的项该开它、高亮第一项：%d 层", len(k.m.Levels()))
+	}
+	k.m.Press(1, 1, k.now)
+	k.run()
+	if len(k.chosen) != 1 || k.chosen[0] != "Beta" || k.m.IsOpen() {
+		t.Fatalf("按子菜单里的一项：选了 %q，开着 %v", k.chosen, k.m.IsOpen())
+	}
+	k.m.Press(0, 0, k.now)
+	k.run()
+	if len(k.chosen) != 1 {
+		t.Fatalf("关了以后按：%q", k.chosen)
+	}
+}

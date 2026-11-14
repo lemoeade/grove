@@ -351,6 +351,8 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 - 状态机是 `app.PopMenu`（`app/popmenu.go`，每个窗口一个 `App.Menu`），不碰界面：项由建菜单的函数经 `app.MenuSink` 收集（每帧重收，灰不灰跟着状态），
   位置、命中、子菜单延迟（`MenuSubDelay` 0.2 s）、安全三角、灰项提示（`MenuTipDelay` 0.5 s）、按住拖松开（`MenuHoldMin` 0.15 s 或动过）、键盘都在里面，
   `popmenu_test.go` 直接喂事件测（Tester 按不住右键）。选中一项后再跑一遍建菜单的函数，选中那项的 `Chosen()` 报真（和 mygo 的菜单一样）。
+- 菜单项在无障碍树里是能按的（`gmenuItem` 那一行的 `Clicked()`）：辅助技术按了走 `PopMenu.Press`，和键盘回车一样选它（有子菜单的开子菜单）。
+  鼠标的按下松开不走这条，还是接收层交给 `PopMenu` 的那一套。
 - 项很多的菜单带筛选框（`PopMenu.Filterable`，界面是 `filterMenuButton`，现在只有状态栏的语言）：框钉在面板顶上（`MenuLevel.Head`，
   `gmenuFilter` 画，它不拿键盘，字由接收层交给 `PopMenu.Key`），面板最多露 `MenuFilterRows`（12）项。打的字用 `internal/fuzzy` 筛第 0 层
   （`shown`：匹配得好的在前，没有的是一行灰字），第一项高亮、回车选它；退格删字，Esc 先清空再关。面板的位置和宽按全部项算，
