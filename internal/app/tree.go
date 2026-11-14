@@ -479,6 +479,27 @@ func (a *App) OpenSideChosen() {
 	}
 }
 
+// QuickLookChosen 是文件树里的空格：用系统的"快速查看"看光标那一行（文件、目录、仓库行都行）。
+// 面板一次只看一项，选了多行也只看光标那行；面板开着时再按是换成新的那项，关它是面板自己的事（空格 / Esc）。
+func (a *App) QuickLookChosen() {
+	row, ok := a.TreeRowAt(a.FileSel)
+	if !ok || row.Note != "" || row.Edit {
+		rows := a.ChosenRows()
+		if len(rows) == 0 {
+			return
+		}
+		row = rows[0]
+	}
+	a.QuickLook(row.FullPath())
+}
+
+// QuickLook 用系统的"快速查看"面板看 path（只看，不改文件）；打不开时说一声。
+func (a *App) QuickLook(path string) {
+	if err := a.Preview(path); err != nil {
+		a.Fail(i18n.T("没法快速查看"), err)
+	}
+}
+
 // TreeRight 是文件树里按 →：展开选中的仓库 / 目录，已经展开就走到第一个子项。
 func (a *App) TreeRight() {
 	row, ok := a.TreeRowAt(a.FileSel)

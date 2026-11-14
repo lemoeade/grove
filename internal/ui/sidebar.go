@@ -217,6 +217,7 @@ func filesView(a *app.App, c *wui.Context, tools bool) {
 			onKey(c, fl, "tree.trash", a.TrashChosen)
 			onKey(c, fl, "tree.openSide", a.OpenSideChosen)
 			if a.Edit == nil { // 输入名字时这几个键归输入框
+				onKey(c, fl, "tree.quickLook", a.QuickLookChosen)
 				// 窗口里 ⌘C ⌘V ⌘Z 先被菜单栏"编辑"接走（treeCommands），⌘D 是菜单栏的终端分屏（RunKey 分派到 tree.duplicate）；
 				// 这里接的是没有菜单栏的时候（测试）
 				onKey(c, fl, "tree.copy", a.CopyChosen)

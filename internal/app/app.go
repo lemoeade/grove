@@ -276,6 +276,7 @@ type App struct {
 	Trash    func(path string) error // 移到废纸篓；默认 mygo.Shell.TrashItem，测试里换掉
 	InFinder func(path string)       // 在访达里显示；默认 mygo.Shell.ShowItemInFolder，测试里换掉
 	OpenURL  func(url string) error  // 用系统浏览器 / 邮件开网址；默认 mygo.Shell.OpenExternal，测试里换掉
+	Preview  func(path string) error // 系统的"快速查看"（访达里按空格的那个面板）；默认 mygo.Shell.PreviewItem，测试里换掉
 
 	OpenDialog func(mygo.OpenDialogOptions) ([]string, error) // 系统的打开面板；默认 mygo.Dialog.Open，测试里换掉
 	SaveDialog func(mygo.SaveDialogOptions) (string, error)   // 系统的存储面板（导出设置）；默认 mygo.Dialog.Save，测试里换掉
@@ -404,6 +405,7 @@ func New(wsPath, stateDir string) (*App, error) {
 func (a *App) defaults() {
 	a.Update = func(fn func()) { fn() }
 	a.Trash, a.OpenURL, a.ShowPath, a.InFinder = mygo.Shell.TrashItem, mygo.Shell.OpenExternal, mygo.Shell.OpenPath, mygo.Shell.ShowItemInFolder
+	a.Preview = mygo.Shell.PreviewItem
 	a.OpenDialog, a.SaveDialog = mygo.Dialog.Open, mygo.Dialog.Save
 }
 

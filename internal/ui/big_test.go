@@ -119,6 +119,7 @@ func newMeasureUI(t *testing.T, ws string) *measureUI {
 	a.OpenURL = func(string) error { return nil }
 	a.ShowPath = func(string) error { return nil }
 	a.InFinder = func(string) {}
+	a.Preview = func(string) error { return nil }
 	t.Cleanup(a.Close)
 	view := View(a)
 	m.tt = wui.NewTester(func(c *wui.Context) { m.ctx = c; view(c) }, 1440, 880)

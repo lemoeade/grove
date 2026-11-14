@@ -418,6 +418,7 @@ func (a *App) switchTo(p string, roots []string) {
 	n.Rend, n.RenderOpen, n.SettingsWin = a.Rend, a.RenderOpen, a.SettingsWin // 设置窗口跟着进程走、换工作区不关：导出 / 导入的面板还挂在它上面
 	n.Windows, n.Slot, n.LastBar, n.ownStore = a.Windows, a.Slot, a.LastBar, a.ownStore
 	n.Trash, n.OpenURL, n.ShowPath, n.InFinder, n.OpenDialog, n.SaveDialog = a.Trash, a.OpenURL, a.ShowPath, a.InFinder, a.OpenDialog, a.SaveDialog
+	n.Preview = a.Preview
 	n.OnSettings, n.OpenSettings, n.OpenAbout, n.OnRecent, n.OnClearRecent = a.OnSettings, a.OpenSettings, a.OpenAbout, a.OnRecent, a.OnClearRecent
 	n.LogDir, n.LastCrash = a.LogDir, a.LastCrash
 	n.Output, n.OutList, n.BottomTab = a.Output, a.OutList, a.BottomTab

@@ -570,7 +570,7 @@ func fileMenu(a *app.App, m menu, r *app.Repo, row files.Row) {
 }
 
 // fileMoreItems 是文件和目录菜单的"更多"子菜单：目录的收起和历史，文件的本地历史、运行、比较 |
-// .gitignore | 默认应用、网页。
+// .gitignore | 快速查看、默认应用、网页。
 func fileMoreItems(a *app.App, m menu, tr app.TreeRow, full string) {
 	r, row := tr.Repo, tr.Row
 	isLink := tr.DirLink()
@@ -606,10 +606,10 @@ func fileMoreItems(a *app.App, m menu, tr app.TreeRow, full string) {
 		}
 	}
 	w := a.WebOf(r)
-	if row.Dir && !w.OK() {
-		return
-	}
 	m.Separator()
+	if shortcut(m.Item(i18n.T("快速查看")), "tree.quickLook").Chosen() {
+		a.QuickLook(full)
+	}
 	if !row.Dir && m.Item(i18n.T("用默认应用打开")).Chosen() {
 		openWithDefault(a, full)
 	}
