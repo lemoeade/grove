@@ -31,7 +31,8 @@ about 79 MiB of memory when idle.
 - **Workspace**: open a `.code-workspace` file or a folder, with support for multiple windows. Select and drag files
   across repos in the file tree, and undo the last file operation.
 - **Editor**: drag a tab to an edge to split the editor. Includes an outline, sticky scroll, snippets and Markdown
-  previews with Mermaid and math. Supports encodings such as GB18030 and Big5. Run formatters like gofmt and prettier,
+  previews with Mermaid and math. Supports encodings such as GB18030 and Big5. Click the language in the
+  status bar to switch it; type in the menu to filter. Run formatters like gofmt and prettier,
   or checks like go vet and eslint, on save. A file replaced in the preview tab reopens where you left it.
 - **Git**: stage changes by hunk or line and resolve conflicts in the editor. View a commit graph for one repo, or the
   history of all repos merged by time; the expanded commit card names any coding agent that co-authored it, and you can filter to those commits. Merge, rebase (including interactive rebase), cherry-pick, stash, worktree and submodule operations

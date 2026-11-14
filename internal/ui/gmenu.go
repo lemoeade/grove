@@ -177,6 +177,15 @@ func menuButton(a *app.App, c *wui.Context, b wui.Element, owner menuOwner, buil
 	return b
 }
 
+// filterMenuButton 同 menuButton，菜单顶上带筛选框（项很多的菜单用，见 app.PopMenu.Filterable）；hint 是框里没字时的灰字。
+func filterMenuButton(a *app.App, c *wui.Context, b wui.Element, owner menuOwner, hint string, build func(menu)) wui.Element {
+	if b.Clicked() {
+		openMenuBelow(a, c, b.Bounds(), owner, build)
+		a.Menu.Filterable(hint)
+	}
+	return b
+}
+
 // menuZ 是 owner 那块盖在谁上面：空白处（列表）0、行 1、合并行的一段 2，钉在顶上的再加 2（盖着底下滚过去的行）。
 func menuZ(owner any) int {
 	o, ok := owner.(treeOwner)
@@ -316,7 +325,7 @@ func gmenuView(a *app.App, c *wui.Context, chose bool) {
 				m.Scroll(ev.X, ev.Y, ev.DY)
 			case wui.InputKeyDown:
 				switch ev.Key {
-				case wui.KeyEscape, wui.KeyUp, wui.KeyDown, wui.KeyLeft, wui.KeyRight, wui.KeyEnter, wui.KeySpace:
+				case wui.KeyEscape, wui.KeyUp, wui.KeyDown, wui.KeyLeft, wui.KeyRight, wui.KeyEnter, wui.KeySpace, wui.KeyBackspace:
 					return m.Key(ev.Key, "", ev.Time)
 				}
 				return ev.Mods&(wui.Cmd|wui.Ctrl) == 0 // 菜单开着时别的键不落到底下（⌘ 的快捷键照旧）
@@ -330,12 +339,13 @@ func gmenuView(a *app.App, c *wui.Context, chose bool) {
 		catcher.Children(func() {
 			path := m.OpenPath()
 			tipLv, tipIdx, why, tip := m.Tip(now)
+			_, query, hint := m.Filter()
 			for lv, l := range m.Levels() {
 				open := -1
 				if lv < len(path) {
 					open = path[lv]
 				}
-				gmenuPanel(c, t, l, open)
+				gmenuPanel(c, t, l, open, query, hint)
 				if tip && lv == tipLv {
 					gmenuTip(c, t, l, tipIdx, why, root.W)
 				}
@@ -381,8 +391,9 @@ func gmenuBg(t *wui.Theme) wui.Color {
 	return wui.RGBA(255, 255, 255, 1)
 }
 
-// gmenuPanel 画一层：open 是这一层里开着子菜单的那项（高亮着）。
-func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int) wui.Element {
+// gmenuPanel 画一层：open 是这一层里开着子菜单的那项（高亮着）。l.Head 不为 0 的那层顶上钉着筛选框
+// （query 是打的字，hint 是没字时的灰字），项在它下面滚。
+func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, hint string) wui.Element {
 	r := l.Rect
 	shadow := wui.RGBA(0, 0, 0, 0.18)
 	if t.Dark {
@@ -390,7 +401,7 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int) wui.Ele
 	}
 	panel := wui.Column(c).Absolute().Left(r.X).Top(r.Y).Width(r.W).Height(r.H).Radius(gmenuRadius).
 		Background(gmenuBg(t)).Border(1, t.Border.Alpha(0.9)).Shadow(0, 6, 18, 0, shadow).Clip().Role(wui.RoleMenu)
-	panel.Children(func() {
+	items := func() {
 		col := wui.Column(c).Absolute().Left(0).Top(-l.Scroll).Width(r.W).Padding(app.MenuPad)
 		col.Children(func() {
 			for i, it := range l.Items {
@@ -404,8 +415,40 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int) wui.Ele
 				gmenuItem(c, t, it, hot, l.TextL())
 			}
 		})
+	}
+	panel.Children(func() {
+		if l.Head == 0 {
+			items()
+			return
+		}
+		gmenuFilter(c, t, l, query, hint)
+		wui.Column(c).Absolute().Left(0).Top(l.Head).Width(r.W).Height(r.H - l.Head).Clip().Children(items)
 	})
 	return panel
+}
+
+// gmenuFilter 画筛选框：放大镜、打的字（后面一根光标）或没字时的灰字，底下一条线和项隔开。
+// 它不拿键盘（键盘在接收层上，打的字由 PopMenu.Key 收），只是把收到的字显示出来。
+func gmenuFilter(c *wui.Context, t *wui.Theme, l app.MenuLevel, query, hint string) {
+	label := hint
+	if query != "" {
+		label = i18n.Tf("筛选：%s", query)
+	}
+	row := wui.Row(c).Absolute().Left(0).Top(0).Width(l.Rect.W).Height(l.Head).AlignItems(wui.Center).
+		Padding(0, app.MenuTextR, 0, app.MenuPad+app.MenuTextL0-2).Gap(6).Label(label)
+	row.Children(func() {
+		wui.Icon(c, iconSearch).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
+		wui.Row(c).Grow(1).MinWidth(0).AlignItems(wui.Center).Gap(1).Children(func() {
+			if query != "" {
+				wui.Text(c, query).FontSize(gmenuFont).TextColor(t.Text).SingleLine().Shrink(1).MinWidth(0)
+			}
+			wui.Column(c).Width(1).Height(15).Shrink(0).Background(t.Accent)
+			if query == "" {
+				wui.Text(c, hint).FontSize(gmenuFont).TextColor(t.TextMuted.Alpha(0.8)).SingleLine().Grow(1).MinWidth(0).Margin(0, 0, 0, 3)
+			}
+		})
+	})
+	wui.Column(c).Absolute().Left(0).Top(l.Head - 1).Width(l.Rect.W).Height(1).Background(t.Border.Alpha(0.6))
 }
 
 // gmenuItem 画一项；textL 是字左边留的（这一层有勾选项时留出勾的位置，见 MenuLevel.TextL）。

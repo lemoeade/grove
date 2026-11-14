@@ -149,3 +149,87 @@ func TestStatusBarMenus(t *testing.T) {
 		t.Errorf("按语言默认（设置也是按语言）不另记：%q", d.Indent)
 	}
 }
+
+// 状态栏的语言菜单带筛选框：面板不比 12 项高、一开就看得到打勾的当前语言；打字只留匹配的、回车选第一项，
+// 退格删字、Esc 先清空再关。WORKBENCH_SHOT=目录 时存浅色 / 深色的截图。
+func TestLangMenuFilter(t *testing.T) {
+	repo := testutil.NewRepo(t, "look")
+	repo.Write("a.go", "package a\n\nfunc f() {}\n")
+	repo.Commit("base")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")
+	d := a.OpenFile(a.Repos[0], "a.go", true)
+	wait("读好", func() bool { return d.Buf != nil && !d.Loading })
+	tt.Frame()
+
+	mustClick(t, tt, "语言 Go")
+	tt.Frame()
+	mustText(t, tt, "打字筛选语言")
+	ms := popMenus(t, tt)
+	if len(ms) != 1 {
+		t.Fatalf("开了 %d 层菜单", len(ms))
+	}
+	p := ms[0].Panel
+	if maxH := float64(app.MenuFilterH + 2*app.MenuPad + app.MenuFilterRows*app.MenuItemH); p.H > maxH+0.5 {
+		t.Fatalf("语言菜单高 %.0f，最多 %.0f", p.H, maxH)
+	}
+	for _, it := range ms[0].Items {
+		if it.Label == "Go" && (it.Y < p.Y+app.MenuFilterH || it.Y+it.H > p.Y+p.H) {
+			t.Fatalf("打勾的 Go 没露在面板里：%.0f..%.0f，面板 %.0f..%.0f", it.Y, it.Y+it.H, p.Y, p.Y+p.H)
+		}
+	}
+	shot := func(name string) {
+		dir := os.Getenv("WORKBENCH_SHOT")
+		if dir == "" {
+			return
+		}
+		for _, dark := range []bool{false, true} {
+			tt.SetDark(dark)
+			tt.Frame()
+			tt.Frame()
+			suffix := "-light.png"
+			if dark {
+				suffix = "-dark.png"
+			}
+			savePNG(t, filepath.Join(dir, name+suffix), tt.Image())
+		}
+		tt.SetDark(false)
+		tt.Frame()
+	}
+	shot("lang-menu")
+
+	tt.Type("ty")
+	tt.Frame()
+	if menu := shownMenu(t, tt); len(menu) == 0 || len(menu) > 6 || !slices.Contains(menu, "TypeScript") || slices.Contains(menu, "Go") {
+		t.Fatalf("打 ty 留下 %q", menu)
+	}
+	mustText(t, tt, "ty")
+	shot("lang-menu-ty")
+	tt.Key(0, wui.KeyBackspace)
+	tt.Key(0, wui.KeyBackspace)
+	tt.Type("zzzz")
+	tt.Frame()
+	if menu := shownMenu(t, tt); !slices.Equal(menu, []string{"没有匹配的项"}) {
+		t.Fatalf("没有匹配的：%q", menu)
+	}
+	shot("lang-menu-none")
+	tt.Key(0, wui.KeyEscape) // 先清空
+	tt.Frame()
+	if menu := shownMenu(t, tt); len(menu) < 30 {
+		t.Fatalf("Esc 清空后该回到全部，只有 %d 项", len(menu))
+	}
+	tt.Type("pyt")
+	tt.Frame()
+	tt.Key(0, wui.KeyEnter)
+	tt.Frame()
+	tt.Frame()
+	if l := d.Buf.Language(); l == nil || l.Name != "Python" || len(popMenus(t, tt)) != 0 {
+		t.Fatalf("打 pyt 回车该换成 Python、菜单关掉：%v", l)
+	}
+	mustClick(t, tt, "语言 Python")
+	tt.Frame()
+	tt.Key(0, wui.KeyEscape)
+	tt.Frame()
+	if len(popMenus(t, tt)) != 0 {
+		t.Fatal("框里没字时 Esc 该关")
+	}
+}

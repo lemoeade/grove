@@ -2248,5 +2248,8 @@
   "快速打开 %s": "Quick Open %s",
   "有改动的文件": "Changed files",
   "还有 %d 个…": "%d more…",
-  "领先 %d": "%d ahead"
+  "领先 %d": "%d ahead",
+  "打字筛选语言": "Type to filter languages",
+  "没有匹配的项": "No matching items",
+  "筛选：%s": "Filter: %s"
 }
