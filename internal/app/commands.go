@@ -157,8 +157,11 @@ func buildCommands() []*Command {
 		{ID: "palette.commands", Title: "命令面板…", Group: "文件", Mods: shift | cmd, Key: ui.KeyP, Run: func(a *App) { a.OpenPalette(">") }},
 		{ID: "palette.symbols", Title: "跳到工作区里的符号…", Group: "文件", Mods: cmd, Key: ui.KeyT, Run: func(a *App) { a.OpenPalette("#") }},
 		{ID: "file.save", Title: "保存", Group: "文件", Sep: true, Mods: cmd, Key: ui.KeyS,
-			Enabled: func(a *App) bool { d := a.CurrentDoc(); return d != nil && d.Editable() },
-			Run:     func(a *App) { a.Save(a.CurrentDoc()) }},
+			Enabled: func(a *App) bool {
+				d := a.CurrentDoc()
+				return d != nil && (d.Editable() || d.EditDoc != nil && d.EditDoc.Editable())
+			},
+			Run: func(a *App) { a.Save(a.CurrentDoc()) }},
 		{ID: "file.saveAll", Title: "全部保存", Group: "文件", Mods: alt | cmd, Key: ui.KeyS,
 			Enabled: func(a *App) bool { return a.DirtyDocs() > 0 }, Run: (*App).SaveEach},
 		{ID: "file.close", Title: "关闭标签", Group: "文件", Mods: cmd, Key: ui.KeyW, Run: (*App).CloseCurrent},
@@ -240,6 +243,10 @@ func buildCommands() []*Command {
 			Checked: func(a *App) bool { return a.St.Unified }, Run: (*App).ToggleLayout},
 		{ID: "diff.full", Title: "全文 diff", Group: "视图", Mods: alt | cmd, Key: ui.KeyF, Context: DiffTab,
 			Checked: func(a *App) bool { return a.St.FullDiff }, Run: (*App).ToggleScope},
+		{ID: "diff.editInPlace", Title: "在 Diff 里就地编辑", Group: "视图", Context: DiffTab,
+			Enabled: func(a *App) bool { d := a.CurrentDoc(); return DiffEditing(d) || a.CanEditDiff(d) },
+			Checked: func(a *App) bool { return DiffEditing(a.CurrentDoc()) },
+			Run:     func(a *App) { a.ToggleDiffEdit(a.CurrentDoc()) }},
 		{ID: "diff.nextFile", Title: "下一个文件", Group: "视图", Mods: alt, Key: ui.KeyJ, Context: DiffTab,
 			Run: func(a *App) { a.StepFile(1) }},
 		{ID: "diff.prevFile", Title: "上一个文件", Group: "视图", Mods: alt, Key: ui.KeyK, Context: DiffTab,

@@ -428,6 +428,9 @@ func (a *App) KeepMine(d *docs.Doc) {
 // Save 把标签写回磁盘（⌘S）；磁盘上的文件被别处改过就先问一声。开着保存时格式化的先在后台格式化（saveFormatted），
 // 格式化着的时候再按不另起。设置文档（settings.json）不写盘、不格式化：⌘S 是套用设置（applySettingsDoc）。
 func (a *App) Save(d *docs.Doc) {
+	if d != nil && d.Kind == docs.Diff && d.EditDoc != nil { // Diff 里就地编辑：存的是那个文件标签
+		d = d.EditDoc
+	}
 	if d == nil || !d.Editable() || !d.Modified() || d.Formatting {
 		return
 	}

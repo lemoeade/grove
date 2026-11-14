@@ -2251,5 +2251,11 @@
   "领先 %d": "%d ahead",
   "打字筛选语言": "Type to filter languages",
   "没有匹配的项": "No matching items",
-  "筛选：%s": "Filter: %s"
+  "筛选：%s": "Filter: %s",
+  "在 Diff 里就地编辑": "Edit in Place in Diff",
+  "就地编辑 · %s": "Editing in place · %s",
+  "就地编辑 · 没保存": "Editing in place · unsaved",
+  "就地编辑 · 没保存 · %s": "Editing in place · unsaved · %s",
+  "就地编辑：直接改工作区那一边，保存写回文件": "Edit in place: change the working-tree side directly; saving writes the file",
+  "退出编辑，只看": "Stop editing (view only)"
 }

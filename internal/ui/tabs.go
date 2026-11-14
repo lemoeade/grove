@@ -243,7 +243,7 @@ func tabBar(a *app.App, c *wui.Context, g *app.Group, d *docs.Doc, rows bool) {
 			}
 			iconButton(c, ic, app.Tip(tip, "view.markdownPreview"), in(a.TogglePreview))
 		}
-		if d.Modified() {
+		if d.Modified() || app.DiffDirty(d) {
 			iconButton(c, iconSave, app.Tip(i18n.T("保存（写回磁盘）"), "file.save"), func() { a.Save(d) })
 		}
 		switch d.Kind {
@@ -260,14 +260,14 @@ func tabBar(a *app.App, c *wui.Context, g *app.Group, d *docs.Doc, rows bool) {
 		case d.Kind == docs.File && r != nil && app.ChangedIn(r, d.Rel) != 0:
 			iconButton(c, iconDiff, i18n.T("查看它的 diff"), in(func() { a.ShowDiffFor(r, d.Rel) }))
 		case d.Kind == docs.Diff && r != nil && d.Change.Kind == git.InCommit && d.Change.Code != 'D':
-			iconButton(c, iconPencil, i18n.T("在编辑器里查看此版本"), in(func() { a.OpenVersion(r, d.Change) }))
+			iconButton(c, iconFile, i18n.T("在编辑器里查看此版本"), in(func() { a.OpenVersion(r, d.Change) }))
 		case d.Kind == docs.Diff && r != nil && d.Change.Code != 'D', d.Kind == docs.ReplacePreview && r != nil:
-			iconButton(c, iconPencil, i18n.T("在编辑器中打开"), in(func() { a.OpenFile(r, d.Rel, true) }))
+			iconButton(c, iconFile, i18n.T("在编辑器中打开"), in(func() { a.OpenFile(r, d.Rel, true) }))
 		case d.Kind == docs.Compare && d.Snapshot != 0: // 本地历史 ↔ 工作区
 			iconButton(c, iconUndo, i18n.T("恢复到这一份"), in(func() { a.RestoreSnapshot(d) }))
-			iconButton(c, iconPencil, i18n.T("在编辑器中打开"), in(func() { a.OpenPath(d.Right) }))
+			iconButton(c, iconFile, i18n.T("在编辑器中打开"), in(func() { a.OpenPath(d.Right) }))
 		case d.Kind == docs.Compare:
-			iconButton(c, iconPencil, i18n.T("在编辑器中打开左边的文件"), in(func() { a.CompareLeft(d) }))
+			iconButton(c, iconFile, i18n.T("在编辑器中打开左边的文件"), in(func() { a.CompareLeft(d) }))
 		}
 	})
 }
@@ -423,7 +423,7 @@ func tabClose(a *app.App, c *wui.Context, d *docs.Doc, active, hover bool) {
 	t := c.Theme()
 	x := wui.Box(c.Key("x")).Size(18, 18).AlignItems(wui.Center).Justify(wui.Center).Radius(5).Shrink(0)
 	switch {
-	case d.Modified() && !hover:
+	case (d.Modified() || app.DiffDirty(d)) && !hover:
 		tip := i18n.T("有没保存的改动")
 		tooltip(c, x, tip).Children(func() { wui.Box(c).Size(8, 8).Radius(4).Background(t.TextMuted).Label(tip) })
 	case active || hover:
@@ -862,9 +862,13 @@ func diffContent(a *app.App, c *wui.Context, d *docs.Doc) {
 		imageDiff(a, c, d)
 	case d.DiffSt != nil:
 		diffLook(a, d)
+		a.BindDiffEdit(d)
 		d.DiffSt.Bindings = app.DiffBindings()
+		if d.DiffSt.Editable { // 就地编辑：J / K 留给打字
+			d.DiffSt.Bindings = app.DiffEditBindings()
+		}
 		stage, unstage, discard := app.HunkOps(d)
-		d.DiffSt.HunkActions = stage || unstage || discard
+		d.DiffSt.HunkActions = (stage || unstage || discard) && d.EditDoc == nil // 就地编辑时不放块级暂存、丢弃（磁盘上的和缓冲区里的会对不上）
 		d.DiffSt.RenderHunkActions = func(c *wui.Context, bar wui.Element, h *editor.DiffHunkActions) {
 			hunkActions(a, c, bar, d, h, stage, unstage, discard)
 		}
@@ -1086,6 +1090,14 @@ func diffTools(a *app.App, c *wui.Context, d *docs.Doc, in func(func()) func(), 
 	} else {
 		iconButton(c, ic, app.Tip(tip, "diff.unified"), in(a.ToggleLayout))
 	}
+	if a.CanEditDiff(d) || app.DiffEditing(d) {
+		sep()
+		tip := i18n.T("就地编辑：直接改工作区那一边，保存写回文件")
+		if app.DiffEditing(d) {
+			tip = i18n.T("退出编辑，只看")
+		}
+		toggleButton(c, iconPencil, app.Tip(tip, "diff.editInPlace"), app.DiffEditing(d), in(func() { a.ToggleDiffEdit(d) }))
+	}
 	if pencil {
 		sep()
 	}
@@ -1191,6 +1203,10 @@ func docStatus(a *app.App, c *wui.Context, d *docs.Doc) {
 	switch {
 	case d.Kind == docs.Version:
 		item(i18n.Tf("只读 · 提交 %s", git.Short(d.Commit)))
+	case app.DiffDirty(d):
+		item(app.KeyHint("file.save", "就地编辑 · 没保存 · %s", "就地编辑 · 没保存")).FontWeight(600).TextColor(t.Warning)
+	case app.DiffEditing(d):
+		item(i18n.Tf("就地编辑 · %s", d.Change.Kind.String()))
 	case d.Kind == docs.Diff:
 		item(i18n.Tf("只读 · %s", d.Change.Kind.String()))
 	case d.Kind == docs.TermText:

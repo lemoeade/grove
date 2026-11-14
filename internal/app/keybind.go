@@ -43,14 +43,15 @@ type keyDefault struct {
 }
 
 var (
-	keyDefaults  = map[*Command]keyDefault{}
-	keyFile      []Keybinding     // 文件里现在的条目，原样（看不懂的写回时也留着）
-	keyErrors    []string         // 看不懂的条目，设置页列出来
-	keyBroken    bool             // 整个文件读不了（不是 JSON 数组）：设置页不往里写，免得盖掉
-	keyRev       int              // apply 一次加一：菜单栏跟着重建（menuSignature）
-	edBindings   []editor.Binding // 文件标签编辑器的 st.Bindings
-	diffBindings []editor.Binding // Diff 的 Bindings：J / K 跳改动、Diff 标签命令拿走的键，再是 edBindings
-	keyToasted   bool             // 启动时“有几条看不懂”只说一次（几个窗口共用）
+	keyDefaults      = map[*Command]keyDefault{}
+	keyFile          []Keybinding     // 文件里现在的条目，原样（看不懂的写回时也留着）
+	keyErrors        []string         // 看不懂的条目，设置页列出来
+	keyBroken        bool             // 整个文件读不了（不是 JSON 数组）：设置页不往里写，免得盖掉
+	keyRev           int              // apply 一次加一：菜单栏跟着重建（menuSignature）
+	edBindings       []editor.Binding // 文件标签编辑器的 st.Bindings
+	diffBindings     []editor.Binding // Diff 的 Bindings：J / K 跳改动、Diff 标签命令拿走的键，再是 edBindings
+	diffEditBindings []editor.Binding // 就地编辑着的 Diff 的 Bindings：diffBindings 去掉不带修饰键的跳改动
+	keyToasted       bool             // 启动时“有几条看不懂”只说一次（几个窗口共用）
 
 	// KeyRecording 是设置窗口正在录键：菜单栏先不带快捷键（不然 ⇧⌘P 这种先被菜单接走，录不到）。
 	KeyRecording bool
@@ -403,6 +404,15 @@ func editorKeys() {
 		add(&ds, dseen, b)
 	}
 	diffBindings = ds
+	// 就地编辑时字母键要打字：跳改动的键没带 ⌘ / ⌃ / ⌥ 的（默认的 J / K）不给
+	var es []editor.Binding
+	for _, b := range ds {
+		if (b.Command == editor.NextHunk || b.Command == editor.PreviousHunk) && b.Mods&(ui.Cmd|ui.Ctrl|ui.Alt) == 0 {
+			continue
+		}
+		es = append(es, b)
+	}
+	diffEditBindings = es
 }
 
 // EditorBindings 是文件标签编辑器的 st.Bindings（EditorOptions 每帧设）：改了键的编辑器命令。没改过为空。
@@ -414,6 +424,14 @@ func DiffBindings() []editor.Binding {
 		editorKeys()
 	}
 	return diffBindings
+}
+
+// DiffEditBindings 是就地编辑着的 Diff 的 Bindings：DiffBindings 去掉不带修饰键的跳改动（J / K 留给打字）。
+func DiffEditBindings() []editor.Binding {
+	if diffBindings == nil {
+		editorKeys()
+	}
+	return diffEditBindings
 }
 
 // KeyOf 是命令 id 现在的快捷键；没有键（或没有这条命令）ok 为假。右键菜单和界面元素自己接的键从这里读。
