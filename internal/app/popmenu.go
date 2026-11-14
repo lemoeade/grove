@@ -747,6 +747,15 @@ func (m *PopMenu) Up(x, y float32, button int, now time.Time) {
 	}
 }
 
+// Press 是辅助技术（读屏、无障碍树里按名字按）按了第 lv 层第 idx 项：和键盘回车一样选它（有子菜单的开它、高亮第一项）。
+func (m *PopMenu) Press(lv, idx int, now time.Time) {
+	if !m.open {
+		return
+	}
+	m.byKey = true
+	m.activate(lv, idx, now)
+}
+
 // activate 选第 lv 层第 idx 项：有子菜单的开它，灰着的、分隔线不理。
 func (m *PopMenu) activate(lv, idx int, now time.Time) {
 	if lv < 0 || idx < 0 || lv >= len(m.levels) || idx >= len(m.levels[lv].Items) {
