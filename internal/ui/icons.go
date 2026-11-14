@@ -75,7 +75,7 @@ var (
 	iconFolderOpen   = icon("folder-open")
 	iconFilePen      = icon("note-pencil")
 	iconSave         = icon("floppy-disk")
-	iconPencil       = icon("pencil-simple")
+	iconPencil       = icon("pencil-simple") // 就地编辑（Diff 标签条上的开关）
 	iconEye          = icon("eye")
 	iconCode         = icon("code")
 	iconImage        = icon("image")

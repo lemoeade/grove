@@ -227,6 +227,8 @@ Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.g
 
 选几行再暂存是行级（`app/lines.go`）：`LinesEdits` 把选中的删除行和新增行配对，`git.LinesPatch` 生成只含这些行的补丁，总是正向套到 index 上（取消暂存时反过来算一份正向的），这样不用处理反向补丁的上下文问题。
 
+Diff 里就地编辑（`app/diffedit.go`）：比工作区那一边的 Diff（未暂存、未跟踪，`CanEditDiff`）标签条上有铅笔开关（命令 `diff.editInPlace`，`ToggleDiffEdit`）。开了就在后面开那个文件的标签（固定），Diff 的 `Doc.EditDoc` 指着它，`BindDiffEdit` 每帧把 `DiffState.New` 接到它的缓冲区、`Editable` 设真：打的字、撤销、保存都是文件标签的，`Save` 在 Diff 上存的是它（⌘S 照用），标签上的圆点、标签条上的保存、状态栏的“就地编辑 · 没保存”看 `DiffDirty`。编辑时不出块级暂存 / 丢弃（磁盘上的和缓冲区里的对不上），键绑定换成 `DiffEditBindings`（去掉不带修饰键的 J / K，那是要打的字）。再点铅笔、文件标签关了、或者这个 Diff 不再是比工作区的，就 `Doc.StopEdit`：新的一边换成一份拷贝再重读磁盘，只看的 Diff 不跟着文件标签里没保存的字变。标签条上“在编辑器中打开”的图标从铅笔换成了文件（和 Git 栏行上的一样），铅笔只表示就地编辑。
+
 编辑器左边的改动条可以点开看那块的原文（`app/peek.go`：`Peek`、`DocHunks`、`HunkAt`、`OnGutterClick`），里面能还原那块（直接改缓冲区，⌘Z 能撤）或者暂存它（要先保存，同样走 `HunkPatch`）。块是编辑器的 `DiffState{Old: d.Base, New: d.Buf}` 算的，和改动条同一种算法；`DiffState` 按标签留着（最近 4 个），缓冲区改了 mygo 只重比改动附近的行，不每次整篇 diff（装订线接管点击每帧都要问有没有块）。编辑器里的块随缓冲区重算，`SyncPeek` 跟着挪。卡是叠在代码上的（盖住块下面几行）：想像 VS Code 那样插在两行之间、把下面的代码推下去，要 mygo 普通编辑器（`editor.State`）能在行间留一块高度给调用方画；现在只有 Diff 查看器有（`DiffState.Annotations` + `RenderAnnotation`，内部是 `blockAnnotation`），`State` 没有对应的口子，等 mygo 加了再改。
 
 Diff 里 ⌥J / ⌥K 跳上一个 / 下一个文件，上下一处改动是 `app/diffnav.go` 的 `GoToHunk`。

@@ -190,6 +190,9 @@ type Doc struct {
 	DiffSt *editor.DiffState
 	Raw    [2][]byte // 比较的两边原样的内容（旧、新）：DiffSt 的缓冲区把 CRLF 换成了 \n，块级操作的补丁要用原样的
 	ToHunk bool      // 全文 diff 刚读出来、或刚切了局部 / 全文：界面下一帧把光标所在（还没动过就是第一处）那块改动滚进视图，并清掉
+	// EditDoc 是 Diff 里就地编辑（app/diffedit.go）时共用缓冲区的那个文件标签：Diff 的新一边就是它的缓冲区，
+	// 改动、保存、撤销都是它的；nil 为只看。不记进会话
+	EditDoc *Doc
 
 	Rest  Rest  // 编辑器 / Diff 视图的光标停手多久了（ui 的 restingEditor / restingDiff）
 	Occur Occur // 光标下那个词在本文件里的其他出现（ui 的 occurMarks）
@@ -1172,6 +1175,24 @@ func (d *Doc) ApplyDiff(gen int, dc git.DiffContent, err error, expand bool) boo
 		d.DiffSt, d.ToHunk = st, expand
 	}
 	return true
+}
+
+// StopEdit 结束 Diff 里的就地编辑：新的一边不再是文件标签的缓冲区，换成它现在内容的一份拷贝（只看的 Diff 不该跟着
+// 文件标签里没保存的字变；接着重读的会换成磁盘上的）。
+func (d *Doc) StopEdit() {
+	f := d.EditDoc
+	d.EditDoc = nil
+	if d.DiffSt == nil {
+		return
+	}
+	d.DiffSt.Editable = false
+	if f != nil && f.Buf != nil && d.DiffSt.New == f.Buf {
+		nw := editor.NewBuffer(f.Buf.String())
+		if l := highlight.LanguageFor(d.Change.Path); l != nil {
+			nw.SetLanguage(l)
+		}
+		d.DiffSt.New = nw
+	}
 }
 
 // setText 把读到的内容放进标签：后台建好了缓冲区的（新标签、大文件重读）直接换上，否则重设原来的；
