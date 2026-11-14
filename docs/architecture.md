@@ -351,6 +351,11 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 - 状态机是 `app.PopMenu`（`app/popmenu.go`，每个窗口一个 `App.Menu`），不碰界面：项由建菜单的函数经 `app.MenuSink` 收集（每帧重收，灰不灰跟着状态），
   位置、命中、子菜单延迟（`MenuSubDelay` 0.2 s）、安全三角、灰项提示（`MenuTipDelay` 0.5 s）、按住拖松开（`MenuHoldMin` 0.15 s 或动过）、键盘都在里面，
   `popmenu_test.go` 直接喂事件测（Tester 按不住右键）。选中一项后再跑一遍建菜单的函数，选中那项的 `Chosen()` 报真（和 mygo 的菜单一样）。
+- 项很多的菜单带筛选框（`PopMenu.Filterable`，界面是 `filterMenuButton`，现在只有状态栏的语言）：框钉在面板顶上（`MenuLevel.Head`，
+  `gmenuFilter` 画，它不拿键盘，字由接收层交给 `PopMenu.Key`），面板最多露 `MenuFilterRows`（12）项。打的字用 `internal/fuzzy` 筛第 0 层
+  （`shown`：匹配得好的在前，没有的是一行灰字），第一项高亮、回车选它；退格删字，Esc 先清空再关。面板的位置和宽按全部项算，
+  筛出来的少时从底下收短，框不挪地方。窗口放不下、要滚的菜单一开就把打勾的项滚进来（`revealChecked`），键盘挪到面板外面的项时跟着滚（`reveal`）；
+  在不用滚的菜单上滚轮不再把它关掉。
 - `ui/gmenu.go` 喂事件和画：`menuPress` 给树里的元素挂 `HandleInput`（文件树以外的用 `ctxMenu`，按钮的菜单用 `openMenuBelow` 在按钮下面开），右键按下打开菜单，按住时的移动和松开（归按下的那个元素）转给菜单；
   `gmenuRunChoice`（`root` 开头）执行选中的项，`gmenuView`（`root` 里、`pending` 之前）画各层面板，开着时在 Overlay 里铺一层全窗口的接收层：点外面关菜单并吞掉这一下，
   滚动、Esc、失去焦点关，键盘也是它接。接收层盖着整个窗口，事件到不了底下的元素，所以 `menuPress` 每帧把挂了菜单的元素

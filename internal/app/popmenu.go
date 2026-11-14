@@ -1,12 +1,16 @@
 package app
 
 import (
+	"slices"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/lemoeade/grove/internal/fuzzy"
+	"github.com/lemoeade/grove/internal/i18n"
 )
 
 // 文件树的右键菜单是 Grove 自己画的（issue #48）：mygo 的 PopoverMenu 不能按住右键拖到项上松开、子菜单没有悬停延迟
@@ -66,6 +70,10 @@ const (
 	MenuTipDelay = 500 * time.Millisecond // 灰着的项停多久出原因
 	MenuHoldMin  = 150 * time.Millisecond // 右键按下后过了这么久（或动过）再松开，才算拖到项上松开选它
 	menuMoveSlop = 4
+	// 带筛选框的菜单（Filterable）：框高 32，钉在面板顶上不跟着滚；面板最多露 12 项，多的滚。
+	// 打字时面板的位置和宽按全部项算、不变，框不会在手底下挪地方；项少了面板从底下收短。
+	MenuFilterH    = 32
+	MenuFilterRows = 12
 )
 
 // MenuRect 是窗口里的一块（DIP）。
@@ -79,6 +87,7 @@ type MenuLevel struct {
 	Rect   MenuRect // 面板（含外边距）
 	Scroll float32  // 窗口都放不下时往下滚了多少
 	Full   float32  // 不滚时整份的高
+	Head   float32  // 钉在顶上不滚的那一条（筛选框）的高，没有是 0
 	Hot    int      // 高亮的项，-1 是没有
 	Check  bool     // 这一层有勾选项：字左边留出勾的位置
 }
@@ -103,7 +112,7 @@ func hasCheck(items []MenuEntry) bool {
 
 // ItemY 是第 i 项在面板里（不算滚动）的顶。
 func (l *MenuLevel) ItemY(i int) float32 {
-	y := float32(MenuPad)
+	y := l.Head + MenuPad
 	for _, it := range l.Items[:i] {
 		y += entryH(it)
 	}
@@ -130,8 +139,9 @@ type PopMenu struct {
 	ax, ay  float32  // 打开时指针的位置
 	row     MenuRect // 右键的那一行（OpenRow）：菜单从它底下展开、往上翻时到它上面，不盖住它；H 为 0 是没有
 
-	root   []MenuEntry
-	path   []int // 开着的子菜单：path[i] 是第 i 层里开着子菜单的那项
+	all    []MenuEntry // 建菜单的函数给的全部项
+	root   []MenuEntry // 第 0 层显示的：没在筛选时就是 all
+	path   []int       // 开着的子菜单：path[i] 是第 i 层里开着子菜单的那项
 	levels []MenuLevel
 
 	// 按住右键打开的：这次按下松开之前，松开在项上就选它（按住拖到项上松开）
@@ -152,6 +162,11 @@ type PopMenu struct {
 
 	choice    int // 选中的项（seq），0 是没选
 	choiceLbl string
+
+	// 筛选（Filterable）：query 是打的字，hint 是框里没字时的灰字
+	filter bool
+	query  string
+	hint   string
 
 	// 文件树里能开菜单的地方（界面每帧登记，上一帧的位置）：菜单开着时在别处右键，关掉它、在那里开一份新的
 	targets, nextTargets []MenuTarget
@@ -214,6 +229,7 @@ func (m *PopMenu) Open(owner any, build func(MenuSink), x, y, winW, winH float32
 		held: held, openAt: now, downLvl: -1, downIdx: -1, px: x, py: y, hasPtr: true, hotSince: now,
 		targets: m.targets, nextTargets: m.nextTargets}
 	m.Refresh(winW, winH)
+	m.revealChecked()
 }
 
 // MenuRowMax 是 OpenRow 当成"一行"的最高：再高的（列表的空白处、整块面板）按指针处开。
@@ -228,6 +244,7 @@ func (m *PopMenu) OpenRow(owner any, build func(MenuSink), x, y float32, row Men
 	}
 	m.row = row
 	m.layout()
+	m.revealChecked()
 }
 
 // OpenByKey 是键盘（⇧F10、菜单键）打开的：在 (x, y) 打开，第一个能选的项高亮着，↑↓ 回车马上能用。
@@ -265,13 +282,111 @@ func (m *PopMenu) Refresh(winW, winH float32) {
 	m.winW, m.winH = winW, winH
 	s := &menuCollect{}
 	m.build(s)
-	m.root = tidy(s.items)
-	if len(m.root) == 0 {
+	m.all = tidy(s.items)
+	if len(m.all) == 0 {
 		// 建菜单的函数每帧重跑，对着的东西没了（结果变少、行被删）时它什么也不加：关掉，不留一块空面板
 		m.Close()
 		return
 	}
+	m.root = m.shown()
 	m.layout()
+}
+
+// Filterable 给开着的菜单顶上加一个筛选框（Open 之后调）：打的字进框里，只留下匹配的项（不分大小写，
+// 字按顺序出现就算，开头就对上的排前面），第一项高亮着、回车选它；退格删字，Esc 先清空、再按才关。
+// 项很多的菜单（状态栏的语言）用它；面板最多露 MenuFilterRows 项。hint 是框里没字时的灰字。
+func (m *PopMenu) Filterable(hint string) {
+	if !m.open {
+		return
+	}
+	m.filter, m.hint = true, hint
+	m.root = m.shown()
+	m.layout()
+	m.revealChecked()
+}
+
+// Filter 报这份菜单带不带筛选框、框里打的字和没字时的灰字。
+func (m *PopMenu) Filter() (on bool, query, hint string) { return m.filter, m.query, m.hint }
+
+// shown 是第 0 层显示的项：筛选着时是匹配的那些（分隔线不要，匹配得好的在前，一样好的照原来的顺序），
+// 一个也没有时是一行灰着的"没有匹配的项"。
+func (m *PopMenu) shown() []MenuEntry {
+	p := fuzzy.New(m.query)
+	if !m.filter || p.Empty() {
+		return m.all
+	}
+	type hit struct {
+		e     MenuEntry
+		score int
+	}
+	var hits []hit
+	for _, e := range m.all {
+		if e.Sep {
+			continue
+		}
+		if score, _, ok := p.Match(e.Label, 0); ok {
+			hits = append(hits, hit{e, score})
+		}
+	}
+	if len(hits) == 0 {
+		return []MenuEntry{{Label: i18n.T("没有匹配的项"), Disabled: true}}
+	}
+	slices.SortStableFunc(hits, func(a, b hit) int { return b.score - a.score })
+	out := make([]MenuEntry, len(hits))
+	for i, h := range hits {
+		out[i] = h.e
+	}
+	return out
+}
+
+// setQuery 换筛选的字：重新筛、滚回顶上、第一个能选的项高亮。
+func (m *PopMenu) setQuery(q string, now time.Time) {
+	m.query = q
+	m.path, m.pending = nil, false
+	m.root = m.shown()
+	m.layout()
+	l := &m.levels[0]
+	l.Scroll = 0
+	l.Hot = next(l.Items, -1, 1)
+	m.byKey, m.hotSince = true, now
+}
+
+// reveal 把第 lv 层高亮的项滚进面板里（键盘挪到面板外面的项时）。
+func (m *PopMenu) reveal(lv int) {
+	l := &m.levels[lv]
+	if l.Hot >= 0 {
+		l.show(l.Hot)
+	}
+}
+
+// show 把第 i 项滚进面板里（本来就露着的不动）。
+func (l *MenuLevel) show(i int) {
+	top := l.ItemY(i) - l.Head - MenuPad // 滚动的那一份里，这一项上面的外边距的顶
+	view := l.Rect.H - l.Head
+	if top < l.Scroll {
+		l.Scroll = top
+	}
+	if bot := top + entryH(l.Items[i]) + 2*MenuPad; bot > l.Scroll+view {
+		l.Scroll = bot - view
+	}
+	l.Scroll = max(0, min(l.Scroll, l.Full-l.Rect.H))
+}
+
+// revealChecked 是刚打开时：窗口放不下、要滚的那层，把打勾的项滚进来（语言菜单一开就看得到现在是哪种）。
+func (m *PopMenu) revealChecked() {
+	if len(m.levels) == 0 {
+		return
+	}
+	l := &m.levels[0]
+	if l.Full <= l.Rect.H {
+		return
+	}
+	for i, it := range l.Items {
+		if it.Checked {
+			l.show(i)
+			return
+		}
+	}
 }
 
 // tidy 去掉头尾和连着的分隔线（建菜单的函数按组加分隔线，有的组整组没有）。
@@ -338,12 +453,27 @@ func (m *PopMenu) layout() {
 		if lv < len(old) && len(old[lv].Items) == len(items) {
 			l.Hot, l.Scroll = old[lv].Hot, old[lv].Scroll
 		}
-		h := float32(MenuPad * 2)
+		if lv == 0 && m.filter {
+			l.Head = MenuFilterH
+		}
+		h := l.Head + MenuPad*2
 		for _, it := range items {
 			h += entryH(it)
 		}
 		l.Full = h
 		w := m.width(items)
+		shownH := h
+		if lv == 0 && m.filter {
+			// 宽和位置都按没筛选时的全部项算（最多露 MenuFilterRows 项），打字时框不挪地方；
+			// 筛出来的项少时面板从底下收短（下面的 shownH），不留一大块空的
+			l.Check = hasCheck(m.all)
+			w = max(m.width(m.all), m.measure(m.hint)+MenuPad*2+MenuTextL+MenuTextR)
+			h = l.Head + MenuPad*2
+			for _, it := range m.all {
+				h += entryH(it)
+			}
+			h = min(h, l.Head+MenuPad*2+MenuFilterRows*MenuItemH)
+		}
 		var x, y float32
 		if lv == 0 {
 			x, y = m.ax, m.ay
@@ -374,6 +504,7 @@ func (m *PopMenu) layout() {
 			h = max(maxH, MenuItemH+2*MenuPad)
 		}
 		y = max(MenuMargin, min(y, m.winH-MenuMargin-h))
+		h = min(h, shownH)
 		l.Rect = MenuRect{x, y, w, h}
 		l.Scroll = max(0, min(l.Scroll, l.Full-h))
 		if l.Hot >= len(items) {
@@ -399,7 +530,10 @@ func (m *PopMenu) hit(x, y float32) (lv, idx int) {
 		if !l.Rect.has(x, y) {
 			continue
 		}
-		yy := y - l.Rect.Y + l.Scroll
+		if y-l.Rect.Y < l.Head { // 筛选框上
+			return lv, -1
+		}
+		yy := y - l.Rect.Y - l.Head + l.Scroll
 		top := float32(MenuPad)
 		for i, it := range l.Items {
 			h := entryH(it)
@@ -656,8 +790,11 @@ func (m *PopMenu) Scroll(x, y, dy float32) {
 		return
 	}
 	lv, _ := m.hit(x, y)
-	if lv < 0 || m.levels[lv].Full <= m.levels[lv].Rect.H {
+	if lv < 0 {
 		m.Close()
+		return
+	}
+	if m.levels[lv].Full <= m.levels[lv].Rect.H { // 在放得下、不用滚的菜单上滚：不动（以前会把菜单关掉）
 		return
 	}
 	l := &m.levels[lv]
@@ -691,11 +828,39 @@ func next(items []MenuEntry, i, dir int) int {
 	return -1
 }
 
-// Key 是菜单开着时按的键：↑↓ 挪高亮（跳过分隔线和灰着的），→ 开子菜单、← 关回上一层，回车 / 空格选，Esc 关；
-// text 是打的字，跳到下一个以它开头的项。返回 true 是菜单接了。
+// Key 是菜单开着时按的键：↑↓ 挪高亮（跳过分隔线和灰着的，挪到面板外面的项时跟着滚），→ 开子菜单、← 关回上一层，
+// 回车 / 空格选，Esc 关；text 是打的字，跳到下一个以它开头的项。带筛选框的菜单（Filterable）里打的字进框里，
+// 退格删一个字，框里有字时空格也是字、Esc 先清空。返回 true 是菜单接了。
 func (m *PopMenu) Key(key ui.Key, text string, now time.Time) bool {
 	if !m.open {
 		return false
+	}
+	if m.filter && len(m.path) == 0 {
+		switch {
+		case key == ui.KeyEscape && m.query != "":
+			m.setQuery("", now)
+			return true
+		case key == ui.KeyBackspace:
+			if m.query != "" {
+				_, n := utf8.DecodeLastRuneInString(m.query)
+				m.setQuery(m.query[:len(m.query)-n], now)
+			}
+			return true
+		case key == ui.KeySpace && m.query != "":
+			m.setQuery(m.query+" ", now)
+			return true
+		case key == 0 && text != "":
+			// 空格由按键那一路加（上面），这里不认，免得按一下进两个
+			if t := strings.Map(func(r rune) rune {
+				if unicode.IsPrint(r) && !unicode.IsSpace(r) {
+					return r
+				}
+				return -1
+			}, text); t != "" {
+				m.setQuery(m.query+t, now)
+			}
+			return true
+		}
 	}
 	lv := m.focusLevel()
 	l := &m.levels[lv]
@@ -714,6 +879,7 @@ func (m *PopMenu) Key(key ui.Key, text string, now time.Time) bool {
 			m.pending = false
 			m.path = m.path[:min(lv, len(m.path))]
 			m.layout()
+			m.reveal(lv)
 		}
 		return true
 	case ui.KeyRight:
@@ -750,6 +916,7 @@ func (m *PopMenu) Key(key ui.Key, text string, now time.Time) bool {
 				m.setHot(lv, j, now)
 				m.path = m.path[:min(lv, len(m.path))]
 				m.layout()
+				m.reveal(lv)
 				break
 			}
 		}

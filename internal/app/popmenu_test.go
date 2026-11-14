@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -496,5 +498,155 @@ func TestPopMenuOpenRow(t *testing.T) {
 	k.m.Down(50, 310, 1, k.now)
 	if r := k.m.Levels()[0].Rect; !k.m.IsOpen() || r.Y != 324 {
 		t.Fatalf("右键别的行：新菜单该在它底下（324）：%+v", r)
+	}
+}
+
+// 带筛选框的菜单（状态栏的语言）：框钉在顶上、面板最多露 12 项、一开就把打勾的项滚进来；打的字只留下匹配的项、
+// 第一项高亮、回车选它，面板原地从底下收短；退格删字，Esc 先清空再关；没有匹配的是一行灰字。
+func TestPopMenuFilter(t *testing.T) {
+	k := newPopKit(t)
+	names := []string{"Plain"}
+	for i := range 30 {
+		names = append(names, fmt.Sprintf("Lang%02d", i))
+	}
+	names = append(names, "Python", "TSX", "TypeScript")
+	build := func(m MenuSink) {
+		for i, n := range names {
+			if i == 1 {
+				m.Separator()
+			}
+			if m.Item(n).Checked(n == "Python").Chosen() {
+				k.chosen = append(k.chosen, n)
+			}
+		}
+	}
+	open := func() MenuLevel {
+		k.m.Open("lang", build, 100, 100, 1000, 800, false, k.now)
+		k.m.Filterable("filter")
+		return k.m.Levels()[0]
+	}
+	l := open()
+	wantH := float32(MenuFilterH + 2*MenuPad + MenuFilterRows*MenuItemH)
+	if l.Head != MenuFilterH || l.Rect.H != wantH || l.Full <= l.Rect.H {
+		t.Fatalf("筛选框 %v、面板高 %v（要 %v）、整份 %v", l.Head, l.Rect.H, wantH, l.Full)
+	}
+	py := slices.IndexFunc(l.Items, func(e MenuEntry) bool { return e.Label == "Python" })
+	if y := l.ItemY(py) - l.Scroll; y < l.Head || y+MenuItemH > l.Rect.H {
+		t.Fatalf("打勾的 Python 没滚进面板：y=%v，滚了 %v", y, l.Scroll)
+	}
+	if lv, idx := k.m.hit(l.Rect.X+20, l.Rect.Y+MenuFilterH/2); lv != 0 || idx != -1 {
+		t.Fatalf("筛选框上不是项：%d %d", lv, idx)
+	}
+	// 在面板上滚到头，再在放得下的菜单上滚不关
+	k.m.Scroll(l.Rect.X+20, l.Rect.Y+100, -5000)
+	if got := k.m.Levels()[0]; got.Scroll != 0 || !k.m.IsOpen() {
+		t.Fatalf("滚回顶上：%v", got.Scroll)
+	}
+
+	labels := func() []string {
+		var out []string
+		for _, e := range k.m.Levels()[0].Items {
+			if !e.Sep {
+				out = append(out, e.Label)
+			}
+		}
+		return out
+	}
+	k.m.Key(0, "t", k.now)
+	k.m.Key(0, "s", k.now)
+	got := k.m.Levels()[0]
+	if on, q, hint := k.m.Filter(); !on || q != "ts" || hint != "filter" {
+		t.Fatalf("筛选 %v %q %q", on, q, hint)
+	}
+	if ls := labels(); len(ls) != 2 || ls[0] != "TSX" || ls[1] != "TypeScript" {
+		t.Fatalf("ts 留下 %q", ls)
+	}
+	short := l.Rect
+	short.H = MenuFilterH + 2*MenuPad + 2*MenuItemH
+	if got.Hot != 0 || got.Rect != short || got.Scroll != 0 || !got.Check {
+		t.Fatalf("筛选后第一项高亮、面板原地从底下收短、勾的位置还留着：%+v（要 %+v）", got, short)
+	}
+	// 项少了、不用滚了：在面板上滚不关
+	k.m.Scroll(l.Rect.X+20, l.Rect.Y+50, 50)
+	if !k.m.IsOpen() {
+		t.Fatal("在不用滚的菜单上滚不该关")
+	}
+	// 点第二项（位置要算上筛选框）
+	x, y := k.center(0, 1)
+	k.m.Down(x, y, 0, k.now)
+	k.m.Up(x, y, 0, k.now)
+	k.run()
+	if !slices.Equal(k.chosen, []string{"TypeScript"}) {
+		t.Fatalf("点筛出来的第二项：%q", k.chosen)
+	}
+
+	// 退格、空格、Esc
+	k.chosen = nil
+	open()
+	k.m.Key(0, "p", k.now)
+	k.m.Key(0, " ", k.now) // 文字那一路的空格不认（按键那一路加）
+	k.m.Key(ui.KeySpace, "", k.now)
+	k.m.Key(0, "y", k.now)
+	if _, q, _ := k.m.Filter(); q != "p y" {
+		t.Fatalf("空格进框里：%q", q)
+	}
+	if ls := labels(); len(ls) != 1 || ls[0] != "Python" {
+		t.Fatalf("p y 留下 %q", ls)
+	}
+	k.m.Key(ui.KeyBackspace, "", k.now)
+	k.m.Key(ui.KeyBackspace, "", k.now)
+	if _, q, _ := k.m.Filter(); q != "p" {
+		t.Fatalf("退格：%q", q)
+	}
+	k.m.Key(0, "zz", k.now)
+	if got := k.m.Levels()[0]; len(got.Items) != 1 || !got.Items[0].Disabled || got.Hot != -1 {
+		t.Fatalf("没有匹配的：%+v", got.Items)
+	}
+	k.m.Key(ui.KeyEnter, "", k.now)
+	if !k.m.IsOpen() || len(k.chosen) != 0 {
+		t.Fatal("没有匹配的时回车不选、不关")
+	}
+	if !k.m.Key(ui.KeyEscape, "", k.now) || !k.m.IsOpen() {
+		t.Fatal("框里有字时 Esc 先清空")
+	}
+	if _, q, _ := k.m.Filter(); q != "" || len(labels()) != len(names) {
+		t.Fatalf("清空后回到全部：%q %d", q, len(labels()))
+	}
+	k.m.Key(0, "py", k.now)
+	k.m.Key(ui.KeyEnter, "", k.now)
+	k.run()
+	if !slices.Equal(k.chosen, []string{"Python"}) {
+		t.Fatalf("回车选第一项：%q", k.chosen)
+	}
+	open()
+	k.m.Key(ui.KeyEscape, "", k.now)
+	if k.m.IsOpen() {
+		t.Fatal("框里没字时 Esc 关")
+	}
+}
+
+// 窗口放不下、要滚的菜单：键盘挪到面板外面的项时跟着滚，转回第一项时滚回顶上。
+func TestPopMenuKeyReveal(t *testing.T) {
+	k := newPopKit(t)
+	build := func(m MenuSink) {
+		for i := range 40 {
+			m.Item(fmt.Sprintf("Item%02d", i))
+		}
+	}
+	k.m.Open("tall", build, 10, 10, 1000, 300, false, k.now)
+	for i := range 40 {
+		k.m.Key(ui.KeyDown, "", k.now)
+		l := k.m.Levels()[0]
+		if y := l.ItemY(l.Hot) - l.Scroll; l.Hot != i || y < 0 || y+MenuItemH > l.Rect.H {
+			t.Fatalf("↓ 到第 %d 项（高亮 %d）没露出来：y=%v，面板高 %v", i, l.Hot, y, l.Rect.H)
+		}
+	}
+	k.m.Key(ui.KeyDown, "", k.now)
+	if l := k.m.Levels()[0]; l.Hot != 0 || l.Scroll != 0 {
+		t.Fatalf("转回第一项：高亮 %d，滚了 %v", l.Hot, l.Scroll)
+	}
+	k.m.Key(ui.KeyUp, "", k.now)
+	if l := k.m.Levels()[0]; l.Hot != 39 || l.Scroll != l.Full-l.Rect.H {
+		t.Fatalf("↑ 转到最后一项：高亮 %d，滚了 %v", l.Hot, l.Scroll)
 	}
 }

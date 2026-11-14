@@ -7,6 +7,7 @@ import (
 
 	wui "github.com/egoist/mygo/ui"
 
+	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/testutil"
 )
 
@@ -103,12 +104,10 @@ func chooseMenu(t *testing.T, tt *wui.Tester, path ...string) error {
 		case found.States&accessDisabled != 0:
 			return fmt.Errorf("ui: the item %q is disabled", strings.Join(path[:i+1], " > "))
 		}
-		// 窗口都放不下的菜单（比如状态栏的语言菜单）：那一项在面板外面时先在面板上滚到它露出来，和人滚轮一样
-		if p := ms[i].Panel; found.Y < p.Y || found.Y+found.H > p.Y+p.H {
-			dy := found.Y + found.H - (p.Y + p.H) + 4
-			if found.Y < p.Y {
-				dy = found.Y - p.Y - 4
-			}
+		// 要滚的菜单（窗口放不下的，或者带筛选框、最多露 12 项的语言菜单）：那一项不在面板里、或者可能压在顶上的筛选框
+		// 底下时，先在面板上把它滚到中间，和人滚轮一样。不用滚的菜单上滚一下什么也不动。
+		if p := ms[i].Panel; found.Y < p.Y+app.MenuFilterH+app.MenuPad || found.Y+found.H > p.Y+p.H {
+			dy := found.Y + found.H/2 - (p.Y + p.H/2)
 			tt.Scroll(float32(p.X+p.W/2), float32(p.Y+p.H/2), 0, float32(dy))
 			tt.Frame()
 			found = nil

@@ -1142,8 +1142,8 @@ func docStatus(a *app.App, c *wui.Context, d *docs.Doc) {
 		if l := d.Buf.Language(); l != nil {
 			lang = l.Name
 		}
-		menuButton(a, c, item(lang).Label(i18n.Tf("语言 %s", lang)).Tooltip(i18n.T("按哪种语言高亮、缩进和注释；点开可以换一种")),
-			menuOwner{"status.lang", d.Where()}, func(m menu) { languageMenu(a, m, d) })
+		filterMenuButton(a, c, item(lang).Label(i18n.Tf("语言 %s", lang)).Tooltip(i18n.T("按哪种语言高亮、缩进和注释；点开可以换一种")),
+			menuOwner{"status.lang", d.Where()}, i18n.T("打字筛选语言"), func(m menu) { languageMenu(a, m, d) })
 		if d.Kind == docs.File {
 			ind := a.IndentLabel(d)
 			menuButton(a, c, item(ind).Label(i18n.Tf("缩进 %s", ind)).Tooltip(i18n.T("这个文件的缩进；点开可以换，或把缩进转成空格 / Tab")),
