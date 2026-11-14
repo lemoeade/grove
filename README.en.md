@@ -29,7 +29,8 @@ about 79 MiB of memory when idle.
 | ![Split editors](docs/screenshots/split-editors.png) | ![Terminals](docs/screenshots/terminals.png) |
 
 - **Workspace**: open a `.code-workspace` file or a folder, with support for multiple windows. Select and drag files
-  across repos in the file tree, and undo the last file operation.
+  across repos in the file tree, undo the last file operation, and press Space for the system Quick Look
+  (images and PDFs included).
 - **Editor**: drag a tab to an edge to split the editor. Includes an outline, sticky scroll, snippets and Markdown
   previews with Mermaid and math. Supports encodings such as GB18030 and Big5. Click the language in the
   status bar to switch it; type in the menu to filter. Run formatters like gofmt and prettier,

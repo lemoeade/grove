@@ -441,6 +441,7 @@ func buildCommands() []*Command {
 		&Command{ID: "tree.collapse", Title: "收起目录 / 仓库，或走到上一级", Key: ui.KeyLeft, Context: FileTree},
 		&Command{ID: "tree.open", Title: "固定打开文件", Key: ui.KeyEnter, Context: FileTree},
 		&Command{ID: "tree.openSide", Title: "在侧边打开", Mods: alt, Key: ui.KeyEnter, Context: FileTree},
+		&Command{ID: "tree.quickLook", Title: "快速查看", Key: ui.KeySpace, Context: FileTree},
 		&Command{ID: "tree.rename", Title: "重命名…", Key: ui.KeyF2, Context: FileTree},
 		&Command{ID: "tree.trash", Title: "移到废纸篓…", Mods: cmd, Key: ui.KeyBackspace, Context: FileTree},
 		&Command{ID: "tree.copy", Title: "复制文件", Mods: cmd, Key: ui.KeyC, Context: FileTree},

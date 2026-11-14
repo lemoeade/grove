@@ -36,6 +36,7 @@ func newUI(t *testing.T, ws, stateDir string) (*app.App, *wui.Tester, func(what 
 	a.OpenURL = func(string) error { return nil }
 	a.ShowPath = func(string) error { return nil }
 	a.InFinder = func(string) {}
+	a.Preview = func(string) error { return nil }
 	keepCopy := app.CopyFiles // 文件树的 ⌘C 不碰真的系统剪贴板
 	app.CopyFiles = func([]string) {}
 	t.Cleanup(func() { app.CopyFiles = keepCopy })
