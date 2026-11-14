@@ -1,6 +1,6 @@
 Grove 打包进应用的第三方组件和它们的许可证（每个一份全文，文件名见右边）：
 
-  mygo（github.com/egoist/mygo，v0.7.4）                                MIT                     mygo.txt
+  mygo（github.com/egoist/mygo，v0.9.0）                                MIT                     mygo.txt
   libghostty-vt（Ghostty，提交 befcdfd2c3a1）                           MIT                     ghostty.txt
   JetBrains Mono Nerd Font（resources/fonts）                           SIL OFL 1.1             jetbrains-mono-nerd-font.txt
   Go 标准库和 golang.org/x/image、net、text                             BSD-3-Clause            go.txt
