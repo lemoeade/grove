@@ -146,7 +146,7 @@ Claude 会跑 `go test`，等于执行 PR 里的代码，所以别在不认识�
 ## 许可
 
 - 第三方组件的许可证全文位于 `resources/licenses/`（清单见 `README.txt`），可以从关于窗口打开。
-- `ghostty.txt` 目前只有来源说明（libghostty-vt 所用的 Ghostty 提交）和许可证链接。**正式发布前需补入 Ghostty 的
-  LICENSE 全文**（MIT 要求附上原文）。
+- `ghostty.txt` 里是来源说明（libghostty-vt 所用的 Ghostty 提交）和那个提交上 LICENSE 的全文（MIT 要求附上原文）。
+  mygo 换了 Ghostty 的提交（`plugins/terminal/mygo-plugin.json`）时，对着新提交的 LICENSE 核一遍。
 - Grove 使用 MIT 许可证（根目录 `LICENSE`）。如需在 Info.plist 中写入版权信息，在 `mygo.json` 中添加 `copyright`
   字段，对应 `NSHumanReadableCopyright`。
