@@ -67,6 +67,8 @@ GOTOOLCHAIN=auto go test -run TestCatalog ./internal/i18n/ -update      # 改了
 GOTOOLCHAIN=auto go test ./internal/appicon -update                     # 改了图标的画法后重新生成 assets/icon.png
 GOTOOLCHAIN=auto go tool mygo build -skip-dmg -skip-notarize -sign -    # 出 build/darwin-arm64/Grove.app（ad hoc 签名）
 open -g -n build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<临时目录> --env WORKBENCH_LOGS=<临时目录>
+WORKBENCH_STATE=<临时目录> WORKBENCH_LOGS=<临时目录> GOTOOLCHAIN=auto go tool mygo dev -background -sign -   # 边改边看：改了 Go 代码自动重编、重开，
+                                                                   # "Grove Dev"（.mygo/dev 里）在后台起、不抢到最前；Ctrl+C 停
 footprint -p <pid> --noCategories -f bytes                         # 30 秒后量；量完只杀自己启动的那个 pid
 ```
 
