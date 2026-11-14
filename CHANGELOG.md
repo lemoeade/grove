@@ -4,6 +4,9 @@
 
 ## 未发布
 
+- 升到 mygo v0.9.0（以下照 mygo 的发布说明，Grove 自己的代码没改）：滚动条换成 VS Code 编辑器那样的；
+  编辑器多认 Svelte、HCL / Terraform、ERB、Jinja、Nix，脚本按第一行的 `#!` 认语言；列表、大纲、右键菜单每帧少做些事；
+  终端里 Ctrl+I、Ctrl+M、Ctrl+[ 发的是 Tab、回车、Esc，网址认到第一个非 ASCII 字符为止；注销、关机时也会走退出前的保存。
 - 软换行按文件类型：默认只给 Markdown、纯文本（还有 .rst、.adoc、.org 和 README、LICENSE 这些没后缀的）换行，代码不换；
   设置 → 编辑器 → 软换行可改成"所有文件"或"关"。⌥Z 只切换当前这个标签，不改设置。以前在设置里开着软换行的照旧所有文件都换。
 - `.vue` 文件有了自己的高亮（状态栏写 Vue，不再是 HTML）：`<script lang="ts">` 按 TypeScript 分（类型上色），
