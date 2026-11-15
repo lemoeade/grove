@@ -305,6 +305,7 @@ func (a *App) LoadFiles(r *Repo) {
 				if a.Edit != nil && a.Edit.Repo == r {
 					a.selectEditRow() // 输入框是在文件列表读到之前开的
 				}
+				a.defFilesLoaded() // 跳到定义在等文件列表
 				if q := a.revealLater; q != nil && q.repo == r {
 					a.revealLater = nil
 					switch {

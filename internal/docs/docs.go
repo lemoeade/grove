@@ -726,6 +726,14 @@ func (d *Doc) Outline() *outline.Tree {
 	return d.olTree
 }
 
+// LastOutline 是上次解析出的大纲（可能比内容旧一点），从没解析过为 nil；不解析（打字时每个键都要的地方用，比如补全的种类）。
+func (d *Doc) LastOutline() *outline.Tree {
+	if !d.olOK {
+		return nil
+	}
+	return d.olTree
+}
+
 // outlineParses 数 Outline 真解析了几次（测试看打字时是不是每个键都整篇解析）。
 var outlineParses atomic.Int64
 

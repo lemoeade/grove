@@ -30,6 +30,7 @@ type Settings struct {
 	FinalNewline bool    `json:"finalNewline,omitempty"` // 保存时补上末尾换行
 	// 默认开，存反面
 	NoStickyScroll bool `json:"noStickyScroll,omitempty"` // 不粘性滚动（默认开：滚动时把当前函数 / 类 / 标题吸在编辑器顶上，ui/sticky.go）
+	NoWordComplete bool `json:"noWordComplete,omitempty"` // 敲字时不提示词补全（默认开：代码文件里敲字就列这个文件、开着的文件和符号索引里的词，app/wordcomplete.go；⌃Space 照样给）
 	ShowIgnored    bool `json:"showIgnored,omitempty"`    // 文件树里灰显被 .gitignore 忽略的文件和目录（放在设置的"文件树"页）
 	// 本地历史（默认开，存反面；app/localhist.go）
 	NoLocalHistory bool `json:"noLocalHistory,omitempty"` // 不记本地历史（默认每次保存在状态目录的 history 里留一份）

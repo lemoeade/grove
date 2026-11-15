@@ -531,6 +531,14 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 
 - 状态栏的语言、缩进、换行、编码都能点（`app/docstatus.go`），改了的语言和缩进只对这个文件、记进会话。
 - 代码片段（`internal/snippets`）：内置的加状态目录里的，Tab 展开，Tab / ⇧Tab 跳位。
+- 跳到定义（`app/definition.go`，不通过 LSP）：mygo 的 `State.OnDefinition`（⌘点击、F12、右键菜单）调 `GoToDefinition`，`identAt` 取光标下的标识符和 `pkg.` 限定词，
+  在开着的文件的 `Doc.Outline()` 和符号索引（`app/symindex.go`）里找同名的声明（标题、分组不算），`narrowDefs` 按限定词 = 目录名、同文件、同目录缩；
+  一处直接 `OpenAt`（固定标签，记进 ‹ › 历史），几处开面板 `#名字`，`Palette.defs` 在时只列同名的（`definitionItems`）。文件列表没读完或索引在建时记进 `App.defWait`，
+  `LoadFiles` 读完（`defFilesLoaded`）和 `mergeSymbols` 建完最后一批（`defIndexed`）时再看：标签、内容版本、光标都没变才接着跳。
+- 补全（`app/wordcomplete.go`）：`State.OnCompletion` 调 `Complete`，片段（`snippetCompletions`）和词（`wordItems`）一起 `ShowCompletions`。词来自这个文件光标前后 128 KB（近的在前、
+  大纲里有的带种类；种类看 `Doc.LastOutline()`，不在每个键上整篇解析）、开着的同一族语言的文件（`langFamily`；按标签和内容版本缓存在 `App.words`，超过 1 MB 不扫）、同一仓库索引里的名字（索引已经建过才用，补全不去建）。
+  前缀开头的在前，其次按字的顺序出现的；不给正好等于前缀的。mygo 的回车会接补全，所以 `CompleteTick`（每帧画编辑器前）在打完一个整词时把列表里同名的那项拿掉重给；
+  mygo 没有读补全状态的接口，退格时不重给。`Settings.NoWordComplete` 关掉敲字时的词（⌃Space 照样给），Markdown / 纯文本（`docs.IsProse`）只在 ⌃Space 时给。
 - 图片：预览、和 HEAD 的图片 Diff；Markdown 和 SVG 用 ⇧⌘V 在源码和预览之间切（`TogglePreview`）；`app/image.go` 的 `ToggleHex` 切十六进制视图，也能用默认应用打开。
 - 键盘移动光标后，编辑器让光标上下各留 min(5 行, 视图高 1/5)（`ui/caret.go` 的 `caretMargin`）。mygo 自己只留 3 行；点击和滚轮不受影响。
 - 光标在标识符上（没有选区、只有一个光标）停稳 250 ms（`ui.OccurRest`）后，本文件里同名的其他出现（整词、区分大小写）铺上 mygo 的 `Occurrence` 底色（`ui/occur.go` 的 `occurMarks`，写进 `St.TextBackgrounds`，状态在 `Doc.Occur`）；打字、换词马上清掉。mygo 自己只在有选区时标选中文字的其他出现，也没有"光标下的词"这个选项，所以用 `TextBackgrounds` 在 Grove 这边做；按内容版本和词算一次，大于 `StickyQuick` 的文件只搜看得见的行、滚了重搜。搜索编辑器（底色是搜到的那几处）和十六进制视图不标。

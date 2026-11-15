@@ -89,18 +89,25 @@ func snipEditable(d *docs.Doc) bool {
 	return d != nil && d.Kind == docs.File && d.Editable() && !d.St.ReadOnly
 }
 
-// SnippetCompletions 是编辑器要补全时（敲字、⌃Space）给的片段：前缀（不分大小写）以光标前的词开头的；
-// 敲字时词至少一个字，⌃Space 时词空着就全给。跳位会话里不给（Tab 留给跳位）。给的同时记下来（SnipOffer），SnipTick 事后认。
+// SnippetCompletions 是编辑器要补全时（敲字、⌃Space）只给片段（测试用；编辑器接的是 Complete，片段和词一起给）。
 func (a *App) SnippetCompletions(d *docs.Doc, req editor.CompletionRequest) {
-	d.SnipOffer = nil
+	items, offer := a.snippetCompletions(d, req)
+	d.SnipOffer = offer
+	if len(items) > 0 {
+		d.St.ShowCompletions(req.Offset-len(req.Prefix), items)
+	}
+}
+
+// snippetCompletions 是补全里的片段：前缀（不分大小写）以光标前的词开头的；敲字时词至少一个字，⌃Space 时词空着就全给。
+// 跳位会话里不给（Tab 留给跳位）。offer 是给了的那批（存进 SnipOffer，SnipTick 事后认），没有片段为 nil。
+func (a *App) snippetCompletions(d *docs.Doc, req editor.CompletionRequest) (items []editor.Completion, offer *snippets.Offer) {
 	if d.Snip != nil || !snipEditable(d) || !req.Explicit && req.Prefix == "" {
-		return
+		return nil, nil
 	}
 	start := req.Offset - len(req.Prefix)
 	indent, unit := a.snipIndent(d, start)
 	low := strings.ToLower(req.Prefix)
-	var items []editor.Completion
-	offer := &snippets.Offer{Start: start, Ver: d.Buf.Version()}
+	offer = &snippets.Offer{Start: start, Ver: d.Buf.Version()}
 	for _, sn := range a.Snippets().For(snipLang(d)) {
 		if !strings.HasPrefix(strings.ToLower(sn.Prefix), low) {
 			continue
@@ -110,10 +117,9 @@ func (a *App) SnippetCompletions(d *docs.Doc, req editor.CompletionRequest) {
 		offer.Items = append(offer.Items, e)
 	}
 	if len(items) == 0 {
-		return
+		return nil, nil
 	}
-	d.SnipOffer = offer
-	d.St.ShowCompletions(start, items)
+	return items, offer
 }
 
 // SnipTick 每帧（画编辑器前）跟上 d：补全给过片段、缓冲区变了，光标前正好是哪一条展开的文字就认作选了它，开跳位会话；

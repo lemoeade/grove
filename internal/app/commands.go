@@ -548,6 +548,9 @@ var editorTable = []struct {
 	{editor.UseSelectionForFind, "用选中的文字查找", "查找", 0},
 	{editor.FindInSelection, "在选区里查找", "查找", 0},
 
+	{editor.GoToDefinition, "跳到定义", "代码", 0},
+	{editor.ShowCompletions, "提示补全", "代码", edits},
+
 	{editor.ScrollCursorCenter, "把光标滚到中间", "其他", 0},
 	{editor.NextHunk, "下一处改动", "其他", hunk},
 	{editor.PreviousHunk, "上一处改动", "其他", hunk},

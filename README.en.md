@@ -32,7 +32,8 @@ about 79 MiB of memory when idle.
   across repos in the file tree, undo the last file operation, and press Space for the system Quick Look
   (images and PDFs included).
 - **Editor**: drag a tab to an edge to split the editor. Includes an outline, sticky scroll, snippets and Markdown
-  previews with Mermaid and math. Supports encodings such as GB18030 and Big5. Click the language in the
+  previews with Mermaid and math. ⌘-click or F12 goes to a definition by name (across all repositories, with a list when there are several),
+  and typing suggests words from the file, open files and the symbol index (⌃Space to ask). Supports encodings such as GB18030 and Big5. Click the language in the
   status bar to switch it; type in the menu to filter. Run formatters like gofmt and prettier,
   or checks like go vet and eslint, on save. A file replaced in the preview tab reopens where you left it.
 - **Git**: stage changes by hunk or line, edit an unstaged diff in place (the pencil on the tab strip; ⌘S writes the file), and resolve conflicts in the editor. View a commit graph for one repo, or the

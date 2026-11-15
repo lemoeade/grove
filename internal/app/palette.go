@@ -95,6 +95,11 @@ type PaletteState struct {
 
 	History []string // 跑过的 git 命令的参数，最新的在最后
 	sig     string   // 上次算 Items 时的输入和文件数，变了才重算
+
+	// 跳到定义找到好几处时开的面板（definition.go）：输入还是 "#"+defs 时只列同名的，按离 defFrom 近排
+	defs    string
+	defFrom *docs.Doc
+	defQual string
 }
 
 // OpenPalette 打开面板，输入框里预先放 prefix（"" 快速打开、">" 命令、">git " git 命令、"@" 当前文件的符号、"#" 所有仓库里的符号），
@@ -102,6 +107,7 @@ type PaletteState struct {
 func (a *App) OpenPalette(prefix string) {
 	p := &a.Palette
 	p.Open, p.Text, p.Sel, p.sig = true, prefix, 0, "\x00"
+	p.defs, p.defFrom, p.defQual = "", nil, ""
 	for _, r := range a.Repos {
 		a.EnsureFiles(r)
 	}
@@ -111,6 +117,7 @@ func (a *App) OpenPalette(prefix string) {
 func (a *App) ClosePalette() {
 	p := &a.Palette
 	p.Open, p.Text, p.Items, p.Note, p.sig = false, "", nil, "", ""
+	p.defs, p.defFrom, p.defQual = "", nil, ""
 }
 
 // UpdatePalette 在输入或文件列表变了之后重算列表；界面每帧画面板前调。
@@ -153,6 +160,9 @@ func (a *App) paletteItems(text string) ([]PaletteItem, string) {
 		return a.symbolItems(strings.TrimSpace(rest))
 	}
 	if rest, ok := strings.CutPrefix(text, "#"); ok {
+		if w := a.Palette.defs; w != "" && strings.TrimSpace(rest) == w {
+			return a.definitionItems(w)
+		}
 		return a.workspaceSymbolItems(strings.TrimSpace(rest))
 	}
 	if rest, ok := strings.CutPrefix(text, "!"); ok {

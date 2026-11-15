@@ -318,6 +318,9 @@ func (a *App) mergeSymbols(rs []symResult, stop *atomic.Bool, last bool) {
 		ix.building, ix.stop = false, nil
 	}
 	ix.ver++
+	if last {
+		a.defIndexed() // 跳到定义等着索引的，接着找
+	}
 }
 
 // workspaceSymbolItems 是 "#"：所有仓库里名字模糊匹配 q 的符号，分高的、路径短的、名字短的靠前，最多 maxSymbolItems 条；

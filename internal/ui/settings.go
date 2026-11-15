@@ -141,6 +141,13 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
+			{1, "敲字时提示补全", "代码文件里敲字就列出这个文件、开着的文件和符号索引里的词；⌃Space 随时手动提示", func(c *wui.Context, l, d string) {
+				on := !s.NoWordComplete
+				toggle(c, l, d, &on, func() {
+					s.NoWordComplete = !on
+					done()
+				})
+			}},
 			{1, "显示空白字符", "", func(c *wui.Context, l, d string) {
 				choice(c, l, d, &s.Whitespace, workspace.Whitespaces, whitespaceNames, done)
 			}},

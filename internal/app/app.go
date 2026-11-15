@@ -198,6 +198,8 @@ type App struct {
 
 	olCache   olCache       // 快速打开"名字@符号"读的没开着的文件的大纲（palettesym.go）
 	syms      symIndex      // 工作区符号的索引（"#"，symindex.go）
+	defWait   *defWait      // 跳到定义在等索引建完（definition.go）
+	words     wordCache     // 补全用的词，按标签记着（wordcomplete.go）
 	snips     *snippets.Set // 读好的代码片段（snippets.go）：第一次用时读
 	snipCheck time.Time     // 上次看片段目录变了没有
 	taskVer   int           // 哪个仓库的 Tasks 重扫了就加一（面板 "!" 跟着重算）

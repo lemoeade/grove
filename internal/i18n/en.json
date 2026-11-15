@@ -2259,5 +2259,15 @@
   "就地编辑：直接改工作区那一边，保存写回文件": "Edit in place: change the working-tree side directly; saving writes the file",
   "退出编辑，只看": "Stop editing (view only)",
   "快速查看": "Quick Look",
-  "没法快速查看": "Can’t Quick Look"
+  "没法快速查看": "Can’t Quick Look",
+  "%s 有 %d 处定义；改了输入就是按名字模糊找": "%s has %d definitions; edit the query to fuzzy-search by name",
+  "%s 有 %d 处定义；改了输入就是按名字模糊找|1": "%s has %d definition; edit the query to fuzzy-search by name",
+  "代码": "Code",
+  "代码文件里敲字就列出这个文件、开着的文件和符号索引里的词；⌃Space 随时手动提示": "While typing in code files, suggest words from this file, open files and the symbol index; ⌃Space suggests any time",
+  "提示补全": "Trigger Suggest",
+  "敲字时提示补全": "Suggest While Typing",
+  "正在建符号索引，建好了跳到 %s 的定义…": "Building the symbol index; will go to the definition of %s when it's ready…",
+  "没找到 %s 的定义": "No definition found for %s",
+  "跳到定义": "Go to Definition",
+  "这里就是 %s 的定义": "This is the definition of %s"
 }

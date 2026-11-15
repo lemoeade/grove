@@ -513,10 +513,17 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 				c.Invalidate()
 			}
 		}
-		a.SnipTick(d) // 代码片段：补全里选了的认出来开始跳位，跳位会话跟着改动挪
+		a.SnipTick(d)     // 代码片段：补全里选了的认出来开始跳位，跳位会话跟着改动挪
+		a.CompleteTick(d) // 词补全：敲完一个整词时列表里拿掉它，回车好换行
 		d.St.OnCompletion = nil
 		if d.Kind == docs.File && d.Editable() {
-			d.St.OnCompletion = func(req editor.CompletionRequest) { a.SnippetCompletions(d, req) }
+			d.St.OnCompletion = func(req editor.CompletionRequest) { a.Complete(d, req) }
+		}
+		if d.Kind == docs.File { // ⌘点击、F12：按名字跳到定义（搜索结果文档的在 searchDocKeys 里另设）
+			d.St.OnDefinition = nil
+			if app.CanGoToDefinition(d) {
+				d.St.OnDefinition = func(off int) { a.GoToDefinition(d, off) }
+			}
 		}
 		keys := docKeys(a, d, blocks)
 		if d.Kind == docs.SearchDoc {
