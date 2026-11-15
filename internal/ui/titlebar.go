@@ -126,6 +126,8 @@ func breadcrumb(a *app.App, c *wui.Context, tb wui.Element) {
 			ic = iconSettings
 		case docs.Rebase:
 			ic = iconRebase
+		case docs.MDPreview:
+			ic = iconEye
 		}
 		kind := func() { // 墨迹（彩色底块是块的边）离文件名 3.5
 			if ic == iconFile {

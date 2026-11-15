@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -15,8 +16,8 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// fake 是假的后端：Src 以 bad 开头是源码错（Mermaid 那样的多行），boom 开头是后端坏了，slow 开头等 release；
-// 别的画一张 len(Src)×10 乘 20 DIP 的 PNG（按 Scale 放大）。记下渲染的顺序。
+// fake 是假的后端：Src 以 bad 开头是源码错（Mermaid 那样的多行），boom 开头是后端坏了，slow 开头等 release，
+// vec 开头给一张矢量（只有路径的 SVG）；别的画一张 len(Src)×10 乘 20 DIP 的 PNG（按 Scale 放大）。记下渲染的顺序。
 type fake struct {
 	mu      sync.Mutex
 	order   []string
@@ -24,20 +25,25 @@ type fake struct {
 	release chan struct{}
 }
 
-func (f *fake) Render(ctx context.Context, q Request, maxPixels int) ([]byte, float32, float32, float32, error) {
+func (f *fake) Render(ctx context.Context, q Request, maxPixels int) (Output, error) {
 	f.mu.Lock()
 	f.order = append(f.order, q.Src)
 	f.mu.Unlock()
 	switch {
 	case strings.HasPrefix(q.Src, "bad"):
-		return nil, 0, 0, 0, &SourceError{Msg: "Parse error on line 1:\n" + q.Src + "\n---^\nExpecting 'STR', got 'EOF'"}
+		return Output{}, &SourceError{Msg: "Parse error on line 1:\n" + q.Src + "\n---^\nExpecting 'STR', got 'EOF'"}
 	case strings.HasPrefix(q.Src, "boom"):
-		return nil, 0, 0, 0, errors.New("page gone")
+		return Output{}, errors.New("page gone")
 	case strings.HasPrefix(q.Src, "slow"):
 		<-f.release
 	}
 	w, h := float32(len(q.Src)*10), float32(20)
-	return pngOf(int(w*q.Scale), int(h*q.Scale)), w, h, 4, nil
+	if strings.HasPrefix(q.Src, "vec") {
+		svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%g" height="%g" viewBox="0 0 %g %g">`+
+			`<path d="M0 0H%g V%g Z" fill="currentColor"/></svg>`, w, h, w, h, w, h)
+		return Output{SVG: svg, W: w, H: h, Depth: 4}, nil
+	}
+	return Output{PNG: pngOf(int(w*q.Scale), int(h*q.Scale)), W: w, H: h, Depth: 4}, nil
 }
 
 func (f *fake) Close() {
@@ -366,5 +372,53 @@ func TestWait(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("关了 Wait 还在等")
+	}
+}
+
+// 矢量的公式：解析成 ui.SVG，没有位图；换主题、缩放、字色都还是这一张，不再画。换了 Mermaid 的配色要重画，先拿旧的顶着。
+func TestRenderVector(t *testing.T) {
+	r, f, _ := newFake(t)
+	q := Request{Kind: Math, Src: "vec x^2", Scale: 2, Size: 14, Color: "#000000"}
+	var res Result
+	eventually(t, "矢量好了", func() bool { res, _ = r.Get(q); return res.Vector != nil })
+	if res.Bitmap != nil || res.Image() != res.Vector || res.W != 70 || res.H != 20 || res.Depth != 4 {
+		t.Fatalf("矢量结果 %+v", res)
+	}
+	for _, c := range []func(*Request){
+		func(q *Request) { q.Dark = true; q.Color = "#ffffff" },
+		func(q *Request) { q.Scale = 1 },
+	} {
+		q2 := q
+		c(&q2)
+		if got, ok := r.Get(q2); !ok || got.Vector != res.Vector || r.Pending(q2) {
+			t.Fatalf("矢量换主题 / 缩放又排了队：%+v", q2)
+		}
+	}
+	if n := len(f.rendered()); n != 1 {
+		t.Fatalf("矢量画了 %d 次", n)
+	}
+	r.mu.Lock()
+	if r.bytes <= 0 {
+		t.Error("矢量没算进缓存的字节数")
+	}
+	r.mu.Unlock()
+
+	m := Request{Kind: Mermaid, Src: "graph TD; A-->B", Scale: 2, Palette: Palette{Bg: "#ffffff", Fg: "#000000"}.JSON()}
+	var old Result
+	eventually(t, "图好了", func() bool { old, _ = r.Get(m); return old.Bitmap != nil })
+	m.Palette = Palette{Bg: "#1e1e1e", Fg: "#eeeeee"}.JSON()
+	if got, ok := r.Get(m); !ok || got.Bitmap != old.Bitmap || !r.Pending(m) {
+		t.Fatal("换配色该先拿旧的顶着、再画")
+	}
+	eventually(t, "新配色画好", func() bool { got, _ := r.Get(m); return got.Bitmap != nil && got.Bitmap != old.Bitmap })
+}
+
+// Palette.JSON 是渲染页认的键（bg、fg……），零值的也写上。
+func TestPaletteJSON(t *testing.T) {
+	got := Palette{Bg: "#ffffff", Fg: "#111111", Line: "#666666", Accent: "#0969da", Muted: "#888888",
+		Surface: "#f6f6f6", Surface2: "#eeeeee", Border: "#dddddd"}.JSON()
+	want := `{"bg":"#ffffff","fg":"#111111","line":"#666666","accent":"#0969da","muted":"#888888","surface":"#f6f6f6","surface2":"#eeeeee","border":"#dddddd"}`
+	if got != want {
+		t.Fatalf("Palette.JSON = %s", got)
 	}
 }

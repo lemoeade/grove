@@ -18,6 +18,9 @@ func outlineView(a *app.App, c *wui.Context) {
 	if d != nil && d.IsDiffView() {
 		d = nil
 	}
+	if d != nil && d.Kind == docs.MDPreview && d.MDSource != nil { // 旁边的预览：大纲是源文件的
+		d = d.MDSource
+	}
 	var tree *outline.Tree
 	if d != nil {
 		tree = d.Outline()
@@ -117,9 +120,19 @@ func outlineTree(a *app.App, c *wui.Context, d *docs.Doc, tree *outline.Tree) {
 		if d.OutlineSel < 0 || d.OutlineSel >= st.Rows() {
 			return
 		}
-		a.JumpHere(docs.Jump{Line: tree.Flat[tree.ByKey[st.Item(d.OutlineSel)]].Line})
-		if focus {
-			a.FocusDoc = true
+		line := tree.Flat[tree.ByKey[st.Item(d.OutlineSel)]].Line
+		switch pv := a.CurrentDoc(); {
+		case pv != nil && pv != d: // 旁边的预览：预览滚过去，源文件的光标也挪过去
+			pv.AnchorLine = line + 1
+			d.JumpTo(docs.Jump{Line: line})
+		case d.Preview && d.CanPreview() && !docs.IsSVG(d.Name()): // 显示着预览：预览滚到那一节，键盘不回（看不见的）编辑器
+			a.JumpHere(docs.Jump{Line: line})
+			d.AnchorLine = line + 1
+		default:
+			a.JumpHere(docs.Jump{Line: line})
+			if focus {
+				a.FocusDoc = true
+			}
 		}
 	}
 	switch {

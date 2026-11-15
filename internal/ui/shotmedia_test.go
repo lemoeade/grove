@@ -28,7 +28,7 @@ import (
 )
 
 // shotRender 是截图用的渲染后端（WORKBENCH_SHOT_RENDER=目录）：预览要的每一张记进目录里的 requests.jsonl；
-// 目录里有画好的 <键>.png + <键>.json（{"w","h","depth"}）就给那张，<键>.err 是源码错，都没有就说还没画。
+// 目录里有画好的 <键>.png 或 <键>.svg + <键>.json（{"w","h","depth"}）就给那张，<键>.err 是源码错，都没有就说还没画。
 // 画是另一步，仓库里没有这个工具：用无窗口的 WKWebView 跑 internal/render/assets/page.html，读 requests.jsonl 画出来，
 // 再跑一遍截图。这样图里的 Mermaid 和公式是真 WebKit 画的，排版是预览自己的。
 type shotRender struct {
@@ -38,17 +38,17 @@ type shotRender struct {
 }
 
 func shotRenderKey(q render.Request) string {
-	sum := sha256.Sum256(fmt.Appendf(nil, "%s|%s|%t|%g|%g|%s", q.Kind, q.Src, q.Dark, q.Scale, q.Size, q.Color))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s|%s|%t|%g|%g|%s|%s", q.Kind, q.Src, q.Dark, q.Scale, q.Size, q.Color, q.Palette))
 	return hex.EncodeToString(sum[:8])
 }
 
-func (s *shotRender) Render(ctx context.Context, q render.Request, maxPixels int) ([]byte, float32, float32, float32, error) {
+func (s *shotRender) Render(ctx context.Context, q render.Request, maxPixels int) (render.Output, error) {
 	k := shotRenderKey(q)
 	s.mu.Lock()
 	if !s.seen[k] {
 		s.seen[k] = true
 		line, _ := json.Marshal(map[string]any{"key": k, "kind": q.Kind, "src": q.Src, "dark": q.Dark, "scale": q.Scale,
-			"size": q.Size, "color": q.Color, "maxPixels": maxPixels})
+			"size": q.Size, "color": q.Color, "maxPixels": maxPixels, "palette": q.Palette})
 		if f, err := os.OpenFile(filepath.Join(s.dir, "requests.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
 			f.Write(append(line, '\n'))
 			f.Close()
@@ -56,18 +56,23 @@ func (s *shotRender) Render(ctx context.Context, q render.Request, maxPixels int
 	}
 	s.mu.Unlock()
 	if b, err := os.ReadFile(filepath.Join(s.dir, k+".err")); err == nil {
-		return nil, 0, 0, 0, &render.SourceError{Msg: string(b)}
+		return render.Output{}, &render.SourceError{Msg: string(b)}
+	}
+	var out render.Output
+	b, _ := os.ReadFile(filepath.Join(s.dir, k+".json"))
+	if err := json.Unmarshal(b, &out); err != nil {
+		return render.Output{}, errors.New("not rendered yet")
+	}
+	if svg, err := os.ReadFile(filepath.Join(s.dir, k+".svg")); err == nil {
+		out.SVG = string(svg)
+		return out, nil
 	}
 	pic, err := os.ReadFile(filepath.Join(s.dir, k+".png"))
 	if err != nil {
-		return nil, 0, 0, 0, errors.New("not rendered yet")
+		return render.Output{}, errors.New("not rendered yet")
 	}
-	var size struct{ W, H, Depth float32 }
-	b, _ := os.ReadFile(filepath.Join(s.dir, k+".json"))
-	if err := json.Unmarshal(b, &size); err != nil {
-		return nil, 0, 0, 0, err
-	}
-	return pic, size.W, size.H, size.Depth, nil
+	out.PNG = pic
+	return out, nil
 }
 
 func (s *shotRender) Close() {}

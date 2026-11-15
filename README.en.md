@@ -36,7 +36,7 @@ about 79 MiB of memory when idle.
   across repos in the file tree, undo the last file operation, and press Space for the system Quick Look
   (images and PDFs included).
 - **Editor**: drag a tab to an edge to split the editor. Includes an outline, sticky scroll, snippets and Markdown
-  previews with Mermaid and math. ⌘-click or F12 goes to a definition by name (across all repositories, with a list when there are several),
+  previews with Mermaid diagrams and MathJax math (colored to match the theme, formulas drawn as vectors), front matter, the HTML READMEs use and remote badges (⌥⇧⌘V opens a preview to the side that scrolls with the editor). ⌘-click or F12 goes to a definition by name (across all repositories, with a list when there are several),
   resting the pointer on a name shows its declaration and comment, ⇧F12 finds references in every repository,
   and typing suggests words from the file, open files and the symbol index (⌃Space to ask). Supports encodings such as GB18030 and Big5. Click the language in the
   status bar to switch it; type in the menu to filter. Run formatters like gofmt and prettier,
@@ -112,8 +112,8 @@ version changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 [mygo](https://github.com/egoist/mygo), egoist's [godiff](https://github.com/egoist/godiff) and
 [kero](https://github.com/egoist/kero), libghostty-vt from [Ghostty](https://ghostty.org),
-[JetBrains Mono](https://www.jetbrains.com/lp/mono/), [Mermaid](https://mermaid.js.org) and
-[MathJax](https://www.mathjax.org). Other third-party components and their licenses are in
+[JetBrains Mono](https://www.jetbrains.com/lp/mono/), [Mermaid](https://mermaid.js.org)
+and [MathJax](https://www.mathjax.org). Other third-party components and their licenses are in
 [resources/licenses/](resources/licenses/).
 
 ## License

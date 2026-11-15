@@ -186,9 +186,9 @@ type Doc struct {
 	MDView any
 	// MDSource 是并排预览（Kind == MDPreview）跟着的 Markdown 标签
 	MDSource *Doc
-	mdText  string
-	mdVer   uint64
-	mdOK    bool
+	mdText   string
+	mdVer    uint64
+	mdOK     bool
 	// SVG 预览（SVGPreview）：缓冲区变了才重新解析，svgImg 是最近一次成功的
 	svgImg     *ui.SVG
 	svgErr     string
@@ -338,7 +338,7 @@ type Key struct {
 func (d *Doc) Key() Key {
 	k := Key{Kind: d.Kind, Root: d.Root, Path: d.Rel, Commit: d.Commit, Copy: d.Copy}
 	switch d.Kind {
-	case File:
+	case File, MDPreview: // 并排预览：一个文件一个
 		if d.Root == "" {
 			k.Path = d.Abs
 		}

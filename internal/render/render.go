@@ -1,12 +1,14 @@
-// Package render 把 Markdown 预览里的 Mermaid 图和 TeX 公式画成位图：一个看不见的 WebView 跑 mermaid.js 和
-// MathJax，画到 canvas 上取 PNG（web.go）。每个主窗口一个 Renderer：预览每帧来取（Get），没有的排进队列，后台一个
-// goroutine 一条条渲染，好了叫界面重画；60 秒没活就销毁 WebView，再要再建。mygo 的 SVG 解析器画不了文字，所以不自己画。
+// Package render 渲染 Markdown 预览里的 Mermaid 图和 TeX 公式：一个看不见的 WebView 跑 mermaid.js（Grove
+// 自己的外观）和 MathJax 4（web.go）。公式只有路径（字形是 currentColor），拿回 SVG 文本由 mygo 画成矢量；图带文字（mygo 的 SVG
+// 不画文字），画到 canvas 上取 PNG。每个主窗口一个 Renderer：预览每帧来取（Get），没有的排进队列，后台一个
+// goroutine 一条条渲染，好了叫界面重画；60 秒没活就销毁 WebView，再要再建。
 package render
 
 import (
 	"container/list"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -34,10 +36,10 @@ const (
 	inUse = 2 * time.Second
 	// MaxPixels 是一张位图最多多少像素（4 字节一个）：超了按比例降分辨率，免得一张大图吃掉整个缓存。
 	MaxPixels = 4 << 20
-	// IdleClose 是最后一次渲染之后多久销毁 WebView（加载了 mermaid.js 和 MathJax 的 WKWebView 连 WebContent、GPU 进程
+	// IdleClose 是最后一次渲染之后多久销毁 WebView（加载了 Mermaid 和 MathJax 的 WKWebView 连 WebContent、GPU 进程
 	// 要两三百 MB）。
 	IdleClose     = 60 * time.Second
-	renderTimeout = 20 * time.Second // 头一次要先加载 3.5 MB 的 mermaid.js
+	renderTimeout = 20 * time.Second // 头一次要先加载几 MB 的脚本（mermaid.js 3.5 MB，MathJax 和字体）
 	bumpEvery     = 250 * time.Millisecond
 	retryAfter    = 30 * time.Second // 不是源码的错（后端建不起来、超时）：记着的错过这么久再试
 	openRetry     = 5 * time.Second  // 后端建不起来之后这么久之内不再建
@@ -47,17 +49,58 @@ const (
 type Request struct {
 	Kind  string
 	Src   string  // Mermaid 源码或 TeX（不带 $）
-	Dark  bool    // 深色主题（Mermaid 用 dark 主题）
-	Scale float32 // 一个 DIP 几个像素（Retina 是 2，界面缩放也算进去）
+	Dark  bool    // 深色主题
+	Scale float32 // 一个 DIP 几个像素（Retina 是 2，界面缩放也算进去）；画成矢量的公式用不着
 	Size  float32 // 公式：周围文字的字号（DIP），1 em 多大；图不用
-	Color string  // 公式的颜色（#rrggbb）；图跟着 Mermaid 的主题
+	Color string  // 公式画成位图时的颜色（#rrggbb）；矢量的跟着画的时候的字色
+	// Palette 是图的配色（Palette.JSON），跟着界面主题；公式不用
+	Palette string
 }
 
-// Result 是渲染好的一张：位图和它该占的大小（DIP；行内公式 Depth 是基线以下多少）。失败时 Err 是错误信息，没有位图。
+// Palette 是 Mermaid 图的配色（#rrggbb）：底色、字、连线、强调（箭头）、淡字、节点的底（两档）、边框。
+type Palette struct {
+	Bg       string `json:"bg"`
+	Fg       string `json:"fg"`
+	Line     string `json:"line"`
+	Accent   string `json:"accent"`
+	Muted    string `json:"muted"`
+	Surface  string `json:"surface"`
+	Surface2 string `json:"surface2"`
+	Border   string `json:"border"`
+}
+
+// JSON 是传给渲染页的写法（Request.Palette）。
+func (p Palette) JSON() string {
+	b, _ := json.Marshal(p)
+	return string(b)
+}
+
+// Result 是渲染好的一张：位图或矢量（二者有一）和它该占的大小（DIP；行内公式 Depth 是基线以下多少）。
+// 失败时 Err 是错误信息，什么图都没有。
 type Result struct {
 	Bitmap      *ui.Bitmap
+	Vector      *ui.SVG // 只有路径的公式：mygo 自己画，currentColor 是画的时候的字色，多大都清楚
 	W, H, Depth float32
 	Err         string
+	svgLen      int // 矢量的 SVG 文本多长（算缓存的字节数）
+}
+
+// Image 是这一张的图（位图或矢量），失败、还没有时是 nil。
+func (r Result) Image() ui.ImageSource {
+	switch {
+	case r.Vector != nil:
+		return r.Vector
+	case r.Bitmap != nil:
+		return r.Bitmap
+	}
+	return nil
+}
+
+// Output 是后端渲染出来的一张：PNG 或 SVG 文本（二者有一），和它的大小（DIP）。
+type Output struct {
+	PNG         []byte
+	SVG         string
+	W, H, Depth float32
 }
 
 // SourceError 是源码本身的错（Mermaid 语法错、TeX 错）：后端照常能用，只是这一张画不了。别的错当后端坏了，关掉再建。
@@ -65,18 +108,19 @@ type SourceError struct{ Msg string }
 
 func (e *SourceError) Error() string { return e.Msg }
 
-// Backend 渲染一张：PNG 和它的大小（DIP）。真的是 web.go 的 WebView，测试里换成假的。方法在后台 goroutine 里调。
+// Backend 渲染一张。真的是 web.go 的 WebView，测试里换成假的。方法在后台 goroutine 里调。
 type Backend interface {
-	Render(ctx context.Context, req Request, maxPixels int) (png []byte, w, h, depth float32, err error)
+	Render(ctx context.Context, req Request, maxPixels int) (Output, error)
 	Close()
 }
 
 // key 认一张位图；base 认它的大小（换主题、换缩放不变），near 拿它找别的版本先顶着。
 type key struct {
 	base
-	dark  bool
-	scale float32
-	color string
+	dark    bool
+	scale   float32
+	color   string
+	palette string
 }
 
 type base struct {
@@ -90,7 +134,7 @@ func keyOf(q Request) key {
 	if q.Kind == Mermaid || q.Kind == SVG {
 		size = 0
 	}
-	return key{base{q.Kind, sha256.Sum256([]byte(q.Src)), size}, q.Dark, q.Scale, q.Color}
+	return key{base{q.Kind, sha256.Sum256([]byte(q.Src)), size}, q.Dark, q.Scale, q.Color, q.Palette}
 }
 
 type entry struct {
@@ -161,6 +205,13 @@ func (r *Renderer) Get(q Request) (res Result, ok bool) {
 		r.drop(e)
 	}
 	e, near := r.near[k.base]
+	if near && e.Value.(*entry).res.Vector != nil {
+		// 矢量的不分主题、缩放、颜色：换了也不用再画
+		en := e.Value.(*entry)
+		r.lru.MoveToFront(e)
+		en.used = time.Now()
+		return en.res, true
+	}
 	r.enqueue(job{k: k, req: q, bump: q.Kind == Inline && !near})
 	if near {
 		return e.Value.(*entry).res, true
@@ -324,7 +375,7 @@ func (r *Renderer) render(be Backend, q Request) (res Result, broken, retry bool
 		r.mu.Unlock()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), renderTimeout)
-	png, w, h, depth, err := be.Render(ctx, q, MaxPixels)
+	out, err := be.Render(ctx, q, MaxPixels)
 	cancel()
 	r.mu.Lock()
 	r.renders++
@@ -334,11 +385,18 @@ func (r *Renderer) render(be Backend, q Request) (res Result, broken, retry bool
 		bad := !errors.As(err, &se)
 		return Result{Err: errLine(err.Error())}, bad, bad
 	}
-	bmp, err := ui.DecodeBitmap(png)
-	if err != nil {
+	res = Result{W: out.W, H: out.H, Depth: out.Depth}
+	if out.SVG != "" {
+		res.svgLen = len(out.SVG)
+		if res.Vector, err = ui.ParseSVG([]byte(out.SVG)); err != nil {
+			return Result{Err: err.Error()}, false, false
+		}
+		return res, false, false
+	}
+	if res.Bitmap, err = ui.DecodeBitmap(out.PNG); err != nil {
 		return Result{Err: err.Error()}, false, false
 	}
-	return Result{Bitmap: bmp, W: w, H: h, Depth: depth}, false, false
+	return res, false, false
 }
 
 // errLine 是错误信息的头一行。Mermaid 的语法错头一行是 Parse error on line 2:，中间是源码和箭头，
@@ -362,6 +420,9 @@ func (r *Renderer) store(k key, res Result, retry bool) {
 	if res.Bitmap != nil {
 		w, h := res.Bitmap.Size()
 		n += w * h * 4
+	}
+	if res.Vector != nil { // 解析好的路径大约是源码的几倍；mygo 画的位图在它自己的缓存里
+		n += 4 * res.svgLen
 	}
 	now := time.Now()
 	en := &entry{k: k, res: res, bytes: n, used: now}

@@ -1,13 +1,18 @@
 package render
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +20,9 @@ import (
 	"github.com/egoist/mygo"
 )
 
-// assets 是渲染页和它要的脚本（mermaid.min.js、MathJax 的 tex-svg.js 和 TeX 扩展，许可证见 assets/LICENSES），
-// 从 wbrender:// 协议给 web view（不在 Go 这边拼几 MB 的字符串，页面自己按需加载）。
+// assets 是渲染页和它要的脚本（mermaid.js、MathJax 4 和它的 TeX 扩展、字体分片，版本和许可证见
+// assets/LICENSES），从 wbrender:// 协议给 web view（不在 Go 这边拼几 MB 的字符串，页面自己按需加载）。
+// 脚本压成 .gz 放着（16 MB 压到 5 MB），给的时候解开。
 //
 //go:embed assets
 var assets embed.FS
@@ -29,7 +35,43 @@ func Register() error {
 	if err != nil {
 		return err
 	}
-	return mygo.Protocol.Handle(scheme, mygo.FileServer(sub))
+	return mygo.Protocol.Handle(scheme, assetHandler(sub))
+}
+
+// assetHandler 给 fsys 里的文件：有原样的给原样的，没有就找 <名字>.gz 解开了给。别的（目录、找不到）404。
+func assetHandler(fsys fs.FS) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		data, err := readAsset(fsys, name)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
+	})
+}
+
+// readAsset 读 fsys 里的 name，没有就读 name.gz 解开。
+func readAsset(fsys fs.FS, name string) ([]byte, error) {
+	if name == "" || strings.HasSuffix(name, ".gz") {
+		return nil, fs.ErrNotExist
+	}
+	if st, err := fs.Stat(fsys, name); err == nil {
+		if st.IsDir() {
+			return nil, fs.ErrNotExist
+		}
+		return fs.ReadFile(fsys, name)
+	}
+	f, err := fsys.Open(name + ".gz")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(zr)
 }
 
 // webBackend 是看不见的 web view：建了不放 ui.WebView 元素，它就只在后台跑页面。
@@ -72,25 +114,30 @@ func WebView(win *mygo.Window) func() (Backend, error) {
 	}
 }
 
-// Render 在页面里跑 wbRender（page.html），解出 PNG。脚本抛的错是源码的错（SourceError）。
-func (b *webBackend) Render(ctx context.Context, q Request, maxPixels int) ([]byte, float32, float32, float32, error) {
-	code := fmt.Sprintf("wbRender(%s, %s, %t, %g, %g, %s, %d)", js(q.Kind), js(q.Src), q.Dark, q.Scale, q.Size, js(q.Color), maxPixels)
+// Render 在页面里跑 wbRender（page.html）：公式是 SVG 文本，别的解出 PNG。脚本抛的错是源码的错（SourceError）。
+func (b *webBackend) Render(ctx context.Context, q Request, maxPixels int) (Output, error) {
+	code := fmt.Sprintf("wbRender(%s, %s, %t, %g, %g, %s, %d, %s)", js(q.Kind), js(q.Src), q.Dark, q.Scale, q.Size, js(q.Color),
+		maxPixels, js(q.Palette))
 	v, err := b.v.Page().EvalContext(ctx, code)
 	if err != nil {
 		var ee *mygo.EvalError
 		if errors.As(err, &ee) {
-			return nil, 0, 0, 0, &SourceError{Msg: strings.TrimPrefix(ee.Message, "Error: ")} // WebKit 给的带 Error: 前缀
+			return Output{}, &SourceError{Msg: strings.TrimPrefix(ee.Message, "Error: ")} // WebKit 给的带 Error: 前缀
 		}
-		return nil, 0, 0, 0, err
+		return Output{}, err
 	}
 	m, _ := v.(map[string]any)
-	s, _ := m["png"].(string)
-	png, err := base64.StdEncoding.DecodeString(s)
-	if err != nil || len(png) == 0 {
-		return nil, 0, 0, 0, fmt.Errorf("bad picture from the render page: %v", err)
-	}
 	num := func(k string) float32 { f, _ := m[k].(float64); return float32(f) }
-	return png, num("w"), num("h"), num("depth"), nil
+	out := Output{W: num("w"), H: num("h"), Depth: num("depth")}
+	if s, _ := m["svg"].(string); s != "" {
+		out.SVG = s
+		return out, nil
+	}
+	s, _ := m["png"].(string)
+	if out.PNG, err = base64.StdEncoding.DecodeString(s); err != nil || len(out.PNG) == 0 {
+		return Output{}, fmt.Errorf("bad picture from the render page: %v", err)
+	}
+	return out, nil
 }
 
 func (b *webBackend) Close() {

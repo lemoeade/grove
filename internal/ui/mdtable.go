@@ -38,6 +38,7 @@ func mdImageTable(c *wui.Context, o *markdown.Options, doc *parser.Document, i i
 	grid := wui.Column(c).AlignSelf(wui.Stretch).Border(1, th.TableBorder).Radius(em(0.3)).Clip().Role(wui.RoleTable)
 	co := *wui.Local(grid, mdTableKey{}, func() *markdown.Options { return &markdown.Options{ShareSelection: true} })
 	co.Theme, co.Extensions, co.LoadImage, co.OnLink, co.InlineMath = o.Theme, o.Extensions, o.LoadImage, o.OnLink, o.InlineMath
+	co.Block, co.HTML, co.CodeLink, co.LinkMenu, co.Preview = o.Block, o.HTML, o.CodeLink, o.LinkMenu, o.Preview
 	grid.Children(func() {
 		n := 0
 		for r := i + 1; r < b.Next; r = doc.Block(r).Next {

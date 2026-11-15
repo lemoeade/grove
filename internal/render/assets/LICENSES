@@ -1,11 +1,17 @@
 Third-party files in this directory
 ===================================
 
+The scripts are stored gzipped (<name>.js.gz, gzip -9 -n of the file named below); internal/render/web.go
+serves them decompressed. Nothing was changed inside them.
+
 mermaid.min.js — Mermaid 11.17.2 (https://github.com/mermaid-js/mermaid), MIT License.
 The bundle carries the notices of the libraries it includes in its own comments.
 
-mathjax/ — MathJax 3.2.2 (https://github.com/mathjax/MathJax), Apache License 2.0:
-es5/tex-svg.js and es5/input/tex/extensions/*.js (all-packages.js left out).
+mathjax/ — MathJax 4.1.3 (https://github.com/mathjax/MathJax), Apache License 2.0:
+tex-svg.js and input/tex/extensions/*.js from the mathjax package;
+fonts/mathjax-newcm-font/svg/dynamic/*.js from @mathjax/mathjax-newcm-font 4.1.3;
+fonts/mathjax-{mhchem,bbm,dsfont}-font-extension/svg.js from @mathjax/mathjax-*-font-extension 4.1.3
+(all Apache License 2.0, https://github.com/mathjax/MathJax-src and https://github.com/mathjax/MathJax-fonts).
 
 
 ----- Mermaid: LICENSE -----

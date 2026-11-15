@@ -486,9 +486,27 @@
   `Page.EvalContext` 能在后台 goroutine 调，渲染器的 goroutine 就靠它，别在 UI 线程上等它。
 - canvas 被污染后无法导出 PNG：SVG 里有 `foreignObject`（mermaid 默认的 `htmlLabels: true` 就是）画到 canvas 后 `toDataURL` 抛 SecurityError。
   `page.html` 里 mermaid 必须 `htmlLabels: false`（含 `flowchart.htmlLabels`），改 mermaid 配置时别打开。
-- MathJax 的错误是 `TexError`（不是 `Error`，`EvalError` 里只看到 `[object Object]`），要包成 `Error` 再抛。它的 SVG bbox 贴着字，四周需要留白，否则绘制结果会被裁剪。
+- MathJax 的错误是 `TexError`（不是 `Error`，`EvalError` 里只看到 `[object Object]`），要包成 `Error` 再抛（MathJax 4 用 `tex.formatError`）。它的 SVG bbox 贴着字，四周需要留白，否则绘制结果会被裁剪。
+- MathJax 4 的 `options.enableEnrichment` / `enableSpeech` 这些开关会被菜单的默认设置盖掉：不在 `options.menuOptions.settings` 里把
+  `enrich`、`speech`、`braille` 关掉，它照样去加载 `sre/speech-worker.js`，渲染页里没有这个文件就一直等、直到超时。
+- MathJax 4 默认给行内公式断行，一个长的行内公式会拆成几个 `<svg>`，`querySelector("svg")` 只拿到第一段（宽度不对）。`svg.linebreaks.inline: false`。
+- MathJax 4 的字体不全在 `tex-svg.js` 里：粗体、花体、双线体这些按需加载 `[fonts]/mathjax-newcm-font/svg/dynamic/*.js`，默认从 CDN 取；
+  `\ce{}` 要 mhchem 的字体扩展。`loader.paths.fonts` 指向本地的 `mathjax/fonts`，用到的都要带上（`TestAssetsPresent` 查几样）。
+- mygo 的 `ui.ParseSVG` 不画 `<text>`、`<image>`、`<marker>`、`<pattern>`、`filter`，遇到了不报错、只是空着。MathJax 的 SVG 里字体没有的字是 `<text>`，
+  所以渲染页先查一遍（`vectorOK`），有这些的画成 PNG。只有路径的 SVG mygo 画得很好，`currentColor` 是画的时候的字色。
+- mermaid.js 11 不用 HTML 标签（`htmlLabels: false`）时，思维导图圆形节点（`((根))`）的字从圆心往右排，一半跑到圆外（白字在浅色底上就看不见了）：
+  渲染页的 `polish` 给那段字补上 `text-anchor="middle"`。Mermaid 的配置里也没有节点圆角，同样在 `polish` 里改 `rx` / `ry`。
+- 渲染用的脚本存成 `.gz` 塞进 embed（16 MB → 5 MB），`mygo.FileServer` 不会解，`web.go` 的 `assetHandler` 自己解开再 `http.ServeContent`（类型按去掉 `.gz` 的名字算）。
 - mygo 的段落只在内容变时才再问 `InlineMath`：行内公式第一次没好、按原文排了版，好了之后段落不会自己重排。`mdRender` 返回 `Renderer.Gen()`，
   预览拿它当 key 的一部分，一批好了换 key。`parser.ExtDollarMath` 不在 `parser.Default` 里，要自己或上才认 `$…$`。
+- `ScrollIntoView` 在这一帧排完版后才生效，排的是这一帧建的树。点链接的 `Clicked` 在建树中间才知道，这时设的跳转如果当帧就放记号，
+  记号常常放在已经建过的块之前或根本没机会放，下一帧又被当成"已处理"清掉。预览只认帧开始时就有的 `d.Anchor` / `d.AnchorLine`（`mdEnv.anchor` / `line`）。
+- `ui.List` 里同一帧先 `ListState.ScrollTo` 再在新排出来的行里 `ScrollIntoView`，后一个白放：列表按 `ScrollTo` 的位置排行，行里的 reveal 被盖掉。
+  分段预览等 `ScrollTo` 的下一帧再放记号（`mdView.seek >= 2`）。
+- 想把某一块滚到最上面，`ScrollIntoView`（默认 `ScrollNearest`）配一个比视图还高的透明记号：比视图高的东西从它的开头露出来，也就是顶到最上面。
+  但后面得有足够的内容：文末那一节滚不到顶，最多到滚动的底。测试里要在目标后面垫一屏多的字，不然看起来像"没滚"。
+- 分段画的 Markdown，每段是一个独立的 `parser.Document`：一段的最后一块 `b.Next == doc.Len()`，按"到文末"算行号范围会把后面所有行都揽进来，
+  要截到下一段的第一行。
 
 ## 测试和 Tester
 
@@ -517,6 +535,9 @@
 
 - Tester 的 `Label` / 文字不能重名，否则 `tt.Click` 可能定位错误：标签行用 `"标签 "+名`，编辑器用 `"编辑 "+名`。
 - `Find` 按树的顺序返回第一个匹配（标题栏 → 侧栏 → 主区 → 底栏 → 右栏 → 状态栏 → 对话框），同一文字出现在两处时用唯一的 Label 定位。
+- `tt.Click` / `tt.RightClick(文字)` 点的是找到的那个元素的中心。Markdown 里一段只有一个链接时，`Find("链接字")` 配到的是铺满一栏的整段，
+  中心落在链接右边的空白上，点不到链接（右键菜单是选区的、不是链接的）。测试里把链接写在一句话中间（`去看[另一篇](other.md)吧`）。
+- Tester 的时钟不走：`c.Now()` 只在 `tt.Advance(d)` 时变，`tt.Frame()` 不动它。按时间去抖的（预览打字停 150 ms 再重排）测试里要 `Advance` 过那段时间。
 - `Find` 是整段文字完全相等才算，`HasText` 是包含。找"2 条贮藏"这类拼出来的、或范围胶囊上"demo/docs"这类短字用 `Find`；
   结果行的 Label 带着路径（"结果文件 demo/docs/b.md"），`HasText` 会配到它。
 - 给 `Text` 加了 `.Label` 之后，`Find` / `Texts` 看到的是 Label，不是显示的字。要按显示的字找就别给文字设 Label。

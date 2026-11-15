@@ -3,6 +3,8 @@ package ui
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -17,29 +19,38 @@ import (
 	"github.com/lemoeade/grove/internal/testutil"
 )
 
-// fakeRender 是假的渲染后端：等 gate 关了才画；源码里有 bad 的是源码错；别的画一张洋红的 PNG（宽是源码长度 × 8 DIP）。
+// fakeRender 是假的渲染后端：等 gate 关了才画；源码里有 bad 的是源码错；公式里有 vec 的给一张矢量（只有路径，
+// 用字色）；别的画一张洋红的 PNG（宽是源码长度 × 8 DIP）。记下每种画了几次、Mermaid 收到的配色。
 type fakeRender struct {
-	gate   chan struct{}
-	mu     sync.Mutex
-	kinds  map[string]int
-	closed int
+	gate     chan struct{}
+	mu       sync.Mutex
+	kinds    map[string]int
+	palettes []string
+	closed   int
 }
 
-func (f *fakeRender) Render(ctx context.Context, q render.Request, maxPixels int) ([]byte, float32, float32, float32, error) {
+func (f *fakeRender) Render(ctx context.Context, q render.Request, maxPixels int) (render.Output, error) {
 	select {
 	case <-f.gate:
 	case <-ctx.Done():
-		return nil, 0, 0, 0, ctx.Err()
+		return render.Output{}, ctx.Err()
 	}
 	f.mu.Lock()
 	f.kinds[q.Kind]++
+	if q.Kind == render.Mermaid {
+		f.palettes = append(f.palettes, q.Palette)
+	}
 	f.mu.Unlock()
 	if strings.Contains(q.Src, "bad") {
-		return nil, 0, 0, 0, &render.SourceError{Msg: "Parse error on line 1:\nbad\n^"}
+		return render.Output{}, &render.SourceError{Msg: "Parse error on line 1:\nbad\n^"}
 	}
 	w, h := float32(len(q.Src)*8), float32(40)
 	if q.Kind == render.Inline {
 		h = 16
+	}
+	if q.Kind != render.Mermaid && strings.Contains(q.Src, "vec") {
+		return render.Output{SVG: fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%g" height="%g" viewBox="0 0 %g %g">`+
+			`<rect width="%g" height="%g" fill="currentColor"/></svg>`, w, h, w, h, w, h), W: w, H: h, Depth: 4}, nil
 	}
 	img := image.NewRGBA(image.Rect(0, 0, int(w*q.Scale), int(h*q.Scale)))
 	for y := range img.Bounds().Dy() {
@@ -49,7 +60,7 @@ func (f *fakeRender) Render(ctx context.Context, q render.Request, maxPixels int
 	}
 	var b bytes.Buffer
 	png.Encode(&b, img)
-	return b.Bytes(), w, h, 4, nil
+	return render.Output{PNG: b.Bytes(), W: w, H: h, Depth: 4}, nil
 }
 
 func (f *fakeRender) Close() {
@@ -142,5 +153,73 @@ func TestRenderHooks(t *testing.T) {
 	}
 	if !tt.HasText(`$e^{i\pi}+1=0$`) || !tt.HasText("graph TD; A-->B") || tt.HasText("渲染中…") || magenta(tt.Image()) != 0 {
 		t.Errorf("关了之后：%q", tt.Texts())
+	}
+}
+
+// 矢量的公式按这一帧的字色画（换深色不再渲染，颜色跟着变）；Mermaid 收到主题的配色，换深色换一套、重画。
+func TestRenderVectorTheme(t *testing.T) {
+	root, ws := testutil.TempRepo(t)
+	os.WriteFile(filepath.Join(root, "v.md"), []byte("# 矢量\n\n$$\n\\vec{v}=1\n$$\n\n```mermaid\ngraph TD; A-->B\n```\n"), 0o644)
+	a, tt, wait := newUI(t, ws, termState(t, false))
+	tt.SetScale(2)
+	tt.SetDark(false)
+	f := &fakeRender{gate: make(chan struct{}), kinds: map[string]int{}}
+	close(f.gate)
+	a.RenderOpen = func() (render.Backend, error) { return f, nil }
+	t.Cleanup(func() {
+		if a.Rend != nil {
+			a.Rend.Close()
+		}
+	})
+	d := a.OpenFile(a.Repos[0], "v.md", true)
+	wait("读好", func() bool { return d.Buf != nil && !d.Loading })
+	a.Exec("view.markdownPreview")
+	wait("都画好", func() bool {
+		_, block := tt.Find(i18n.T("Mermaid 图"))
+		_, math := tt.Find(`\vec{v}=1`)
+		return block && math && !tt.HasText("渲染中…")
+	})
+	rc, _ := tt.Find(`\vec{v}=1`)
+	ink := func() (dark, light int) { // 公式那一块里深色、浅色的像素各多少
+		img := tt.Image()
+		s := float32(2)
+		for y := int((rc.Y + 4) * s); y < int((rc.Y+rc.H-4)*s); y++ {
+			for x := int((rc.X + 4) * s); x < int((rc.X+rc.W-4)*s); x++ {
+				c := img.RGBAAt(x, y)
+				switch l := int(c.R) + int(c.G) + int(c.B); {
+				case l < 150:
+					dark++
+				case l > 600:
+					light++
+				}
+			}
+		}
+		return
+	}
+	if dk, _ := ink(); dk == 0 {
+		t.Fatal("浅色主题下公式没用深色的字画")
+	}
+
+	tt.SetDark(true)
+	wait("深色的图画好", func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.kinds[render.Mermaid] == 2
+	})
+	for range 5 { // 排版和画的时候算出来的配色一样：不多画一遍
+		tt.Frame()
+	}
+	if _, lt := ink(); lt == 0 {
+		t.Error("深色主题下公式没换成浅色的字")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.kinds[render.Math] != 1 {
+		t.Errorf("矢量公式换主题又渲染了：%d 次", f.kinds[render.Math])
+	}
+	var light, dark render.Palette
+	if len(f.palettes) != 2 || f.kinds[render.Mermaid] != 2 || json.Unmarshal([]byte(f.palettes[0]), &light) != nil || json.Unmarshal([]byte(f.palettes[1]), &dark) != nil ||
+		light.Bg == dark.Bg || light.Fg == dark.Fg || light.Accent == "" || light.Surface == light.Bg || dark.Border == "" {
+		t.Errorf("Mermaid 的配色：%q", f.palettes)
 	}
 }

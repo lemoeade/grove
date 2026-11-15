@@ -622,6 +622,7 @@ func (a *App) RemoveDoc(d *docs.Doc) {
 	if ds, _ := a.GroupDocs(g); len(ds) == 0 {
 		a.collapse(g)
 	}
+	a.closeSidePreviews(d)
 	if d := a.CurrentDoc(); d != nil {
 		a.visit(d.Key())
 	}

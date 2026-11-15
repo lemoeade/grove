@@ -1,4 +1,4 @@
-Mermaid 11.17.2（https://github.com/mermaid-js/mermaid），打包在 internal/render/assets/mermaid.min.js；
+Mermaid 11.17.2（https://github.com/mermaid-js/mermaid），压缩后放在 internal/render/assets/mermaid.min.js.gz；
 它带进来的库的声明在那个文件自己的注释里。
 
 The MIT License (MIT)

@@ -112,6 +112,8 @@ func docStatus(a *app.App, c *wui.Context, d *docs.Doc) {
 		item(i18n.T("只读 · 本地历史"))
 	case d.Kind == docs.Compare:
 		item(i18n.T("只读 · 比较"))
+	case d.Kind == docs.MDPreview:
+		item(app.KeyHint("view.markdownSidePreview", "跟着源文件 · %s 关掉", "跟着源文件"))
 	case d.Kind == docs.Term:
 		if _, tab := a.TermTabOf(d); tab != nil {
 			if p := tab.Current(); p.Exited {

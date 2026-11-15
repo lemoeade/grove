@@ -361,6 +361,19 @@ func TestAccessLabels(t *testing.T) {
 	})
 	accessCheck(t, tt, "编码只读条")
 
+	// 并排的 Markdown 预览：front matter 卡片、<details>、链接、预览标签头上的按钮
+	os.WriteFile(filepath.Join(work.Root, "rich.md"), []byte("---\ntitle: 富文本\n---\n\n# 富文本\n\n"+
+		"<details>\n<summary>细节</summary>\n\n藏着的\n\n</details>\n\n去看[说明](README.md)吧\n"), 0o644)
+	rd := a.OpenFile(r, "rich.md", true)
+	wait("读 rich.md", func() bool { return rd.Buf != nil })
+	a.Exec("view.markdownSidePreview")
+	wait("并排预览", func() bool {
+		return a.SidePreviewOf(rd) != nil && tt.HasText(i18n.T("元数据")) && tt.HasText("细节")
+	})
+	accessCheck(t, tt, "并排预览")
+	a.Exec("view.markdownSidePreview")
+	wait("关掉并排预览", func() bool { return a.SidePreviewOf(rd) == nil })
+
 	// 悬停提示：声明、注释、位置那个链接按钮（没存的改动里用到 A）
 	sd := a.OpenFile(r, "src/a.go", true)
 	wait("读 src/a.go", func() bool { return sd.Buf != nil && !sd.Loading })

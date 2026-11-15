@@ -2,15 +2,27 @@
 <html>
 <head>
 <meta charset="utf-8">
-<style>html, body { margin: 0; background: transparent } #box { position: absolute; left: 0; top: 0; width: 1600px }</style>
+<style>html, body { margin: 0; background: transparent } #box { position: absolute; left: 0; top: 0; width: 960px }</style>
 <script>
-// Workbench 的渲染页（internal/render/web.go）：在看不见的 web view 里，Go 那边 Eval wbRender(...) 拿 PNG。
-// mermaid.min.js 和 MathJax 第一次要时才加载。
+// Grove 的渲染页（internal/render/web.go）：在看不见的 web view 里，Go 那边 Eval wbRender(...) 拿结果。
+// 脚本第一次要时才加载：mermaid.min.js（图，Grove 自己的外观）、MathJax 4（公式）。
+// 什么都不从网上取：MathJax 的字体分片也在本地（loader.paths.fonts），图里不许引外面的东西。
 window.MathJax = {
+  loader: { load: [], paths: { fonts: "[mathjax]/fonts" } },
   startup: { typeset: false },
-  options: { enableMenu: false },
-  tex: { formatError: (jax, err) => { throw new Error(err.message || String(err)) } }, // TexError 不是 Error，直接抛出去只剩 [object Object]
-  svg: { fontCache: "none" },
+  // 无障碍那一套（语义增强、朗读、盲文、探索器）要另外加载几 MB 的 SRE，这里只要 SVG
+  options: {
+    enableMenu: false, enableEnrichment: false, enableSpeech: false, enableBraille: false,
+    enableExplorer: false, enableComplexity: false, enableAssistiveMml: false,
+    menuOptions: { settings: { enrich: false, speech: false, braille: false, assistiveMml: false, collapsible: false } },
+  },
+  tex: {
+    // 本地带了这两个的字体（mathjax/fonts）：用到时自己加载，不用 \require
+    autoload: { bbm: ["mathbbm", "mathbbmss", "mathbbmtt"], dsfont: ["mathds"] },
+    formatError: (jax, err) => { throw new Error(err.message || String(err)) }, // TexError 不是 Error，直接抛出去只剩 [object Object]
+  },
+  // fontCache none：每个字形就地一条 path，不用 <use>，Go 那边自己画；行内公式不断行（不然一个公式拆成几个 <svg>）
+  svg: { fontCache: "none", linebreaks: { inline: false } },
 };
 
 const loaded = {};
@@ -24,52 +36,158 @@ function load(src) {
   });
 }
 
+const FONT = "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif";
+
+// mix 是颜色 a 占 t、b 占 1-t 混出来的颜色（#rrggbb）。
+function mix(a, b, t) {
+  const rgb = (c) => { c = c.replace("#", ""); if (c.length === 3) c = [...c].map((x) => x + x).join(""); return [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16)) };
+  const x = rgb(a), y = rgb(b);
+  return "#" + x.map((v, i) => Math.round(v * t + y[i] * (1 - t)).toString(16).padStart(2, "0")).join("");
+}
+
+// groveConfig 是 Grove 自己的 Mermaid 外观：base 主题，照 GitHub Primer / Linear / Tailwind 一类的做法——
+// 节点是强调色的淡底、半透明的描边、圆角，连线是中性灰的细线，边上的字小一号、用次要字色，注释是淡琥珀色；
+// 饼图、甘特图的一串颜色第一个就是强调色。颜色都从 Grove 的主题（pal）来，换深色、换强调色跟着变。
+function groveConfig(pal, dark) {
+  const bg = pal.bg, fg = pal.fg, acc = pal.accent;
+  const c = {
+    node: mix(acc, bg, dark ? 0.17 : 0.075), nodeBorder: mix(acc, bg, dark ? 0.6 : 0.45),
+    node2: mix(fg, bg, dark ? 0.07 : 0.04), node2Border: mix(fg, bg, dark ? 0.28 : 0.22),
+    line: mix(fg, bg, dark ? 0.5 : 0.45), muted: pal.muted || mix(fg, bg, 0.6),
+    cluster: mix(fg, bg, dark ? 0.045 : 0.025), clusterBorder: mix(fg, bg, dark ? 0.16 : 0.13),
+    note: dark ? mix("#d29922", bg, 0.18) : mix("#e3b341", bg, 0.16),
+    noteBorder: dark ? mix("#d29922", bg, 0.55) : mix("#d4a72c", bg, 0.6),
+  };
+  // 饼图、甘特图、思维导图、git 图要一串分得清的颜色（白字压得住）
+  const series = dark ? [acc, "#10b981", "#f59e0b", "#f05d5e", "#8b5cf6", "#06b6d4", "#ec4899", "#64748b"]
+    : [acc, "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#475569"];
+  const v = {};
+  series.forEach((s, i) => {
+    v["pie" + (i + 1)] = s;
+    v["cScale" + i] = s;
+    v["cScaleLabel" + i] = "#ffffff";
+    v["git" + i] = s;
+    v["fillType" + i] = s;
+    v["gitBranchLabel" + i] = "#ffffff"; // git 图的分支名、思维导图的根
+  });
+  Object.assign(v, {
+    darkMode: dark, fontFamily: FONT, fontSize: "14px", background: bg,
+    primaryColor: c.node, primaryTextColor: fg, primaryBorderColor: c.nodeBorder,
+    secondaryColor: c.node2, secondaryBorderColor: c.node2Border, secondaryTextColor: fg,
+    tertiaryColor: c.cluster, tertiaryBorderColor: c.clusterBorder, tertiaryTextColor: fg,
+    lineColor: c.line, textColor: fg, mainBkg: c.node, nodeBorder: c.nodeBorder, nodeTextColor: fg,
+    clusterBkg: c.cluster, clusterBorder: c.clusterBorder, titleColor: fg, edgeLabelBackground: bg, labelBackgroundColor: bg,
+    noteBkgColor: c.note, noteTextColor: fg, noteBorderColor: c.noteBorder,
+    actorBkg: c.node, actorBorder: c.nodeBorder, actorTextColor: fg, actorLineColor: c.clusterBorder,
+    signalColor: c.line, signalTextColor: fg, labelBoxBkgColor: c.node2, labelBoxBorderColor: c.node2Border, labelTextColor: fg,
+    loopTextColor: c.muted, activationBkgColor: c.node2, activationBorderColor: c.node2Border, sequenceNumberColor: bg,
+    pieStrokeColor: bg, pieOuterStrokeColor: bg, pieOuterStrokeWidth: "0px", pieSectionTextColor: "#ffffff", pieSectionTextSize: "13px",
+    pieTitleTextColor: fg, pieTitleTextSize: "16px", pieLegendTextColor: fg, pieLegendTextSize: "13px", pieStrokeWidth: "2px", pieOpacity: "1",
+    taskBkgColor: acc, taskBorderColor: acc, taskTextColor: "#ffffff", taskTextDarkColor: fg, taskTextOutsideColor: fg, taskTextLightColor: "#ffffff",
+    activeTaskBkgColor: series[1], activeTaskBorderColor: series[1], doneTaskBkgColor: c.node2Border, doneTaskBorderColor: c.node2Border,
+    critBkgColor: series[3], critBorderColor: series[3], sectionBkgColor: c.cluster, altSectionBkgColor: bg, sectionBkgColor2: c.cluster,
+    gridColor: c.clusterBorder, todayLineColor: series[3], excludeBkgColor: c.cluster,
+    stateBkg: c.node, stateLabelColor: fg, compositeBackground: c.cluster, compositeTitleBackground: c.cluster, altBackground: c.cluster,
+    specialStateColor: fg, innerEndBackground: fg, transitionColor: c.line, transitionLabelColor: c.muted,
+    classText: fg, attributeBackgroundColorOdd: bg, attributeBackgroundColorEven: c.cluster,
+    relationColor: c.line, relationLabelColor: c.muted, relationLabelBackground: bg,
+    commitLabelColor: fg, commitLabelBackground: c.node2, tagLabelColor: fg, tagLabelBackground: c.node, tagLabelBorder: c.nodeBorder,
+    xyChart: {
+      backgroundColor: bg, titleColor: fg, plotColorPalette: series.join(","),
+      xAxisLabelColor: c.muted, xAxisTitleColor: c.muted, xAxisTickColor: c.clusterBorder, xAxisLineColor: c.clusterBorder,
+      yAxisLabelColor: c.muted, yAxisTitleColor: c.muted, yAxisTickColor: c.clusterBorder, yAxisLineColor: c.clusterBorder,
+    },
+  });
+  // themeCSS：mermaid 把它套在这张图的 id 下面
+  const css = `
+    .node rect, .node polygon, .node circle, .node ellipse, .node path { stroke-width: 1.25px; }
+    .nodeLabel, .node .label text, .node text { font-weight: 500; }
+    .flowchart-link, .edgePath .path, .transition, .relation, .messageLine0, .messageLine1 { stroke-width: 1.5px; }
+    .edgeLabel, .edgeLabel text, .edgeLabel tspan { fill: ${c.muted}; color: ${c.muted}; font-size: 12.5px; }
+    .edgeLabel rect, .labelBkg { fill: ${bg}; background: ${bg}; opacity: 1; }
+    .cluster rect { stroke-width: 1px; }
+    .cluster-label text, .cluster text { fill: ${c.muted}; font-weight: 600; font-size: 12.5px; }
+    .actor { stroke-width: 1.25px; } text.actor > tspan { font-weight: 500; }
+    .actor-line { stroke-dasharray: 3 4; stroke-width: 1px; }
+    .messageText { font-size: 13px; }
+    .note { stroke-width: 1px; } .noteText > tspan { font-size: 13px; }
+    .loopLine { stroke: ${c.node2Border}; stroke-width: 1px; stroke-dasharray: 3 3; }
+    .pieTitleText { font-weight: 600; } .slice { font-weight: 600; }
+    .task { stroke-width: 0; } .taskText, .taskTextOutsideRight, .taskTextOutsideLeft { font-size: 12px; font-weight: 500; }
+    .grid .tick line { stroke: ${c.clusterBorder}; opacity: .6; } .grid path { stroke-width: 0; }
+    .grid .tick text { fill: ${c.muted}; font-size: 12px; }
+    .sectionTitle { fill: ${c.muted}; font-weight: 600; }
+    .titleText { fill: ${fg}; font-weight: 600; font-size: 15px; }
+    .divider { stroke: ${c.nodeBorder}; }
+  `;
+  // htmlLabels: false 是关键：有 foreignObject 的 SVG 画到 canvas 上算跨域，canvas 被污染、取不出 PNG
+  return {
+    startOnLoad: false, theme: "base", darkMode: dark, securityLevel: "strict", suppressErrorRendering: true,
+    htmlLabels: false, fontFamily: FONT, themeVariables: v, themeCSS: css,
+    flowchart: { htmlLabels: false, curve: "basis", padding: 14, nodeSpacing: 44, rankSpacing: 48 },
+    sequence: { actorMargin: 60, boxMargin: 8, noteMargin: 10, messageMargin: 36 },
+    gantt: { useWidth: 760, barHeight: 22, barGap: 6, fontSize: 12, sectionFontSize: 12 },
+  };
+}
+
+// polish 是画完以后再改的几处：节点、参与者、注释、子图、甘特图的条都换成圆角（mermaid 的配置里没有这一项）。
+function polish(el) {
+  const round = (q, r) => el.querySelectorAll(q).forEach((n) => { n.setAttribute("rx", r); n.setAttribute("ry", r) });
+  round(".node rect.label-container, .node rect.basic, .node > rect, .statediagram-state rect", 8);
+  round("rect.actor", 8);
+  round("rect.note", 6);
+  round(".cluster rect", 10);
+  round("rect.labelBox, .edgeLabel rect", 4);
+  round("rect.task", 5);
+  // 思维导图的圆形节点（根）：mermaid 11 不用 HTML 标签时字从圆心往右排，挪回正中
+  el.querySelectorAll(".mindmap-node > circle + g.label").forEach((g) => {
+    if (/^translate\(0[ ,]/.test(g.getAttribute("transform") || "")) g.querySelectorAll("text").forEach((t) => t.setAttribute("text-anchor", "middle"));
+  });
+}
+
 let theme = "", seq = 0;
 
-// svgOf 是一张的 SVG 元素和它的大小（CSS 像素 = DIP；行内公式 depth 是基线以下多少）。
-async function svgOf(kind, src, dark, size, color) {
-  if (kind === "svg") {
-    // 带文字的 SVG 图片（徽章）：原样画，大小按 width / height，没有就按 viewBox
-    const el = new DOMParser().parseFromString(src, "image/svg+xml").documentElement;
-    if (el.nodeName !== "svg") throw new Error("not an SVG");
-    const vb = el.viewBox && el.viewBox.baseVal;
-    const len = (a) => { const v = el.getAttribute(a) || ""; return /%$/.test(v) ? 0 : parseFloat(v) || 0 };
-    let w = len("width"), h = len("height");
-    if (!w && !h && vb && vb.width) { w = vb.width; h = vb.height }
-    else if (!w && vb && vb.height) w = h * vb.width / vb.height;
-    else if (!h && vb && vb.width) h = w * vb.height / vb.width;
-    el.setAttribute("width", w);
-    el.setAttribute("height", h);
-    return { el, w, h, depth: 0 };
+// mermaidSVG 是 mermaid.js 画的 SVG 文本，Grove 的外观。
+async function mermaidSVG(src, pal, dark) {
+  await load("mermaid.min.js");
+  const t = JSON.stringify(pal) + dark;
+  if (theme !== t) {
+    mermaid.initialize(groveConfig(pal, dark));
+    theme = t;
   }
+  const box = document.getElementById("box");
+  try {
+    return (await mermaid.render("wb" + (++seq), src, box)).svg;
+  } finally {
+    box.textContent = "";
+  }
+}
+
+// parseSVG 把 SVG 文本解成元素，宽高写成 DIP（没有就按 viewBox）。
+function parseSVG(text, what) {
+  const el = new DOMParser().parseFromString(text, "image/svg+xml").documentElement;
+  if (el.nodeName !== "svg") throw new Error(what + " gave no SVG");
+  const vb = el.viewBox && el.viewBox.baseVal;
+  const len = (a) => { const v = el.getAttribute(a) || ""; return /%$/.test(v) ? 0 : parseFloat(v) || 0 };
+  let w = len("width"), h = len("height");
+  if (vb && vb.width && vb.height) {
+    if (!w && !h) { w = vb.width; h = vb.height }
+    else if (!w) w = h * vb.width / vb.height;
+    else if (!h) h = w * vb.height / vb.width;
+  }
+  el.setAttribute("width", w);
+  el.setAttribute("height", h);
+  el.style.maxWidth = "";
+  return { el, w, h, depth: 0 };
+}
+
+// svgOf 是一张的 SVG 元素和它的大小（CSS 像素 = DIP；行内公式 depth 是基线以下多少）。
+async function svgOf(kind, src, dark, size, color, pal) {
+  if (kind === "svg") return parseSVG(src, "image"); // 带文字的 SVG 图片（徽章）：原样画
   if (kind === "mermaid") {
-    await load("mermaid.min.js");
-    const t = dark ? "dark" : "default";
-    if (theme !== t) {
-      // htmlLabels: false 是关键：有 foreignObject 的 SVG 画到 canvas 上算跨域，canvas 被污染、取不出 PNG
-      mermaid.initialize({
-        startOnLoad: false, theme: t, securityLevel: "strict", suppressErrorRendering: true,
-        htmlLabels: false, flowchart: { htmlLabels: false },
-        fontFamily: "-apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif",
-      });
-      theme = t;
-    }
-    const box = document.getElementById("box");
-    let out;
-    try {
-      out = await mermaid.render("wb" + (++seq), src, box);
-    } finally {
-      box.textContent = "";
-    }
-    const el = new DOMParser().parseFromString(out.svg, "image/svg+xml").documentElement;
-    if (el.nodeName !== "svg") throw new Error("mermaid gave no SVG");
-    const vb = el.viewBox && el.viewBox.baseVal;
-    const w = vb && vb.width || parseFloat(el.getAttribute("width")) || 0;
-    const h = vb && vb.height || parseFloat(el.getAttribute("height")) || 0;
-    el.setAttribute("width", w);
-    el.setAttribute("height", h);
-    el.style.maxWidth = "";
-    return { el, w, h, depth: 0 };
+    const r = parseSVG(await mermaidSVG(src, pal, dark), "mermaid");
+    polish(r.el);
+    return r;
   }
   await load("mathjax/tex-svg.js");
   await MathJax.startup.promise;
@@ -85,21 +203,34 @@ async function svgOf(kind, src, dark, size, color) {
   const em = size / 1000;
   const w = vb.width * em, h = vb.height * em, depth = Math.max(0, (vb.height + vb.y) * em);
   el.removeAttribute("style");
+  el.removeAttribute("role");
+  el.removeAttribute("focusable");
   el.setAttribute("width", w);
   el.setAttribute("height", h);
-  el.setAttribute("color", color);
-  el.style.color = color; // 字形是 currentColor
   return { el, w, h, depth };
 }
 
-// wbRender 渲染一张，画到 canvas 上（scale 倍，最多 maxPixels 个像素），返回 PNG（base64）和大小。
-async function wbRender(kind, src, dark, scale, size, color, maxPixels) {
-  const { el, w, h, depth } = await svgOf(kind, src, dark, size, color);
+// vectorOK 是这张 SVG Go 那边自己画得了：只有路径和形状，没有文字（字体里没有的字 MathJax 用 <text> 画）、图片、外链。
+function vectorOK(text) {
+  return !/<(text|foreignObject|image|filter|pattern|marker)\b/i.test(text);
+}
+
+// wbRender 渲染一张。公式能画成矢量的返回 SVG 文本（字形是 currentColor，Go 那边按主题的字色画），
+// 别的画到 canvas 上（scale 倍，最多 maxPixels 个像素）返回 PNG（base64）。都带大小。
+async function wbRender(kind, src, dark, scale, size, color, maxPixels, palette) {
+  const pal = palette ? JSON.parse(palette) : {};
+  const { el, w, h, depth } = await svgOf(kind, src, dark, size, color, pal);
   if (!(w > 0 && h > 0)) throw new Error("empty picture");
+  el.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  if (kind === "math" || kind === "inline") {
+    const text = new XMLSerializer().serializeToString(el);
+    if (vectorOK(text)) return { svg: text, w, h, depth };
+    el.setAttribute("color", color);
+    el.style.color = color; // 画成位图：currentColor 是这个颜色
+  }
   let k = scale;
   if (w * h * k * k > maxPixels) k = Math.sqrt(maxPixels / (w * h));
   const cw = Math.max(1, Math.ceil(w * k)), ch = Math.max(1, Math.ceil(h * k));
-  el.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   const img = new Image();
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(el));
   await img.decode();

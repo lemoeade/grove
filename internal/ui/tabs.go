@@ -7,8 +7,6 @@ import (
 
 	wui "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-	"github.com/egoist/mygo/ui/markdown"
-	"github.com/egoist/mygo/ui/markdown/parser"
 
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/docs"
@@ -174,6 +172,11 @@ func groupContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 		rebaseContent(a, c, d, focused)
 	case d.Kind == docs.Term:
 		termDoc(a, c, d, focused)
+	case d.Kind == docs.MDPreview:
+		if focused {
+			a.FocusDoc = false
+		}
+		markdownPreview(a, c, d)
 	default:
 		docContent(a, c, d, focused)
 	}
@@ -244,6 +247,9 @@ func tabBar(a *app.App, c *wui.Context, g *app.Group, d *docs.Doc, rows bool) {
 				ic, tip = iconCode, i18n.T("显示源码")
 			}
 			iconButton(c, ic, app.Tip(tip, "view.markdownPreview"), in(a.TogglePreview))
+		}
+		if d.Kind == docs.MDPreview {
+			iconButton(c, iconCode, app.Tip(i18n.T("关掉旁边的预览，回到源文件"), "view.markdownSidePreview"), in(a.ToggleSidePreview))
 		}
 		if d.Modified() || app.DiffDirty(d) {
 			iconButton(c, iconSave, app.Tip(i18n.T("保存（写回磁盘）"), "file.save"), func() { a.Save(d) })
@@ -389,6 +395,8 @@ func docGlyph(a *app.App, c *wui.Context, d *docs.Doc, on bool) {
 		ic = iconReplace
 	case docs.Rebase:
 		ic = iconRebase
+	case docs.MDPreview:
+		ic = iconEye
 	default:
 		fileGlyph(a, c, d.Title, on)
 		return
@@ -469,6 +477,7 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 		}
 		markdownPreview(a, c, d)
 	case d.Buf != nil:
+		mdHidden(d)
 		if d.Conflict {
 			conflictBar(a, c, d)
 		}
@@ -556,46 +565,6 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 	}
 	if focused && !d.Loading && d.Buf == nil {
 		a.FocusDoc = false // 打不开就不等它了
-	}
-}
-
-type previewKey struct{ d *docs.Doc }
-
-// previewGen 是预览里那一栏的 key：渲染器有了新的行内公式（gen 变了）就换一个，段落重排（markdown 的段落缓存只认块变没变）。
-type previewGen struct {
-	d   *docs.Doc
-	gen uint64
-}
-
-// markdownPreview 是 Markdown 标签的预览：居中的一栏，图片从文件所在的目录读，点链接见 App.MarkdownLink，带图片的表格见 mdImageTable。
-// 点了 #标题 的链接（d.Anchor）后的下一帧在那个标题上放一个看不见、比窗口还高的记号，让它出现在视图里——
-// 视图只滚到刚好露出它，记号比视图高，标题就到了最上面；没有这个标题就提示。
-func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
-	o := a.MarkdownOptions(d)
-	o.Block = nil
-	name := d.Anchor
-	src := d.MarkdownSource()
-	if tables := mdHasTable(src); name != "" || tables {
-		o.Block = func(c *wui.Context, doc *parser.Document, i int) bool {
-			if d.Anchor != "" && doc.Block(i).Kind == parser.Heading && markdown.Slug(parser.PlainText(doc.Inlines(i))) == name {
-				wui.Box(c).Absolute().Top(0).Left(0).Width(1).Height(1e4).ScrollIntoView()
-				d.Anchor = ""
-			}
-			return tables && mdImageTable(c, o, doc, i)
-		}
-	}
-	gen := mdRender(a, c, o)
-	wui.Scroll(c.Key(previewKey{d})).Grow(1).MinHeight(0).Label(i18n.Tf("预览 %s", d.Title)).Children(func() {
-		wui.Column(c.Key(previewGen{d, gen})).FillWidth().MaxWidth(860).AlignSelf(wui.Center).Padding(20, 32, 48).Children(func() {
-			markdown.View(c, src, o)
-		})
-	})
-	switch {
-	case d.Anchor != "" && d.Anchor == name:
-		a.Toast = i18n.Tf("没有叫 #%s 的标题", d.Anchor)
-		d.Anchor = ""
-	case d.Anchor != "":
-		c.Invalidate() // 这一帧画链接时点的，下一帧再找
 	}
 }
 
