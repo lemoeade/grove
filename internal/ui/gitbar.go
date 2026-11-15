@@ -258,7 +258,7 @@ func repoHeader(a *app.App, c *wui.Context, r *app.Repo) {
 		case r.Plain:
 			wui.Text(c, i18n.T("不是 Git 仓库")).FontSize(sideSub).TextColor(t.TextMuted).SingleLine()
 		case st.Count == 0: // 干净：一个绿色圈中勾，不写字
-			wui.Icon(c, iconCheck).FontSize(iconTool).TextColor(wtGreen(t)).Shrink(0).
+			wui.Icon(c, iconCheck).FontSize(iconTool).TextColor(t.Success).Shrink(0).
 				Label(i18n.T("工作区干净")).Tooltip(i18n.T("工作区干净"))
 		case !open:
 			counts(c, st)

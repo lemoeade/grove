@@ -41,7 +41,7 @@ func (a *App) StashPopRef(r *Repo, s git.Stash) {
 
 // StashDrop 丢掉一条贮藏；先问。问完再核对一次 stash@{n} 还指着它（中间别处贮藏 / 弹出过，序号会挪）。
 func (a *App) StashDrop(r *Repo, s git.Stash) {
-	a.AskDanger(i18n.Tf("丢弃贮藏 %s？", s.Ref), i18n.Tf("“%s”里的改动会丢掉，不能撤销。", s.Message), i18n.T("丢弃"), func() {
+	a.AskDanger(a.inRepo(r, i18n.Tf("丢弃贮藏 %s？", s.Ref)), i18n.Tf("“%s”里的改动会丢掉，不能撤销。", s.Message), i18n.T("丢弃"), func() {
 		up := a.Update
 		go func() {
 			out, err := git.Run(r.Root, "rev-parse", "-q", "--verify", s.Ref)
@@ -106,7 +106,7 @@ func (a *App) ApplyStashFiles(r *Repo, files []git.Change) {
 		run()
 		return
 	}
-	a.AskDanger(i18n.T("覆盖工作区的改动？"), i18n.Tf("会覆盖工作区里 %s 的改动，不能撤销。", i18n.List(dirty)), i18n.T("应用改动"), run)
+	a.AskDanger(a.inRepo(r, i18n.T("覆盖工作区的改动？")), i18n.Tf("会覆盖工作区里 %s 的改动，不能撤销。", i18n.List(dirty)), i18n.T("应用改动"), run)
 }
 
 // ToggleStash 展开 / 收起 Git 栏里的一条贮藏（点它、回车、点箭头、右键）：展开时在后台读它改了哪些文件（只读），

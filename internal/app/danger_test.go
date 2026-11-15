@@ -15,7 +15,8 @@ import (
 // 删分支 / 删远程 / 删远程分支 / 丢弃改动 / 重置 --hard / 强制推送 / 移除工作树 / 放弃变基·合并·拣选 / 删除贮藏；
 // 还有：保存时覆盖别人在磁盘上的改动、换编码重新打开丢掉没保存的、撤销 / 修改 / 变基改写推送过的提交（StartRebase、RebaseOnto
 // 有推送过的才红）、跳过停住的提交（它的改动不进结果）；
-// 恢复默认设置、设置文档改过了还要换回现在的设置。
+// 恢复默认设置、导入设置（整份换掉）、重置全部快捷键、设置文档改过了还要换回现在的设置：盖掉用户的配置、不能撤销的都红；
+// 本地历史恢复时文件有没保存的改动（和换编码重新打开一样丢掉没保存的）。
 // 清除一个文件的 / 全部的本地历史、恢复删掉的文件时那个位置又有了文件（覆盖）。
 // 其余的确认都是普通的 Ask。
 // 按源码数：哪个函数里调了 AskDanger（重置是 ask = a.AskDanger 那一下），多了少了都报。
@@ -23,9 +24,10 @@ func TestConfirmDanger(t *testing.T) {
 	want := []string{
 		"AbortOngoing", "ApplyStashFiles", "ClearAllLocalHistory", "ClearLocal", "DeleteBranch", "DeleteRemote", "DeleteRemoteBranch",
 		"Discard", "DiscardAll", "DiscardChanges", "DiscardHunk", "DiscardLines",
-		"PushForce", "RebaseOnto", "RegenSettingsDoc", "ReopenWithEncoding", "ResetSettings", "ResetTo", "RestoreDeleted", "Save",
+		"PushForce", "RebaseOnto", "RegenSettingsDoc", "ReopenWithEncoding", "ResetAllKeybindings", "ResetSettings", "ResetTo",
+		"RestoreDeleted", "RestoreLocal", "Save",
 		"SkipOngoing", "StartRebase", "StashDrop", "UndoCommit",
-		"commit", "deleteBranch", "removeWorktree",
+		"commit", "deleteBranch", "importSettings", "removeWorktree",
 	}
 	got, asks := funcsUsing(t, ".", "AskDanger", "Ask")
 	slices.Sort(want)
@@ -34,6 +36,21 @@ func TestConfirmDanger(t *testing.T) {
 	}
 	if asks < 30 {
 		t.Errorf("普通的 Ask 只数到 %d 处，源码读错了？", asks)
+	}
+}
+
+// 整个仓库范围的红色确认（菜单栏、命令面板里的 Git 命令作用于当前仓库）标题前要有仓库名：名单按源码数，
+// 新加这类确认时用 a.inRepo 包标题并补进来。只动一个文件、一个工作树、一个标签的（丢弃这个文件、移除工作树……）
+// 是在那一行上点的，不用。
+func TestConfirmInRepo(t *testing.T) {
+	want := []string{
+		"ApplyStashFiles", "DeleteBranch", "DeleteRemote", "DeleteRemoteBranch", "DiscardAll",
+		"PushForce", "RebaseOnto", "ResetTo", "StashDrop", "UndoCommit", "commit",
+	}
+	got, _ := funcsUsing(t, ".", "inRepo", "")
+	got = slices.DeleteFunc(got, func(s string) bool { return s == "inRepo" })
+	if !slices.Equal(got, want) {
+		t.Errorf("用 inRepo 的函数\n  有 %v\n  该 %v", got, want)
 	}
 }
 

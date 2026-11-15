@@ -141,7 +141,7 @@ func (a *App) commit(r *Repo, push bool) {
 		run = func() { a.RunOpThen(r, i18n.T("暂存全部"), func(string) { commit() }, "add", "-A") }
 	}
 	if amend && r.Extra.HeadPushed() {
-		a.AskDanger(i18n.T("修改已经推送过的提交？"),
+		a.AskDanger(a.inRepo(r, i18n.T("修改已经推送过的提交？")),
 			i18n.Tf("上一次提交 %s 已经在远程分支里了。修改后它会变成新的提交，要强推才能推上去，已经拉过它的人那边会对不上。",
 				git.Short(r.Extra.Head)), i18n.T("修改"), run)
 		return

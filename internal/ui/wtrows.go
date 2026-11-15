@@ -11,15 +11,7 @@ import (
 )
 
 // Git 栏里"工作树就是 agent 的工位"的界面：状态符号、展开的工作树（摘要、main...分支 的文件、终端）、"需要你"条。
-// 只有琥珀点和绿勾带颜色，别的一律次要灰、更淡的灰。
-
-// wtGreen 是"可合并"的绿勾、已暂存组头的勾选框、段头"干净"的勾。
-func wtGreen(t *wui.Theme) wui.Color {
-	if t.Dark {
-		return wui.Hex("#5CC28A")
-	}
-	return wui.Hex("#2E8B57")
-}
+// 只有琥珀点和绿勾带颜色（绿用主题的 t.Success，和 Git 栏已暂存的点、+N 一致），别的一律次要灰、更淡的灰。
 
 // amberText 是"需要你"条上等你的名字的琥珀字；条的底是 agentWaitColor 的 11%。
 func amberText(t *wui.Theme) wui.Color {
@@ -63,7 +55,7 @@ func wtMark(c *wui.Context, s app.WtState) {
 	case app.WtRunning:
 		agentMark(c, app.AgentRunning)
 	case app.WtMergeable:
-		wui.Icon(c, iconCheck).FontSize(iconRow).TextColor(wtGreen(t)).Shrink(0).Label(name).Tooltip(name)
+		wui.Icon(c, iconCheck).FontSize(iconRow).TextColor(t.Success).Shrink(0).Label(name).Tooltip(name)
 	case app.WtIdle:
 		wui.Box(c).Size(10, 10).Radius(999).BorderWidth(1.5).BorderColor(t.TextMuted).Shrink(0).Label(name).Tooltip(name)
 	case app.WtMerged:
@@ -114,7 +106,7 @@ func wtSummaryRow(a *app.App, row wui.ListRow, cr app.ChangeRow, g *gitFrame) {
 			add, del := lineTotals(x.Files)
 			if add+del > 0 {
 				wui.Row(c).Gap(4).AlignItems(wui.Center).Shrink(0).Children(func() {
-					wui.Text(c, "+"+strconv.Itoa(add)).FontSize(sideSub).TextColor(wtGreen(t)).SingleLine().FontFeatures("tnum")
+					wui.Text(c, "+"+strconv.Itoa(add)).FontSize(sideSub).TextColor(t.Success).SingleLine().FontFeatures("tnum")
 					wui.Text(c, "−"+strconv.Itoa(del)).FontSize(sideSub).TextColor(t.Danger).SingleLine().FontFeatures("tnum")
 				})
 			}
@@ -178,7 +170,7 @@ func wtTermRow(a *app.App, row wui.ListRow, cr app.ChangeRow, g *gitFrame) {
 		wui.Text(c, job).FontSize(sideFont).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		switch ag.State {
 		case app.AgentIdle:
-			wui.Icon(c, iconCheck).FontSize(iconInline).TextColor(wtGreen(t)).Shrink(0).Label(i18n.T("做完了")).Tooltip(i18n.T("做完了"))
+			wui.Icon(c, iconCheck).FontSize(iconInline).TextColor(t.Success).Shrink(0).Label(i18n.T("做完了")).Tooltip(i18n.T("做完了"))
 		default:
 			agentMark(c, ag.State)
 		}
@@ -211,7 +203,7 @@ func needYouBar(a *app.App, c *wui.Context) {
 					if waiting {
 						wui.Box(c).Size(8, 8).Radius(999).Background(agentWaitColor(t)).Shrink(0)
 					} else {
-						wui.Icon(c, iconCheck).FontSize(iconInline).TextColor(wtGreen(t)).Shrink(0)
+						wui.Icon(c, iconCheck).FontSize(iconInline).TextColor(t.Success).Shrink(0)
 					}
 					name := wui.Text(c, wtTitle(n.Wt)).FontSize(sideSub).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 					if waiting {

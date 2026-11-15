@@ -635,6 +635,15 @@ func (a *App) AskDanger(title, message, button string, fn func()) {
 	a.Confirm.Danger = true
 }
 
+// inRepo 给整个仓库范围的确认（丢弃全部、强制推送、重置、删分支……）的标题前加上“仓库名：”，工作区里只有一个仓库时不加。
+// 菜单栏、命令面板里的 Git 命令作用于当前仓库（它跟着上一次点的仓库走），确认框得说清是哪一个（第一原则）。
+func (a *App) inRepo(r *Repo, title string) string {
+	if r == nil || len(a.Repos) < 2 {
+		return title
+	}
+	return r.Name + i18n.Colon() + title
+}
+
 // Fail 在窗口里弹一个错误提示。
 func (a *App) Fail(title string, err error) {
 	a.AlertTitle, a.AlertMsg, a.AlertDetail, a.AlertOpen = title, i18n.T(err.Error()), "", true // 包里的固定错误（如 search.ErrEmpty）在表里

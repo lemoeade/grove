@@ -75,7 +75,7 @@ func shadowTip() (x, y, blur, spread float32, c wui.Color) { // 提示框（tipS
 	return 0, 2, 8, 0, wui.RGBA(0, 0, 0, 0.2)
 }
 
-func shadowFloat() (x, y, blur, spread float32, c wui.Color) { // 浮在面板上的条：终端的查找条、退出条
+func shadowFloat() (x, y, blur, spread float32, c wui.Color) { // 浮在面板上的条和卡片：终端的查找条、退出条、编辑器里的速览
 	return 0, 4, 12, 0, wui.RGBA(0, 0, 0, 0.18)
 }
 

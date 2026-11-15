@@ -104,7 +104,12 @@ func (a *App) textNow(root, rel string) ([]byte, error) {
 	if d := a.openDocAt(root, rel); d != nil && (d.Modified() || !d.NeedsOverwrite()) {
 		return []byte(d.Buf.String()), nil
 	}
-	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	// 主线程上读：和 replaceIn 一样先看大小，搜索之后长过了搜索上限的不读（替换也不会动它）
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	if fi, err := os.Stat(abs); err == nil && fi.Size() > a.Search.resQ.MaxSize() {
+		return nil, errors.New(i18n.T("文件比搜索时大了，超过上限，不替换"))
+	}
+	raw, err := os.ReadFile(abs)
 	if err != nil {
 		return nil, errors.New(i18n.Tf("读取失败：%s", err.Error()))
 	}

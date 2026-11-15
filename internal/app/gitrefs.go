@@ -127,7 +127,7 @@ func (a *App) DeleteBranch(r *Repo, b git.Branch) {
 			if b.Upstream != "" {
 				msg += i18n.Tf("远程上的 %s 不会删。", b.Upstream)
 			}
-			a.AskDanger(i18n.Tf("删除分支 %s？", b.Name), msg, i18n.T("删除分支"), func() { a.deleteBranch(r, b.Name, false) })
+			a.AskDanger(a.inRepo(r, i18n.Tf("删除分支 %s？", b.Name)), msg, i18n.T("删除分支"), func() { a.deleteBranch(r, b.Name, false) })
 		})
 	}()
 }
@@ -156,7 +156,7 @@ func (a *App) DeleteRemoteBranch(r *Repo, b git.Branch) {
 			if i := slices.IndexFunc(r.Branches, func(x git.Branch) bool { return !x.Remote && x.Upstream == b.Name }); i >= 0 {
 				msg += i18n.Tf("本地分支 %s 留着，只是没了上游。", r.Branches[i].Name)
 			}
-			a.AskDanger(i18n.Tf("删除远程分支 %s？", b.Name), msg, i18n.T("删除远程分支"), func() {
+			a.AskDanger(a.inRepo(r, i18n.Tf("删除远程分支 %s？", b.Name)), msg, i18n.T("删除远程分支"), func() {
 				a.RunOp(r, i18n.Tf("删除远程分支 %s", b.Name), "push", remote, "--delete", "refs/heads/"+branch)
 			})
 		})
@@ -252,7 +252,7 @@ func (a *App) DeleteRemote(r *Repo, name string) {
 			msg += i18n.Tf("当前分支的上游 %s 也会没有。", up)
 		}
 	}
-	a.AskDanger(i18n.Tf("删除远程 %s？", name), msg, i18n.T("删除远程"), func() {
+	a.AskDanger(a.inRepo(r, i18n.Tf("删除远程 %s？", name)), msg, i18n.T("删除远程"), func() {
 		a.RunOp(r, i18n.Tf("删除远程 %s", name), "remote", "remove", name)
 	})
 }

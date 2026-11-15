@@ -90,7 +90,7 @@ func peekCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element, left flo
 	clip := wui.Box(c.Key(peekClipKey{d})).Absolute().Top(0).Bottom(0).Left(left + g.textX - 4).Right(8).Clip().PassThrough().Draw(check)
 	clip.Children(func() {
 		card := wui.Column(c.Key(peekKey{d})).Absolute().Top(top).Left(0).Right(0).MaxHeight(maxH).Clip().
-			Background(ct.Background).Border(1, t.Border).Radius(6).Shadow(0, 4, 12, 0, wui.RGBA(0, 0, 0, 0.16)).
+			Background(ct.Background).Border(1, t.Border).Radius(6).Shadow(shadowFloat()).
 			Label(i18n.T("这处改动"))
 		if card.OverlayShortcut(0, wui.KeyEscape) {
 			a.ClosePeek()

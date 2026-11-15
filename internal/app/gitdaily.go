@@ -95,7 +95,7 @@ func (a *App) RebaseOnto(r *Repo, b git.Branch) {
 			}
 			msg += i18n.T("有未提交的改动会先自动贮藏、做完再放回（--autostash）。")
 			label := i18n.Tf("变基到 %s", b.Name)
-			ask(i18n.Tf("把 %s 变基到 %s？", cur.Name, b.Name), msg, i18n.T("开始变基"), func() {
+			ask(a.inRepo(r, i18n.Tf("把 %s 变基到 %s？", cur.Name, b.Name)), msg, i18n.T("开始变基"), func() {
 				a.stopOp(r, label, "rebase", "--autostash", b.Name)
 			})
 		})
@@ -183,7 +183,7 @@ func (a *App) ResetTo(r *Repo, cm git.Commit, mode ResetMode) {
 			if mode == ResetHard {
 				ask = a.AskDanger
 			}
-			ask(mode.ask(cm.Short), msg, button, func() {
+			ask(a.inRepo(r, mode.ask(cm.Short)), msg, button, func() {
 				a.RunOp(r, label, "reset", "-q", mode.Flag(), cm.Hash)
 			})
 		})
@@ -209,7 +209,7 @@ func (a *App) UndoCommit(r *Repo) {
 		}()
 	}
 	if r.Extra.HeadPushed() {
-		a.AskDanger(i18n.T("撤销已经推送过的提交？"), i18n.T("这个提交已经推送过，撤销后要强制推送。改动留在暂存区，提交信息回到提交框。"),
+		a.AskDanger(a.inRepo(r, i18n.T("撤销已经推送过的提交？")), i18n.T("这个提交已经推送过，撤销后要强制推送。改动留在暂存区，提交信息回到提交框。"),
 			i18n.T("撤销提交"), run)
 		return
 	}
@@ -240,7 +240,7 @@ func (a *App) PushForce(r *Repo) {
 	}
 	upstream := Upstream(r)
 	b, _ := CurrentBranch(r)
-	a.AskDanger(i18n.Tf("强制推送 %s → %s？", b.Name, upstream),
+	a.AskDanger(a.inRepo(r, i18n.Tf("强制推送 %s → %s？", b.Name, upstream)),
 		i18n.Tf("用 --force-with-lease：远程分支自从上次抓取后被别人改过就会被拒绝。本地领先 %d、落后 %d。", r.Status.Ahead, r.Status.Behind),
 		i18n.T("强制推送"), func() { a.RunOp(r, i18n.T("强制推送"), "push", "--force-with-lease") })
 }

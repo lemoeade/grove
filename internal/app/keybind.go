@@ -558,7 +558,7 @@ func (a *App) ResetAllKeybindings() {
 	if n == 0 {
 		return
 	}
-	a.Ask(i18n.T("重置全部快捷键？"), i18n.Tn("keybindings.json 里的 %d 条都会删掉，所有命令回到默认键。", n), i18n.T("重置"),
+	a.AskDanger(i18n.T("重置全部快捷键？"), i18n.Tn("keybindings.json 里的 %d 条都会删掉，所有命令回到默认键。", n), i18n.T("重置"),
 		func() { a.writeKeybindings([]Keybinding{}) })
 }
 

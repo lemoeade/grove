@@ -127,7 +127,7 @@ func (a *App) DiscardAll(r *Repo) {
 	if a.Blocked(DiscardAllWhy(r)) {
 		return
 	}
-	a.AskDanger(i18n.Tn("丢弃 %d 项未暂存的改动？", r.Status.Unstaged), i18n.T("已暂存和未跟踪的不动；工作区里其余修改会恢复成暂存区的样子，不能撤销。"), i18n.T("丢弃"), func() {
+	a.AskDanger(a.inRepo(r, i18n.Tn("丢弃 %d 项未暂存的改动？", r.Status.Unstaged)), i18n.T("已暂存和未跟踪的不动；工作区里其余修改会恢复成暂存区的样子，不能撤销。"), i18n.T("丢弃"), func() {
 		a.RunOp(r, i18n.T("丢弃改动"), "restore", "--", ".")
 	})
 }

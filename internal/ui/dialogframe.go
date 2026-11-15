@@ -151,7 +151,7 @@ func dlgHint(c *wui.Context, parts ...string) {
 			}
 			k := wui.Text(c, s).TextColor(t.TextMuted).Padding(0, 4).Radius(4).Border(1, t.Border).Shrink(0)
 			if s == "⏎" {
-				k.FontSize(noteFont).LineHeight(10.5 / 12 * 1.3)
+				k.FontSize(noteFont).LineHeight(10.5 / noteFont * 1.3)
 			} else {
 				k.Font(mono()).FontSize(10.5)
 			}

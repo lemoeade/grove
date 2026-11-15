@@ -167,7 +167,7 @@ func TestSettingsExportImport(t *testing.T) {
 	}
 	imp("a.json", `{"workbench": "0.18.2", "settings": {"theme": "light", "editorSize": 15, "pullMode": "rebase", "termSize": "大", "colour": 1}}`)
 	c := a.Confirm
-	if c == nil || c.Danger || c.Title != "导入设置？" || c.Button != "导入" || // 界面缩放 125 → 没写（100）也算改
+	if c == nil || !c.Danger || c.Title != "导入设置？" || c.Button != "导入" || // 界面缩放 125 → 没写（100）也算改
 		c.Message != "会改 3 项：外观、界面缩放、拉取方式；忽略了 2 个不认识的键。现在的设置整份换掉，不合并。" {
 		t.Fatalf("导入的确认 %+v", c)
 	}

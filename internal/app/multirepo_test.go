@@ -536,3 +536,15 @@ func TestStashGroupDefault(t *testing.T) {
 		t.Errorf("收回默认后不该记: %v", st.Sessions[ws].Groups)
 	}
 }
+
+// 菜单栏的“丢弃全部改动”作用于当前仓库：工作区里不止一个仓库时，确认框标题前写明是哪个（inRepo），不点确认什么都不动。
+func TestConfirmNamesRepo(t *testing.T) {
+	a, _, alpha, _, _, _ := threeApp(t)
+	a.DiscardAll(alpha)
+	if !a.ConfirmOpen || !a.Confirm.Danger || !strings.HasPrefix(a.Confirm.Title, "alpha：丢弃") {
+		t.Fatalf("确认框: open=%v danger=%v %q", a.ConfirmOpen, a.Confirm.Danger, a.Confirm.Title)
+	}
+	if alpha.Status.Unstaged == 0 {
+		t.Fatal("没确认就丢了")
+	}
+}

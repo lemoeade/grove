@@ -309,6 +309,7 @@
   "提交全部 %s 个文件": "Commit all %s files",
   "提交并推送": "Commit and Push",
   "改动": "Changes",
+  "文件比搜索时大了，超过上限，不替换": "The file grew past the search size limit since the search; not replacing it.",
   "更多提交操作": "More commit actions",
   "最久没用的标签": "Least Recently Used Tab",
   "下一个终端标签": "Next Terminal Tab",

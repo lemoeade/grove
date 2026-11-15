@@ -344,7 +344,7 @@ func (a *App) RestoreLocal(abs string, e history.Entry) {
 		a.Toast = i18n.Tf("已恢复到 %s 的那一份（恢复前的留在本地历史里）", LocalStamp(e.Time()))
 	}
 	if slices.ContainsFunc(a.AllDocs(), func(d *docs.Doc) bool { return d.Kind == docs.File && d.Abs == abs && d.Modified() }) {
-		a.Ask(i18n.Tf("%s 有没保存的改动，恢复会丢掉它们", filepath.Base(abs)), i18n.T("磁盘上现在的那份会留在本地历史里。"), i18n.T("恢复"), run)
+		a.AskDanger(i18n.Tf("%s 有没保存的改动，恢复会丢掉它们", filepath.Base(abs)), i18n.T("磁盘上现在的那份会留在本地历史里。"), i18n.T("恢复"), run)
 		return
 	}
 	run()

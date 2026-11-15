@@ -755,8 +755,11 @@ Markdown 预览由 mygo 画，Grove 补充 mygo 无法绘制的三类内容：Me
 - 新动作先在 `app/commands.go` 登记，菜单、快捷键、面板、提示、快捷键文档都从这里来。改了键跑 `TestShortcutDoc -update`。
 - git 的读命令带 `GIT_OPTIONAL_LOCKS=0 LC_ALL=C`；写命令非交互、有超时、经每个仓库的队列（`RunOp`）。
 - 只在用户明确操作时写磁盘或改仓库：刷新、监听、打开、切换都不写。文件写盘只经 `WriteDoc` → `diskWrite`。
-- 危险操作（丢弃改动、强推、硬重置、删除分支等）通过 `AskDanger` 确认，使用红色按钮；完整名单见 `app/danger_test.go`。
-- 对话框只用 `ui/dialogframe.go` 的 `dialogFrame` 和它的 `dlgButton` / `dlgField` / `dlgInput` 等，样子统一。
+- 危险操作（丢弃改动、强推、硬重置、删除分支等）通过 `AskDanger` 确认，使用红色按钮；盖掉用户的配置（恢复默认设置、导入设置、重置全部快捷键）或没保存的改动（本地历史恢复）、不能撤销的也算。完整名单见 `app/danger_test.go`。作用于整个仓库的确认（丢弃全部、强推、重置、删分支、丢弃贮藏……）标题用 `a.inRepo(r, …)` 包一层，工作区里不止一个仓库时前面写上仓库名（`TestConfirmInRepo` 按源码数）。
+- 菜单栏和命令面板里的 Git 命令作用于当前仓库：菜单栏没有别的上下文，当前仓库跟着上一次点的仓库走（`a.UseRepo`），确认框写明是哪个（上一条）。Git 栏、文件树、历史里的按钮和右键作用于那一行所在的仓库，并把当前仓库切过去。
+- 主线程不跑 git、不遍历目录。同步读盘只限三种、都是读一个文件且有大小上限：悬停（`app/hover.go`，不开着的文件 `hoverMaxFile` 1 MB 以内，编辑器要马上拿到结果）、冲突行的“标记为已解决”（数磁盘上的冲突标记）、替换和替换预览（按搜索的文件大小上限，替换是用户点的写操作，开着的文件要在主线程改缓冲区）。别的读盘放后台 goroutine。
+- 对话框只用 `ui/dialogframe.go` 的 `dialogFrame` 和它的 `dlgButton` / `dlgField` / `dlgInput` 等，样子统一。新对话框的状态照“新建分支”的写法：`App` 上一个 `XxxDialog` 结构、带 `Open` 字段，`a.OpenXxx(…)` 一次填好打开（`OpenNewBranch`）。现有几种别的写法（`ConfirmOpen` + `Confirm`、单独的 `bool` 等）是历史留下的，不再新增。
+- 设置里默认开着的开关存反面（`noHoverDefinition`、`noStickyScroll`、`treeNoCompact` …，零值 = 默认，`omitempty` 不写进文件）。设置文档里看到的就是这些键名；改成正面会让用户的设置文件和导出的 JSON 失效，不改。新的默认开的开关也这么存。
 - 每个可点击元素的标签（Label）需在窗口内唯一，供测试和无障碍功能使用：同名的加上仓库或位置，写法照现有的来（`名（仓库）`、`标签 x`、`编辑 x`、`分支 x`、`位置 仓库/路径`、`打开 …`、`命令 …`）。
 - 文案一律 `i18n.T` / `Tf` / `Tn`，写字面量；跑 `TestCatalog -update` 收进 `zh-CN.json`，再补 `en.json`。
 - 所有仓库同时可见：不要加“当前仓库 + 切换器”式的列表。
