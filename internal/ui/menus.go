@@ -1018,6 +1018,16 @@ func localHistItem(a *app.App, m menu, abs string) {
 func docMenu(a *app.App, m menu, d *docs.Doc) {
 	mergeMenu(a, m, d)
 	m.Separator()
+	if app.CanGoToDefinition(d) { // 编辑器自己的菜单里有跳到定义；查找引用是搜整个工作区（app/references.go）
+		it := m.Item(i18n.T("查找引用"))
+		if a.CurrentDoc() == d {
+			shortcut(it, "editor.findReferences")
+		}
+		if it.Chosen() {
+			a.FindReferences(d, d.St.Cursor())
+		}
+		m.Separator()
+	}
 	if m.Item(i18n.T("保存")).Disabled(!d.Modified()).Chosen() {
 		a.Save(d)
 	}

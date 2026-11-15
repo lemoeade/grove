@@ -391,6 +391,10 @@ func buildCommands() []*Command {
 		// ⇧⌘O 是添加仓库，跳到符号换成 ⌃⇧O
 		&Command{ID: "editor.symbol", Title: "跳到符号…", Mods: ctrl | shift, Key: ui.KeyO, Context: Editor, Enabled: hasEditor,
 			Run: func(a *App) { a.OpenPalette("@") }},
+		// 查找引用（references.go）：光标处的名字在侧栏搜索里整词搜整个工作区
+		&Command{ID: "editor.findReferences", Title: "查找引用", Mods: shift, Key: ui.KeyF12, Context: Editor,
+			Enabled: func(a *App) bool { return CanGoToDefinition(a.CurrentDoc()) },
+			Run:     func(a *App) { d := a.CurrentDoc(); a.FindReferences(d, d.St.Cursor()) }},
 		// 外部命令（app/format.go）；这种语言没有命令时照样能按，提示里说为什么。键由编辑器自己接（ui.docKeys）：
 		// 登记在窗口上的话编辑器拿不到这个键，macOS 照样把 ⇧⌥F 打出的 Ï 送进编辑器
 		&Command{ID: "editor.format", Title: "格式化文档", Mods: shift | alt, Key: ui.KeyF, Context: Editor, Local: true,
@@ -549,6 +553,7 @@ var editorTable = []struct {
 	{editor.FindInSelection, "在选区里查找", "查找", 0},
 
 	{editor.GoToDefinition, "跳到定义", "代码", 0},
+	{editor.ShowHover, "显示悬停提示", "代码", 0},
 	{editor.ShowCompletions, "提示补全", "代码", edits},
 
 	{editor.ScrollCursorCenter, "把光标滚到中间", "其他", 0},

@@ -148,6 +148,13 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
+			{1, "悬停时显示定义", "指针停在代码里的名字上，给出它的声明、注释和在哪个仓库哪一行；看光标处的用命令面板里的“显示悬停提示”", func(c *wui.Context, l, d string) {
+				on := !s.NoHoverDef
+				toggle(c, l, d, &on, func() {
+					s.NoHoverDef = !on
+					done()
+				})
+			}},
 			{1, "显示空白字符", "", func(c *wui.Context, l, d string) {
 				choice(c, l, d, &s.Whitespace, workspace.Whitespaces, whitespaceNames, done)
 			}},

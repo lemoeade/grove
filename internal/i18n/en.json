@@ -2269,5 +2269,14 @@
   "正在建符号索引，建好了跳到 %s 的定义…": "Building the symbol index; will go to the definition of %s when it's ready…",
   "没找到 %s 的定义": "No definition found for %s",
   "跳到定义": "Go to Definition",
-  "这里就是 %s 的定义": "This is the definition of %s"
+  "这里就是 %s 的定义": "This is the definition of %s",
+  "光标不在名字上": "The cursor isn't on a name",
+  "列出同名的定义": "List the definitions with this name",
+  "悬停时显示定义": "Show Definition on Hover",
+  "打开定义": "Open the definition",
+  "指针停在代码里的名字上，给出它的声明、注释和在哪个仓库哪一行；看光标处的用命令面板里的“显示悬停提示”": "Rest the pointer on a name in code to see its declaration, its comment, and the repository and line it's in; for the name at the cursor, use “Show Hover” in the Command Palette",
+  "显示悬停提示": "Show Hover",
+  "查找引用": "Find References",
+  "还有 %d 处": "%d more",
+  "还有 %d 处|1": "%d more"
 }

@@ -524,6 +524,7 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 			if app.CanGoToDefinition(d) {
 				d.St.OnDefinition = func(off int) { a.GoToDefinition(d, off) }
 			}
+			hoverSetup(a, d)
 		}
 		keys := docKeys(a, d, blocks)
 		if d.Kind == docs.SearchDoc {

@@ -570,6 +570,13 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 
 ### 替换
 
+- 悬停提示（`app/hover.go` + `ui/hover.go`）：`State.OnHover`（指针停 600 ms，或命令 `editor.showHover`；mygo 默认的 ⌘K ⌘I 被菜单栏的 ⌘K 先接走，见 `docs/shortcuts.md`）同步调 `HoverAt`——mygo 只认当场的答复，晚到的 `ShowHover` 会挂在已经关掉的提示上。
+  找声明和跳到定义同一套（`definitions` + `narrowDefs`，停在声明那一行上不给）；索引没建好时这次不给，顺手 `EnsureFiles` / `refreshSymbols` 让它去建。
+  声明的源码：开着的文件读缓冲区，别的读磁盘（超过 1 MB、二进制不读，只给位置）。`declText` 从声明行起取到括号配平、截在括号外第一个 `{` 前，最多 6 行；
+  `commentAbove` 往上取紧挨着的行注释 / 块注释（跳过 `@注解`、`#[属性]`，空行断开），Python 先看声明后面的文档字符串。`ShowHover` 的字是声明（编辑器的字体），
+  build 里是注释和位置的链接按钮、同名的“还有 N 处”（点了走 `GoToDefinition` 开面板）。`Settings.NoHoverDef` 关掉时不装 `OnHover`，检查报的问题照样由 mygo 悬停显示。
+- 查找引用（`app/references.go`）：`editor.findReferences`（⇧F12，编辑器的键表里没有，落到窗口的命令）和编辑器右键菜单调 `FindReferences`：
+  光标下的名字做成整词、区分大小写的 `search.Query`，“包含”是同一族语言的扩展名（`referenceGlobs`，没有扩展名的不限），清掉 `Search.Scope` 搜整个工作区，结果就是侧栏搜索。
 `search.Plan` 先核对每一处还在原位（文件可能刚改过），再算出改动；正则替换里的 `$1` 由 `Expand` 展开。`app/replace.go` 的 `ReplaceMatches`：开着的文件改缓冲区（能撤销、不存盘），没开的直接写盘（经本地历史）。替换后不重新搜索，而是在内存中调整结果位置（`splice`），被排除的也跟着挪（`moveDismissed`）。替换操作记录在输出栏。
 
 替换预览（`app/replacepreview.go`）：打开一个 Diff 形式的标签，左侧为原文，右侧为替换后的内容；预览开着时文件又改了，标出“过期”并能重生成。“撤销上次替换”（`app/replaceundo.go`）只处理直接写入磁盘的文件：记下替换前的内容（一次最多 `MaxUndoReplace` 20 MB，超出时本次替换无法撤销），撤销时只恢复替换后未再次改动的文件。只记录最近一次操作，不持久化；已打开的文件通过编辑器的 ⌘Z 撤销。

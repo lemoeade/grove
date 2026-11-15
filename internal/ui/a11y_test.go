@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	wui "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"golang.org/x/text/encoding/simplifiedchinese"
 
 	"github.com/lemoeade/grove/internal/app"
@@ -359,6 +360,20 @@ func TestAccessLabels(t *testing.T) {
 		return gd.Buf != nil && tt.HasText(i18n.T("转成 UTF-8…")) && tt.HasText(i18n.T("换编码…"))
 	})
 	accessCheck(t, tt, "编码只读条")
+
+	// 悬停提示：声明、注释、位置那个链接按钮（没存的改动里用到 A）
+	sd := a.OpenFile(r, "src/a.go", true)
+	wait("读 src/a.go", func() bool { return sd.Buf != nil && !sd.Loading })
+	sd.Buf.Edit(editor.Edit{Start: sd.Buf.Len(), End: sd.Buf.Len(), Text: "\nvar _ = A()\n"})
+	use := sd.Buf.Len() - 3
+	wait("符号索引", func() bool { return a.HoverAt(sd, use) != nil })
+	sd.St.Select(use, use)
+	sd.St.Run(editor.ShowHover)
+	wait("悬停提示", func() bool { return tt.HasText("work/src/a.go:4") })
+	accessCheck(t, tt, "悬停提示")
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		writeShot(t, tt, dir, "hover.png")
+	}
 
 	// 普通文件夹：标题栏的"无 Git"和灰掉的按钮、Git 栏的仓库头、历史的提示
 	plain := t.TempDir()
