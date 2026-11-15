@@ -68,11 +68,32 @@ func wsName(p string) string { return strings.TrimSuffix(filepath.Base(p), ".cod
 
 // WsLabel 是菜单里最近工作区的一项：名字，后面是它所在的目录（~ 开头）。
 func WsLabel(p string) string {
-	dir := filepath.Dir(p)
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(dir, home+string(filepath.Separator)) {
-		dir = "~" + dir[len(home):]
+	return wsName(p) + "  —  " + tildePath(filepath.Dir(p))
+}
+
+// tildePath 是给人看的路径：家目录开头的写成 ~/…，家目录本身写成 ~。untilde 反过来。
+func tildePath(p string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return p
 	}
-	return wsName(p) + "  —  " + dir
+	if p == home {
+		return "~"
+	}
+	if strings.HasPrefix(p, home+string(filepath.Separator)) {
+		return "~" + p[len(home):]
+	}
+	return p
+}
+
+// untilde 把开头的 ~（~ 或 ~/…）换成家目录；别的路径、取不到家目录时原样返回。
+func untilde(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[1:])
+		}
+	}
+	return p
 }
 
 // absPath 是 p 的绝对路径（取不到就原样）。
@@ -401,9 +422,7 @@ func (a *App) switchTo(p string, roots []string) {
 	for _, d := range a.AllDocs() {
 		d.Gen++ // 还在后台读的结果作废
 	}
-	if a.histTimer != nil {
-		a.histTimer.Stop()
-	}
+	a.histTyping.stop()
 	st := a.St
 	st.Sessions = a.store().State().Sessions // 别的窗口存过的会话也在里面
 	// 新的应用不在禅模式：没记过布局的工作区接着用进禅模式之前的三个面板
@@ -425,7 +444,7 @@ func (a *App) switchTo(p string, roots []string) {
 	n.Palette.History = a.Palette.History
 	n.AlertOpen, n.AlertErr, n.AlertTitle, n.AlertMsg, n.AlertDetail = a.AlertOpen, a.AlertErr, a.AlertTitle, a.AlertMsg, a.AlertDetail // 取消后留下锁文件的提示
 	// 旧的后台回调靠这几个计数认出自己过期了
-	n.Search.gen, n.Search.tick, n.histTick, n.paneSeq = a.Search.gen+1, a.Search.tick+1, a.histTick+1, a.paneSeq
+	n.Search.gen, n.Search.typing.tick, n.histTyping.tick, n.excludeWait.tick, n.paneSeq = a.Search.gen+1, a.Search.typing.tick+1, a.histTyping.tick+1, a.excludeWait.tick+1, a.paneSeq
 	*a = *n
 	for _, r := range a.Repos {
 		r.set = &a.St.Settings // newRepo 给的是 n 的设置，n 拷进 a 之后要指到 a 的

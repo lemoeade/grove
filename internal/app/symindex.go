@@ -2,7 +2,6 @@ package app
 
 import (
 	"cmp"
-	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -11,13 +10,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"github.com/lemoeade/grove/internal/docs"
 	"github.com/lemoeade/grove/internal/files"
 	"github.com/lemoeade/grove/internal/fuzzy"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/outline"
+	"github.com/lemoeade/grove/internal/search"
 )
 
 // 这个文件是工作区符号（⌘T，面板的 "#"）：所有仓库里大纲认的文件的符号放进一个索引，按符号名模糊匹配。
@@ -245,27 +244,22 @@ func (a *App) refreshSymbols() {
 // readSymbols 在后台读一个文件的符号：版本和索引里的一样就不读。
 func readSymbols(j symJob) symResult {
 	res := symResult{symJob: j}
-	fi, err := os.Stat(j.abs)
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() > outline.MaxBytes {
+	key, ok := statOutline(j.abs)
+	if !ok {
 		res.gone = true
 		return res
 	}
-	res.key = olKey{j.abs, fi.Size(), fi.ModTime().UnixNano()}
+	res.key = key
 	if res.key == j.old {
 		res.same = true
 		return res
 	}
-	data, err := os.ReadFile(j.abs)
-	if err != nil || len(data) > outline.MaxBytes {
+	t := parseOutline(j.abs, j.rel)
+	if t == nil {
 		res.gone = true
 		return res
 	}
-	text, enc, _ := docs.Decode(data)
-	if enc == docs.Binary {
-		res.gone = true
-		return res
-	}
-	res.syms = symEntries(outline.Build(outline.Parse(j.rel, text)).Flat)
+	res.syms = symEntries(t.Flat)
 	return res
 }
 
@@ -273,14 +267,7 @@ func readSymbols(j symJob) symResult {
 func symEntries(flat []outline.Flat) []symEntry {
 	out := make([]symEntry, len(flat))
 	for i, f := range flat {
-		detail := f.Detail
-		if len(detail) > maxSymDetail {
-			n := maxSymDetail
-			for n > 0 && !utf8.RuneStart(detail[n]) {
-				n--
-			}
-			detail = detail[:n] + "…"
-		}
+		detail := search.Clip(f.Detail, maxSymDetail)
 		out[i] = symEntry{Name: strings.Clone(f.Name), Detail: strings.Clone(detail), Kind: f.Kind, Line: int32(f.Line)}
 	}
 	return out

@@ -3,23 +3,29 @@
 本文按子系统介绍 Grove 当前的结构和实现，供修改代码时参考。各版本的改动记录在根目录的 `CHANGELOG.md`。
 
 ```
-cmd/workbench ──► internal/ui ──► internal/app ──► internal/{git, files, docs, workspace, search, globs, fuzzy, watch,
- （工作台窗口、设置和  （纯界面）       （状态机 + 命令注册表）    graph, outline, history, askpass, termd, tasks,
-   关于两个小窗口、                                           snippets, render, fonts}
-   单实例、日志）                                            （不碰界面的逻辑；highlight 挂在 docs 底下）
-                    └──────────────┴──► internal/i18n（文案表，各层都用）
-              ──► internal/{version, crash, appicon}（版本号、日志和崩溃日志、代码画的图标）
+cmd/workbench ─► internal/ui ─► internal/app ─► 逻辑包 internal/{git, files, docs, workspace, search, globs, fuzzy,
+（三个窗口、单实例、  （建控件、画、   （状态机、命令注册表、   watch, graph, outline, history, askpass, termd,
+  日志、子命令入口）    接事件）       界面交互的状态）         tasks, snippets, render, fonts, highlight}
+      │                  │                                       （不建控件；docs、render 等用到 mygo 的类型）
+      │                  └─► 十几个逻辑包的类型和纯函数（不做 IO），internal/appicon
+      └─► internal/{workspace, render, fonts, askpass, termd, version, crash}、mygo 的 ui（接线）
+                                internal/i18n（文案表，各层都用）
 ```
 
-依赖方向从左到右：`ui` 读取 `app` 的状态、调用其方法，`app` 不依赖具体界面。右侧逻辑包之间只有少量依赖（`search` 用 `docs` / `files` / `git` / `globs`，`docs` 用 `git` / `highlight` / `outline` / `snippets`，`files` 用 `fuzzy` / `git`，`watch` 用 `git`），均不依赖 `app` 和 `ui`。`cmd/workbench` 另外直接用 `askpass` 和 `termd`，因为同一个可执行文件也是这两个子命令的入口。
+依赖方向从左到右，没有环（Go 也不允许）：
+
+- `ui` 读 `app` 的状态、调它的方法和命令；`app` 不 import `ui`。`ui` 还直接 import 了 `docs`、`git`、`workspace`、`files`、`search`、`outline`、`graph`、`render`、`snippets`、`highlight`、`history`、`askpass`、`fonts`、`version`、`appicon`，但只用类型、常量和纯函数（`git.Change`、`workspace.Settings` 的可选值、`files.JoinPath`、`askpass` 的提示种类……），读写文件、跑 git 都经 `app`（`ui` 里没有 `os.*` / `exec`）。
+- `app` 和 `ui` 的边界不是“逻辑 / 界面”，而是“谁建控件”：`app` 不建控件、不画，除了 `BindShortcuts` 在传进来的 `ui.Context` 上登记快捷键外不碰 `wui.Context`；但为了无头测试，界面交互的状态机放在 `app`：自画的右键菜单（`popmenu.go`：项、位置、命中、子菜单计时）、侧栏滚轮的手感（`sidescroll.go`）、文件树悬停提示的延迟和暖启动（`treetip.go`）、编辑器组拖放标签的落点几何（`groups.go` 的 `DropSide` / `DropRect`），以及 `App` 里由 `ui` 每帧写回的“这一帧 / 上一帧”字段（`GitHover`、`TreeSpans`、`TreeDragging`、`MenuKeyAt`、`TermFocused`……）。所以 `app` 也 import mygo 的 `ui`、`editor`，用的是键位、`ListState`、`Rect` 这类类型。
+- 逻辑包之间只有少量依赖（`search` 用 `docs` / `files` / `git` / `globs`，`docs` 用 `git` / `highlight` / `outline` / `snippets`，`files` 用 `fuzzy` / `git`，`watch` 用 `git`），都不依赖 `app` 和 `ui`。“逻辑包”指不建控件，不是不碰 mygo：`docs.Doc` 持有 mygo 编辑器的 `editor.State` / `editor.Buffer` 和 Markdown 预览的选项，`highlight` 复制 mygo 的语言定义，`render` 用不可见的 `mygo.WebView`，`watch` 包装 `mygo.WatchFiles`，`termd` 用 mygo 的终端插件，`fonts` 注册字体，`outline` 用 mygo 的 Markdown 解析器。
+- `cmd/workbench` 除了 `app` / `ui` 还直接用：`askpass` 和 `termd`（同一个可执行文件也是这两个子命令的入口）、`render`（`main.go` 里 `render.Register` 注册 WebView 后端）、`workspace`（设置窗口的回调、材质）、`fonts`，以及 mygo 的 `ui`（`wui.View` 把三个窗口的界面挂上去）。
 
 ## 目录
 
 | 目录 | 职责 |
 |---|---|
 | `cmd/workbench/` | 入口。第一个参数是 `askpass` / `termd` 时交给 `askpass.Main` / `termd.Main`；否则解析参数（工作区路径）、搬旧目录（`migrate.go`）、载字体、建 `app.Windows` 并把 mygo 的窗口回调接上去（`NewWindow`、`OnClose` → `CanClose`、`OnClosed` → `Closed`、`OnFocus`、`OnBeforeQuit` → `RequestQuit`），单实例锁和 `deliver`，日志和崩溃日志，设置窗口和关于窗口，`WORKBENCH_*` 环境变量 |
-| `internal/app/` | 状态机：工作区和仓库、面板开关、编辑器组和标签、文件树、Git 栏、历史、搜索、终端、git 写命令队列、对话框状态、命令注册表和由它生成的菜单栏、state.json 读写、多窗口注册表。一个窗口一个 `App` |
-| `internal/ui/` | 纯界面，按区域分文件：`view.go` 总布局，`titlebar.go`，`sidebar.go`（文件树），`gitbar.go`，`search.go`，`outline.go`，`openeditors.go`，`tabs.go`（编辑器组和标签内容），`history.go` / `graph.go`（右栏），`bottom.go`（终端 / 输出 / 问题），`statusbar.go`，`palette.go`，`dialogs.go` / `dialogframe.go`，`menus.go`（右键菜单），`settings.go` / `about.go`（两个小窗口），`widgets.go` / `icons.go` / `fileicons.go` / `accent.go` |
+| `internal/app/` | 状态机：工作区和仓库、面板开关、编辑器组和标签、文件树、Git 栏、历史、搜索、终端、git 写命令队列、对话框状态、命令注册表和由它生成的菜单栏、state.json 读写、多窗口注册表、界面交互的状态（自画菜单、滚轮、拖放几何，见上）。一个窗口一个 `App` |
+| `internal/ui/` | 纯界面，按区域分文件：`view.go` 总布局，`titlebar.go`，`sidebar.go`（文件树），`gitbar.go`，`search.go`，`outline.go`，`openeditors.go`，`tabs.go`（编辑器组和标签内容），`history.go` / `graph.go`（右栏），`bottom.go`（终端 / 输出 / 问题），`statusbar.go` / `statusdoc.go`（状态栏；后者是当前标签的几项和语言 / 缩进 / 换行 / 编码菜单），`palette.go`，`dialogs.go` / `dialogframe.go`，`menus.go`（右键菜单），`settings.go` / `about.go`（两个小窗口），`widgets.go` / `icons.go` / `fileicons.go` / `accent.go` |
 | `internal/workspace/` | `.code-workspace` 解析、state.json 的 schema 和旧格式迁移、`Settings`、`Session`（按工作区的标签、展开目录、终端、布局）、几个窗口共用的 `Store`、设置的 JSON 形式（`settingsjson.go`）、`files.exclude` 的读取 |
 | `internal/git/` | Git 命令调用。只读：status（porcelain v2）、diff 两侧、log、分支 / 标签 / 远程、blob、ls-files、blame、工作树、子模块；写入：`RunRW` / `RunOp`（非交互环境、超时、进程组）；块级和行级补丁（`hunk.go`）、远程地址转网页（`web.go`）、常见错误说明（`explain.go`）、需要终端的命令识别（`interactive.go`） |
 | `internal/askpass/` | 凭据提示的两端：`Main` / `Run` 处理 `Grove askpass <提示>` 子进程（连接套接字、发送一行 JSON、等待回答），`Listen` / `Server` / `Close` 处理应用端；`CleanStale` 清理上次遗留的目录，`Classify` 识别用户名、密码或口令提示 |
@@ -51,6 +57,8 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 
 `app.App` 保存一个窗口的全部状态。界面每帧读取状态，只通过命令（`a.Exec(id)`）或 `App` 的方法修改状态。后台 goroutine 不直接访问 `App`，而是将结果交给 `a.Update(func())`，由主线程更新。
 
+要把键盘交给某个控件时，`app` 不碰控件（拿不到 `Focus(c)`），而是置一个一次性的请求字段，名字一律 `FocusXxx`、注释写“下一帧把焦点给 ……”：`App.FocusDoc` / `FocusTerm`（`FocusTab` 指名哪个标签）/ `FocusTree` / `FocusHist`，`Repo.FocusCommit`，`SearchState.Focus` / `FocusRepl`，`TermFind.Focus`。画那个控件的界面函数看到它就 `Focus(c)`、清掉。请求跟着它要找的东西走（哪个仓库的提交框、哪一格的查找条），所以是分散的字段，不合成一个全局的“焦点给谁”。同一帧里置了两个时，后画的那个控件拿到键盘。
+
 切换工作区（`switchTo`）会重写整个 `*a`。后台任务开始前需保存 `up := a.Update`，返回时通过 `up` 更新，并核对原仓库是否仍有效（比较仓库指针或代数 `Gen`）。`switchTo` 时属于窗口、不随工作区重置的字段有：`Windows`、`Slot`、`Win`、`Update`、`Rend`、`LastBar`、`ownStore`、尚未处理的提示框。
 
 ### 命令注册表
@@ -65,6 +73,8 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 - 命令面板（`>`）。
 
 编辑器自带的动作（复制行、多光标、折叠……）也登记成命令，id 是 `editor.<名>`，来自 `editorTable` / `editorCommands`；它们的键由编辑器自己接（`Key` 留 0），注册表只用于生成菜单、面板和快捷键文档，`inEditorChecked` 管理勾选状态。处理全文的命令在文件超过 `MaxWholeTextBytes`（1 MB）时禁用。`Command.Local` 表示有 `Run` 但键不在窗口上登记，由编辑器接（比如格式化的 ⇧⌥F）。`Section` / `Hint` 分别用于菜单分段和面板说明。
+
+没有 `Run` 的命令只登记键，不进菜单栏、也不进命令面板（`Group` 空）：键由界面上那个元素按 id 自己接，因为要用的状态只在那一帧的界面里（光标所在的冲突块、提交框里的字、列表的选中行）。现在是合并冲突的 `merge.*`、提交框的 `commit`、搜索结果的 `search.replaceOne` / `search.dismiss`、文件树列表的 `tree.*`。文件树的键不能补上 `Run`：`RunKey` 会在窗口上分派有 `Run` 的文件树命令，键就不归列表了。`TestShortcutConflicts` 查有 `Group` 的都有 `Run`，`TestRunlessCommandsHandled` 查没有 `Run` 的都有键、id 在 `internal/ui` 里有人接。
 
 ### 自定义快捷键
 
@@ -124,31 +134,56 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 ### state.json
 
 ```json
-{"version":4,"sidebar":true,"rightBar":true,"bottomBar":true,"sidebarMode":"files",
- "sidebarW":280,"rightW":320,"bottomH":240,"termW":420,"unified":false,"fullDiff":false,"histAll":true,
- "recentWs":["…"],"windows":["…"],"cloneDir":"…","taskHistory":["…"],"searchHistory":[{"text":"…"}],
+{"version":4,"appVersion":"0.2.0",
+ "sidebar":true,"rightBar":true,"bottomBar":true,"sidebarMode":"files",
+ "sidebarW":280,"rightW":320,"bottomH":240,"termW":420,"unified":false,"fullDiff":false,
+ "histAll":true,"histBranches":false,"histNoGraph":false,"openEditorsFolded":false,
+ "recentWs":["/abs/x.code-workspace","/abs/dir"],"windows":["/abs/x.code-workspace",""],"cloneDir":"/abs/src",
+ "recent":["/abs/repo/a.go"],"commitMsgs":["修好登录","…"],
+ "searchHistory":[{"text":"TODO(","case":true,"word":false,"regexp":true,"include":"*.go","exclude":"vendor/","ignored":false,"big":false}],
+ "taskHistory":[{"repo":"/abs/repo","cmd":"make test"}],
+ "added":[],"hidden":[],
  "settings":{"theme":"dark","backdrop":"vibrancy","material":"menu","editorFont":"…","editorSize":13,"indent":"2",
-             "autoSave":"delay","shell":"…","termFont":"…","termSize":12.5,"termTheme":"","scrollback":10000,
-             "pullMode":"rebase","zoom":110,"historyDays":30,"lang":"en"},
- "histBranches":false,"histNoGraph":false,"commitMsgs":["修好登录","…"],
- "sessions":{"/path/to/x.code-workspace":{
-   "tabs":[{"path":"/abs/a.md","pinned":true,"line":3,"col":1,"top":0},
+             "autoSave":"delay","shell":"…","termFont":"…","termSize":12.5,"termTheme":"","scrollback":10,
+             "termProfiles":[{"name":"fish","shell":"/opt/homebrew/bin/fish","args":["-l"],"env":["K=V"]}],
+             "noHoverDefinition":true,"treeNoCompact":true,"pullMode":"rebase","zoom":110,"historyDays":90,"lang":"en"},
+ "sessions":{"/abs/x.code-workspace":{
+   "added":["/abs/extra"],"hidden":["/abs/other"],
+   "tabs":[{"path":"/abs/a.md","pinned":true,"preview":true,"line":3,"col":1,"top":0},
+           {"path":"/abs/a.go","enc":"gbk","lang":"Go","indent":"tab","hex":false,"copy":1},
            {"path":"/abs/repo","kind":"version","repo":"/abs/repo","change":{"kind":"commit","path":"a.go","code":"M","commit":"5fd1…","parent":"d1e9…"}},
-           {"path":"/abs/repo","kind":"diff","repo":"/abs/repo","change":{"kind":"unstaged","path":"a.go","code":"M"}},
-           {"kind":"term","termNum":4}],
+           {"path":"/abs/repo","kind":"diff","repo":"/abs/repo","change":{"kind":"unstaged","path":"b.go","orig":"old.go","code":"R","sub":"","range":false}},
+           {"path":"/abs/repo","kind":"term","repo":"/abs/repo","termNum":4}],
    "active":0,"repo":"/abs/repo","open":["/abs/repo"],"dirs":{"/abs/repo":["docs"]},
-   "git":{"/abs/repo":"closed"},"groups":{"/abs/repo":["stash","untracked"]},"wtOpen":["/abs/repo"],
-   "terms":{"/abs/repo":{"tabs":[{"name":"构建","dir":"/abs/repo/docs"},
-                                 {"split":{"row":true,"ratio":0.4,"a":{"hist":"1793001600000-3.vt"},"b":{"dir":"/abs/repo/src","profile":"fish"}}},
+   "git":{"/abs/repo":"closed"},"groups":{"/abs/repo":["stash","unstaged"]},"wtOpen":["/abs/repo"],
+   "terms":{"/abs/repo":{"tabs":[{"name":"构建","dir":"/abs/repo/docs","sids":["7"]},
+                                 {"split":{"row":true,"ratio":0.4,"a":{"hist":"1793001600000-3.vt"},"b":{"dir":"/abs/repo/src","sid":"9","profile":"fish"}}},
                                  {"inEditor":true,"num":4}],"active":1}},
-   "layout":{"row":true,"ratio":0.5,"a":{"tabs":[0]},"b":{"tabs":[1,2],"sel":1,"focus":true}}}}}
+   "layout":{"row":true,"ratio":0.5,"a":{"tabs":[0]},"b":{"tabs":[1,2],"sel":1,"focus":true}},
+   "panels":{"sidebar":true,"rightBar":false,"bottomBar":true,"sidebarMode":"git","sidebarW":300,"rightW":320,"bottomH":240,"termW":420,
+             "unified":true,"fullDiff":false,"histAll":true,"histBranches":false,"histNoGraph":false,"openEditorsFolded":false}}}}
 ```
+
+示例为了把键写全，零值也写了；实际文件里带 `omitempty` 的零值不写。几个键的意思：
+
+- `appVersion`：上次用的应用版本，换了版本启动时状态栏提示一下。
+- 顶层的布局（`sidebar` … `openEditorsFolded`）是最近存的那个窗口的，给没记过布局的工作区和空工作区用；每个工作区自己的布局在会话的 `panels`（`State.Panels()` 抄进去，打开 / 切到这个工作区时 `SetPanels` 灌回顶层）。
+- `recent`（最近打开的文件，最多 50 个）、`commitMsgs`（提交信息历史，最多 30 条）、`searchHistory`（最近搜索连同开关和包含 / 排除，最多 20 条；老版本只记字、键叫 `searches`，读的时候迁过来）、`taskHistory`（最多 20 条）、`recentWs`（最多 10 个）都是最近的在前，所有窗口共用。
+- `windows`：退出时开着的窗口的工作区（按槽位，空工作区是 `""`），下次启动一个个开回来；只有一个窗口、开的就是最近的工作区时不记。
+- 顶层的 `added` / `hidden` 是老版本（不分工作区）的，存盘时是空的；读到时归给第一个打开的工作区。现在记在会话里。
+- 会话里 `layout` 是编辑器组的拆分树（叶子记标签下标），只有一组时不记；`terms` 只有一个没改名、在仓库根的终端时不记；`tabs` 里 `kind` 为 `term` 的是开在编辑器区的终端，按 `termNum` 对上 `terms` 里 `num` 相同的那个。
 
 兼容规则：
 
 - 新字段一律使用 `omitempty`，旧文件缺少字段时使用默认值；读取时忽略未知字段（Go 的 JSON 解码默认如此）。新增字段不递增格式版本号，旧应用仍可读取新文件，只是无法使用新增内容。`settings` 里没设的键不写。
-- 默认开的开关存反面（`histNoGraph`、`noLocalHistory`、`noStickyScroll`），这样默认状态什么都不写。
-- 读取时通过 `Clamp` 清理数据：丢弃相对路径的仓库键和目录，截断超长列表，将越界下标归 0，清空带控制字符的主题名，将无法识别的材质 / 窗口底恢复为默认值。
+- 默认开的开关存反面，键名带 `no` 或 `No`，这样默认状态什么都不写：顶层的 `histNoGraph`，设置里的 `noDiagrams`、`noStickyScroll`、`noWordComplete`、`noHoverDefinition`、`noLocalHistory`、`treeNoFollow`、`treeNoCompact`、`treeNoGuides`、`treeNoStatusColors`，还有默认彩色、存反面的 `treeIconsPlain`。老版本存正面、默认关的 `treeStatusColors` 由 `legacyTreeColors` 认（写着 false 的读成 `treeNoStatusColors`）；老的 `softWrap` 开关由 `legacySoftWrap` 读成 `wrap: "all"`。`TestStateDocKeys` 核对 State、Session 的每个键都在上面的示例里。
+- 读取时 `clamp` 清理数据，只丢读不懂的，合法的原样留着：
+  - 空的会话键和 `null` 会话丢掉。
+  - 该是绝对路径的，相对路径的丢掉：`recentWs`、`recent`、`windows`（`""` 留着）、`taskHistory` 的仓库、`added` / `hidden`；会话里 `tabs` 的 `path`、`repo`（清空）、`open`、`wtOpen`，`dirs` / `git` / `groups` / `terms` 的仓库根键，终端标签的 `dir`（整个标签丢掉）和分屏格的 `dir`（清空）。`dirs` 里的目录是仓库内路径，绝对路径的丢掉；`git` 只认 `open` / `closed`。
+  - 去重、截到上限：`recentWs` 10、`recent` 50、`commitMsgs` 30（空的丢掉）、`searchHistory` 20（没有字的丢掉）、`taskHistory` 20（带换行的命令丢掉）、`windows` 100、会话的 `tabs` 50（行列、滚动为负的丢掉）、每个仓库的终端标签 20；分屏树不成形或超过 8 格的整棵不要，比例不对的换成一半，`hist` 不是 `.vt` 文件名的清掉。
+  - 越界下标：会话的 `active` 越界回到 -1，终端的 `active` 回到 0。
+  - 布局：不认识的侧栏模式回到文件，宽高超出范围的回到默认（`clampPanels`）。
+  - 设置（`Settings.Clamp`，设置文档保存、导入时也走它）：选项不在可选列表里的（主题、窗口底、材质、强调色、缩进、换行、空白、自动保存、终端位置、拉取方式、语言）回到默认，强调色写成默认那个的存成 `""`；带控制字符或超长的终端主题名清空；字号、回滚、缩放、本地历史天数超出范围的回到默认；用不了的终端配置（`Profiles`）、风格不认识的网页主机丢掉。
 - 格式版本号仅在字段含义变化时递增。当前为 4，最近一次变更是会话中 `groups` 的含义：以前记录“收起的组”，现在记录“用户点击后，与默认状态相反的组”。冲突 / 已暂存 / 未暂存默认展开，贮藏默认收起（`groupOpenByDefault`），因此包含 `"stash"` 表示“贮藏已展开”。读 3 的文件时把 `groups` 里的 `"stash"` 去掉。
   以前未跟踪单独一组（键 `"untracked"`），现在并进未暂存（`GroupKey(git.Untracked)` 是 `"unstaged"`）；旧文件里的 `"untracked"` 读的时候扔掉（`groupKeys` 不认），不升版本。
 - 更早的格式由 `workspace.migratePanels` 兼容：1 的 `panels` 表、更早的四元 bool 数组、更早的 `repos.json`；顶层的 `added` / `hidden` 归给第一个打开的工作区。下次保存就是 4。
@@ -178,7 +213,7 @@ cmd/workbench ──► internal/ui ──► internal/app ──► internal/{g
 `Repo.Pulling` / `Pushing` 在跑或排队时转圈），点了走 `App.Pull` / `Push`，没有另一套 git 调用。段的收放是 `GitFold`：`FoldAuto`（有改动展开、干净的收成一行；有工作树（显示工作树开着时）、合并 / 变基停在一半的也展开，让工作树块和横幅看得见）、`FoldOpen`、`FoldClosed`，点过箭头就按用户的，存进会话的 `git`。
 
 行的身份是 `ChangeRow.Key()`（仓库 + 组 + 路径），选中 `GitSel`、悬停 `GitHover`、多选 `GitChosen` 都按键记，因此刷新后即使行的位置变化，仍会保持选中原来的项目。多选的操作（`StageChanges` / `UnstageChanges` / `DiscardChanges` / `OpenDiffs`）先按仓库分组（`byRepo`），再加入各自的队列；一次打开超过 20 个 Diff 时先要求确认。
-变更行悬停（或列表有键盘时选中）出的行内按钮（`ui/gitbar.go` 的 `changeActions` / `stageActions`）用 `ActChanges`：指针所在的行在两行以上的多选里时作用于选中的全部，否则只有这一行；按钮的动作经 `gitFrame.do` 留到列表建完再做。列表有焦点时的空格 / ⌘⌫ 是 `changes.toggleStage` / `changes.discard`（上下文 `GitList`，由列表自己接键，命令面板也能用），作用于 `KeyChanges`。暂存 / 取消暂存 / 丢弃会让选中的那行挪走时，`markGitAfter` 先记下它后面（没有就是前面）第一个不在选中里的行，状态重读后 `syncChangeSel` 跟不上当前标签时停在那一行。
+变更行悬停（或列表有键盘时选中）出的行内按钮（`ui/gitbar.go` 的 `changeActions` / `stageActions`）用 `MenuChanges`（和右键菜单同一个约定，`app/chosen.go` 的 `actOn`）：指针所在的行在两行以上的多选里时作用于选中的全部，否则只有这一行；按钮的动作经 `gitFrame.do` 留到列表建完再做。列表有焦点时的空格 / ⌘⌫ 是 `changes.toggleStage` / `changes.discard`（上下文 `GitList`，由列表自己接键，命令面板也能用），作用于 `KeyChanges`。暂存 / 取消暂存 / 丢弃会让选中的那行挪走时，`markGitAfter` 先记下它后面（没有就是前面）第一个不在选中里的行，状态重读后 `syncChangeSel` 跟不上当前标签时停在那一行。
 
 提交框每个仓库一个（`CommitOpen` / `CommitMsg`），在段头（和工作树块头）下面、改动分组上面；`ShowCommit` 把段头滚到顶上（`ui.Start`），贴顶的段头不挡它；有已暂存的改动、写了信息、在修改上一次提交、合并的冲突都解决了，或者用户点开了提交框时展开（`CommitShown`）。⌘↩ 提交键盘所在的那个。
 提交框是一个框管到底（`commitRow`）：收着和没写信息时看着就是一行输入框，写了信息（或在修改上一次提交）框底才长出说明和分裂按钮（`commitFoot`）。按钮上只有纸飞机（`iconSend`），后果写在读屏名和提示的第一行：“提交 N 个文件”、什么都没暂存时“提交全部 N 个文件”（`CommitsAll`，先 `git add -A` 再提交，含未跟踪的文件；add 失败就不提交；有冲突、进行中操作时不走这条）、“修改提交”。
@@ -539,6 +574,13 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
   大纲里有的带种类；种类看 `Doc.LastOutline()`，不在每个键上整篇解析）、开着的同一族语言的文件（`langFamily`；按标签和内容版本缓存在 `App.words`，超过 1 MB 不扫）、同一仓库索引里的名字（索引已经建过才用，补全不去建）。
   前缀开头的在前，其次按字的顺序出现的；不给正好等于前缀的。mygo 的回车会接补全，所以 `CompleteTick`（每帧画编辑器前）在打完一个整词时把列表里同名的那项拿掉重给；
   mygo 没有读补全状态的接口，退格时不重给。`Settings.NoWordComplete` 关掉敲字时的词（⌃Space 照样给），Markdown / 纯文本（`docs.IsProse`）只在 ⌃Space 时给。
+- 悬停提示（`app/hover.go` + `ui/hover.go`）：`State.OnHover`（指针停 600 ms，或命令 `editor.showHover`；mygo 默认的 ⌘K ⌘I 被菜单栏的 ⌘K 先接走，见 `docs/shortcuts.md`）同步调 `HoverAt`——mygo 只认当场的答复，晚到的 `ShowHover` 会挂在已经关掉的提示上。
+  找声明和跳到定义同一套（`definitions` + `narrowDefs`，停在声明那一行上不给）；索引没建好时这次不给，顺手 `EnsureFiles` / `refreshSymbols` 让它去建。
+  声明的源码：开着的文件读缓冲区，别的读磁盘（超过 1 MB、二进制不读，只给位置）。`declText` 从声明行起取到括号配平、截在括号外第一个 `{` 前，最多 6 行；
+  `commentAbove` 往上取紧挨着的行注释 / 块注释（跳过 `@注解`、`#[属性]`，空行断开），Python 先看声明后面的文档字符串。`ShowHover` 的字是声明（编辑器的字体），
+  build 里是注释和位置的链接按钮、同名的“还有 N 处”（点了走 `GoToDefinition` 开面板）。`Settings.NoHoverDef` 关掉时不装 `OnHover`，检查报的问题照样由 mygo 悬停显示。
+- 查找引用（`app/references.go`）：`editor.findReferences`（⇧F12，编辑器的键表里没有，落到窗口的命令）和编辑器右键菜单调 `FindReferences`：
+  光标下的名字做成整词、区分大小写的 `search.Query`，“包含”是同一族语言的扩展名（`referenceGlobs`，没有扩展名的不限），清掉 `Search.Scope` 搜整个工作区，结果就是侧栏搜索。
 - 图片：预览、和 HEAD 的图片 Diff；Markdown 和 SVG 用 ⇧⌘V 在源码和预览之间切（`TogglePreview`）；`app/image.go` 的 `ToggleHex` 切十六进制视图，也能用默认应用打开。
 - 键盘移动光标后，编辑器让光标上下各留 min(5 行, 视图高 1/5)（`ui/caret.go` 的 `caretMargin`）。mygo 自己只留 3 行；点击和滚轮不受影响。
 - 光标在标识符上（没有选区、只有一个光标）停稳 250 ms（`ui.OccurRest`）后，本文件里同名的其他出现（整词、区分大小写）铺上 mygo 的 `Occurrence` 底色（`ui/occur.go` 的 `occurMarks`，写进 `St.TextBackgrounds`，状态在 `Doc.Occur`）；打字、换词马上清掉。mygo 自己只在有选区时标选中文字的其他出现，也没有"光标下的词"这个选项，所以用 `TextBackgrounds` 在 Grove 这边做；按内容版本和词算一次，大于 `StickyQuick` 的文件只搜看得见的行、滚了重搜。搜索编辑器（底色是搜到的那几处）和十六进制视图不标。
@@ -570,13 +612,6 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 
 ### 替换
 
-- 悬停提示（`app/hover.go` + `ui/hover.go`）：`State.OnHover`（指针停 600 ms，或命令 `editor.showHover`；mygo 默认的 ⌘K ⌘I 被菜单栏的 ⌘K 先接走，见 `docs/shortcuts.md`）同步调 `HoverAt`——mygo 只认当场的答复，晚到的 `ShowHover` 会挂在已经关掉的提示上。
-  找声明和跳到定义同一套（`definitions` + `narrowDefs`，停在声明那一行上不给）；索引没建好时这次不给，顺手 `EnsureFiles` / `refreshSymbols` 让它去建。
-  声明的源码：开着的文件读缓冲区，别的读磁盘（超过 1 MB、二进制不读，只给位置）。`declText` 从声明行起取到括号配平、截在括号外第一个 `{` 前，最多 6 行；
-  `commentAbove` 往上取紧挨着的行注释 / 块注释（跳过 `@注解`、`#[属性]`，空行断开），Python 先看声明后面的文档字符串。`ShowHover` 的字是声明（编辑器的字体），
-  build 里是注释和位置的链接按钮、同名的“还有 N 处”（点了走 `GoToDefinition` 开面板）。`Settings.NoHoverDef` 关掉时不装 `OnHover`，检查报的问题照样由 mygo 悬停显示。
-- 查找引用（`app/references.go`）：`editor.findReferences`（⇧F12，编辑器的键表里没有，落到窗口的命令）和编辑器右键菜单调 `FindReferences`：
-  光标下的名字做成整词、区分大小写的 `search.Query`，“包含”是同一族语言的扩展名（`referenceGlobs`，没有扩展名的不限），清掉 `Search.Scope` 搜整个工作区，结果就是侧栏搜索。
 `search.Plan` 先核对每一处还在原位（文件可能刚改过），再算出改动；正则替换里的 `$1` 由 `Expand` 展开。`app/replace.go` 的 `ReplaceMatches`：开着的文件改缓冲区（能撤销、不存盘），没开的直接写盘（经本地历史）。替换后不重新搜索，而是在内存中调整结果位置（`splice`），被排除的也跟着挪（`moveDismissed`）。替换操作记录在输出栏。
 
 替换预览（`app/replacepreview.go`）：打开一个 Diff 形式的标签，左侧为原文，右侧为替换后的内容；预览开着时文件又改了，标出“过期”并能重生成。“撤销上次替换”（`app/replaceundo.go`）只处理直接写入磁盘的文件：记下替换前的内容（一次最多 `MaxUndoReplace` 20 MB，超出时本次替换无法撤销），撤销时只恢复替换后未再次改动的文件。只记录最近一次操作，不持久化；已打开的文件通过编辑器的 ⌘Z 撤销。
@@ -589,7 +624,7 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 
 shell 按需启动：首次需要显示（底栏开着、当前仓库是它、是它当前的标签）才起（`EnsurePane`）。切仓库再切回来还是同一个 shell。标签的名字、顺序、分屏、每格 shell 所在的目录（OSC 7 报的）记进会话。
 
-终端里有没有程序在跑（关标签、关窗口要不要问）：用 `ps` 看 shell 的前台进程组（`Job()`）；目录没报 OSC 7 时用 `lsof` 看 cwd。
+终端里有没有程序在跑（关标签、关窗口要不要问）：用 `ps` 看 shell 的前台进程组（`Job()`）；目录没报 OSC 7 时用 `lsof` 看 cwd。认领进程号、前台命令、cwd 都在 `app/termjobs.go`：`ps -o pid,pgid,tpgid,ucomm,args` 一次拿到可执行文件名和命令行，问一格时两次 `ps -p`，轮询 agent 时一次 `ps -A`，名字都按 `jobName` 算（node 跑的脚本按脚本名，路径带空格时按 ucomm）。termd 里的会话忙不忙由 termd 自己用 `TIOCGPGRP` 看（有不在任何窗口里的会话，应用不知道它们的进程号）。
 
 按键：上下文 Terminal 里的命令（新终端 ⌃⇧`、分屏、查找、清屏……）走注册表；别的键交给终端（`Options.OnKey`）。设置里有 ⌥ 作 Meta、选中即复制、光标闪烁、Ghostty 主题名。终端配置（`TermProfiles`，最多 10 个）是 shell 加参数，第一格用了配置时标签名跟着它。
 
@@ -608,7 +643,7 @@ shell 按需启动：首次需要显示（底栏开着、当前仓库是它、�
 终端里跑着 claude、codex 这类 agent 时，按格算它的状态，再按工作树汇总（`app/agents.go`）。全在本机算，只看 Grove 自己的终端，不读 agent 的日志、不接它的接口。
 
 - 等你（`AgentWaiting`）：终端响铃（BEL）或要通知（OSC 9 / OSC 777），而键盘不在这一格（`paneLooked`）；记在 `TermPane.bellAt`，用户切进这一格（`FocusPane`、`GoToPane`）时清。认序列靠 mygo 终端的 `OnBell` / `OnNotify`（OSC 0/2/7/52 里当结束符的 BEL 它不算）；termd 的会话在无头终端上接这两个回调，发 `frameBell` 给窗口（没窗口接着时记下，接上时补一帧），窗口端是 `Conn.OnBell`。
-- 运行中 / 空闲（`AgentRunning` / `AgentIdle`）：前台命令在 agent 名单里（`DefaultAgents` 加设置的「agent 命令」），最近 10 秒（`agentQuiet`）有输出算运行中，否则空闲。前台命令由后台 goroutine（`agentPoller`）每 2 秒用一次 `ps -A -o pid,pgid,tpgid,args` 读所有开着的格（node / bun / python 跑的脚本按脚本名）；读到的和上一轮一样就不回主线程，免得空闲时每 2 秒多一帧。输出时间：termd 的格每来一帧屏幕记一次（`Conn.OnOutput`，原子量），本地的格没有输出回调，前台是 agent 时看屏幕文字的指纹变没变。
+- 运行中 / 空闲（`AgentRunning` / `AgentIdle`）：前台命令在 agent 名单里（`DefaultAgents` 加设置的「agent 命令」），最近 10 秒（`agentQuiet`）有输出算运行中，否则空闲。前台命令由后台 goroutine（`agentPoller`）每 2 秒用一次 `ps -A` 读所有开着的格（`termjobs.go` 的 `foregroundJobs`；node / bun / python 跑的脚本按脚本名）；读到的和上一轮一样就不回主线程，免得空闲时每 2 秒多一帧。输出时间：termd 的格每来一帧屏幕记一次（`Conn.OnOutput`，原子量），本地的格没有输出回调，前台是 agent 时看屏幕文字的指纹变没变。
 - 终端 → 工作树：格现在的目录（`paneDir`：OSC 7，没有时上次 lsof 读的）落在哪个工作树里（`git.Under` / `SamePath`，套在里面的别的工作树归那个工作树）。`WtAgent(r, w)` 取最需要你的一格（等你 > 运行中 > 空闲），带上开始运行 / 等你的时间和是哪个终端；`GoToPane` 切到那一格（底栏的打开底栏、切仓库和标签，编辑器区的切到那个标签）。
 - 界面：终端标签（底栏和编辑器区）的图标后面，等你画 7px 琥珀色圆点，运行中画 13px 的灰色转圈（`ui/agents.go` 的 `agentMark`），空闲和没有 agent 不画。
 

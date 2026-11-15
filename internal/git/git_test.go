@@ -596,10 +596,10 @@ func TestRunOpCancel(t *testing.T) {
 	if err := <-done; !errors.Is(err, ErrCanceled) {
 		t.Fatalf("err = %v，应为 ErrCanceled", err)
 	}
-	if d := time.Since(start); d > 5*time.Second {
+	if d := time.Since(start); d > testutil.Budget(5*time.Second) {
 		t.Fatalf("取消后过了 %v 才返回", d)
 	}
-	deadline = time.Now().Add(3 * time.Second)
+	deadline = time.Now().Add(testutil.Budget(3 * time.Second))
 	for syscall.Kill(pid, 0) == nil {
 		if time.Now().After(deadline) {
 			t.Fatalf("取消后 sleep（%d）还活着", pid)

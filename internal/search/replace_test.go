@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lemoeade/grove/internal/testutil"
 )
 
 // replaceIn 在 data 里按 q 搜一次，再把所有的换成 repl。
@@ -194,7 +196,7 @@ func TestReplaceMany(t *testing.T) {
 			t.Fatalf("换了 %d 处、%d 处对不上", done, stale)
 		}
 	}
-	if d := time.Since(start); d > 2*time.Second {
+	if d := time.Since(start); d > testutil.Budget(2*time.Second) {
 		t.Errorf("1000 个文件换了 %v", d)
 	}
 }

@@ -121,7 +121,7 @@ func searchInputs(a *app.App, c *wui.Context) {
 				{&s.Query.Exclude, i18n.T("排除的文件"), i18n.T("排除，如 *_test.go, vendor/")},
 			} {
 				in := wui.TextInput(c.Key(g.label), g.v).Label(g.label).Placeholder(g.place).
-					Tooltip(i18n.T("逗号分开；不带 / 的比文件名或任一级目录名，带 / 的比路径；支持 * ** ? {a,b}")).FontSize(12)
+					Tooltip(i18n.T("逗号分开；不带 / 的比文件名或任一级目录名，带 / 的比路径；支持 * ** ? {a,b}")).FontSize(sideSub)
 				if in.Changed() {
 					a.SearchChanged()
 				}
@@ -136,7 +136,7 @@ func searchInputs(a *app.App, c *wui.Context) {
 				{&s.Query.Ignored, i18n.T("也搜被忽略的文件（.gitignore）"), i18n.T("被 .gitignore 忽略的文件一个个列出来一起搜（node_modules 那些，会慢）；不是 Git 仓库的文件夹没有这一说")},
 				{&s.Query.Big, i18n.T("也搜 2 MB 以上的大文件"), i18n.T("32 MB 以下的大文件也搜；再大的照旧跳过")},
 			} {
-				if wui.Checkbox(c, o.on, o.text).FontSize(12).Tooltip(o.tip).Changed() {
+				if wui.Checkbox(c, o.on, o.text).FontSize(sideSub).Tooltip(o.tip).Changed() {
 					a.SearchNow()
 				}
 			}
@@ -156,19 +156,17 @@ func summaryLink(c *wui.Context, text, tip string) wui.Element {
 
 // replaceToggle 是搜索框左边的箭头：展开 / 收起替换框，和搜索框（展开时连同替换框）一样高。
 func replaceToggle(a *app.App, c *wui.Context) {
-	t := c.Theme()
 	s := &a.Search
 	label := i18n.T("显示替换")
 	if s.Replacing {
 		label = i18n.T("隐藏替换")
 	}
-	b := wui.Box(c).Width(16).Radius(4).AlignItems(wui.Center).Justify(wui.Center).Shrink(0).Cursor(wui.CursorPointer).Label(label)
+	b := wui.Box(c).Width(16).Label(label)
 	tooltip(c, b, app.Tip(i18n.T("搜索并替换"), "view.replace"))
-	if b.Hovered() {
-		b.Background(t.Text.Alpha(0.08))
-	}
+	fg := toolStyle(c, b, false, false)
+	b.Radius(4) // 只有 16 宽，toolStyle 的圆角 6 太圆
 	b.Children(func() {
-		ic := wui.Icon(c, iconChevronRight).FontSize(iconRow).TextColor(t.TextMuted)
+		ic := wui.Icon(c, iconChevronRight).FontSize(iconRow).TextColor(fg)
 		if s.Replacing {
 			ic.Rotate(90)
 		}
@@ -190,7 +188,7 @@ func queryField(a *app.App, c *wui.Context) {
 	tip := app.Tip(i18n.T("在所有仓库的文件里搜文字，回车立刻搜，⇧回车换行，⌥回车开成搜索编辑器"), "view.search")
 	if multiLine(c, &s.MultiQ, &s.Focus, s.Query.Text, &s.Field) {
 		f := wui.TextArea(c.Key("qm"), &s.Query.Text).Lines(1, 4).MinHeight(0).Label(i18n.T("搜索文字")).Tooltip(tip).
-			FontSize(12).Font(mono()).Bind(&s.Field).Grow(1).MinWidth(0)
+			FontSize(sideSub).Font(mono()).Bind(&s.Field).Grow(1).MinWidth(0)
 		s.Focus = placeCaret(f, &s.CaretQ) || s.Focus
 		f.OnTextKey(func(k wui.TextKey) bool {
 			if k.Key != wui.KeyEnter || k.Mods != 0 && k.Mods != wui.Alt {
@@ -266,7 +264,7 @@ func filterBox(c *wui.Context, text *string, h *wui.Handle, label, placeholder s
 	}
 	wui.Row(c).Grow(1).MinWidth(0).AlignItems(wui.Center).Children(func() {
 		f = wui.TextInput(c.Key("q"), text).Label(label).Placeholder(placeholder).
-			FontSize(12).Bind(h).Grow(1).MinWidth(0).PaddingStart(edge + glyph + gap).PaddingEnd(end)
+			FontSize(sideSub).Bind(h).Grow(1).MinWidth(0).PaddingStart(edge + glyph + gap).PaddingEnd(end)
 		wui.Row(c).Absolute().Left(edge).Top(0).Bottom(0).Width(glyph).AlignItems(wui.Center).Justify(wui.Center).
 			PassThrough().Children(func() {
 			wui.Icon(c, iconSearch).FontSize(iconRow).TextColor(t.TextMuted)
@@ -301,7 +299,7 @@ func replaceField(a *app.App, c *wui.Context) {
 		tip := i18n.T("空着就是删掉；⇧回车换行；开着的文件改编辑器里的，没开的直接写盘")
 		if multiLine(c, &s.MultiR, &s.FocusRepl, s.Replace, &s.ReplField) {
 			in := wui.TextArea(c.Key("replm"), &s.Replace).Lines(1, 4).MinHeight(0).Label(i18n.T("替换为")).Tooltip(tip).
-				FontSize(12).Font(mono()).Bind(&s.ReplField).Grow(1).MinWidth(0)
+				FontSize(sideSub).Font(mono()).Bind(&s.ReplField).Grow(1).MinWidth(0)
 			s.FocusRepl = placeCaret(in, &s.CaretR) || s.FocusRepl
 			in.OnTextKey(func(k wui.TextKey) bool {
 				if k.Key != wui.KeyEnter || k.Mods != 0 {
@@ -322,7 +320,7 @@ func replaceField(a *app.App, c *wui.Context) {
 		if s.Query.Regexp {
 			place = i18n.T("替换为…（$1 是第一个括号）")
 		}
-		in := wui.TextInput(c.Key("repl"), &s.Replace).Label(i18n.T("替换为")).Placeholder(place).FontSize(12).
+		in := wui.TextInput(c.Key("repl"), &s.Replace).Label(i18n.T("替换为")).Placeholder(place).FontSize(sideSub).
 			Tooltip(tip).Bind(&s.ReplField).Grow(1).MinWidth(0)
 		shiftEnter(a, in, s.Replace, func(text string, caret int) {
 			s.Replace, s.MultiR, s.CaretR = text, true, caret+1
@@ -472,7 +470,7 @@ func recentSearches(a *app.App, c *wui.Context) {
 				Cursor(wui.CursorPointer).Label(i18n.Tf("最近搜索 %s", label)).Tooltip(label)
 			hover := el.Hovered()
 			if hover {
-				el.Background(t.Text.Alpha(0.06))
+				el.Background(toolFill(t, 0.06))
 			}
 			el.Children(func() {
 				wui.Icon(c, iconHistory).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
@@ -689,7 +687,7 @@ func searchMatchMenu(a *app.App, m menu, sr app.SearchRow, do func(func())) {
 		a.OpenSearchMatchSide(sr.Match)
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(filepath.Join(mt.Root, filepath.FromSlash(mt.Path)))
+		app.CopyText(filepath.Join(mt.Root, filepath.FromSlash(mt.Path)))
 	}
 }
 
@@ -718,7 +716,7 @@ func searchFileMenu(a *app.App, m menu, sr app.SearchRow, do func(func())) {
 		do(func() { a.SearchIn(r, dir) })
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(filepath.Join(mt.Root, filepath.FromSlash(mt.Path)))
+		app.CopyText(filepath.Join(mt.Root, filepath.FromSlash(mt.Path)))
 	}
 }
 

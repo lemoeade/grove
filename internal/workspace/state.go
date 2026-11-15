@@ -9,8 +9,8 @@ import (
 )
 
 // StateFile 记着用户加进来 / 从列表移除的仓库、界面设置（三个区域开没开、侧栏模式、
-// 区域大小、diff 布局）和每个工作区上次打开的标签、展开的目录，放在应用自己的数据目录，
-// 不碰用户的 .code-workspace 文件。
+// 区域大小、diff 布局）和每个工作区上次打开的标签、展开的目录，放在应用自己的数据目录。
+// 这些都不写进用户的 .code-workspace；那个文件只在用户拖动仓库排序时由 Reorder 改 folders 的顺序。
 const StateFile = "state.json"
 
 // Version 是 state.json 当前的版本。没有 version 的是原型时期的（面板表或四个布尔），要迁移；
@@ -287,6 +287,16 @@ const MaxRecentWs = 10
 // MaxTabs 是一个工作区最多记的标签数。
 const MaxTabs = 50
 
+// 读 state.json 时几张表截到的长度。写的地方在 app 里，有各自的上限（app.maxRecent、app.MaxCommitMsgs、
+// app.MaxSearches），这里取一样的数（app 的测试核对写的上限不超过这里），读的时候只截掉手改或坏掉的文件里多出来的。
+const (
+	MaxRecent     = 50 // 最近打开的文件（recent）
+	MaxCommitMsgs = 30 // 提交信息历史（commitMsgs）
+	MaxSearches   = 20 // 最近搜索（searchHistory）
+	// MaxWindows 是退出时开着的窗口最多记几个（windows）。写的地方不截，这里给得很宽，只防坏文件。
+	MaxWindows = 100
+)
+
 // Default 是第一次打开时的样子：三个区域都开着，侧栏是文件树。
 func Default() State {
 	return State{Version: Version, Sidebar: true, RightBar: true, BottomBar: true, SidebarMode: ModeFiles}
@@ -457,8 +467,10 @@ func migratePanels(st *State, raw json.RawMessage) {
 	}
 }
 
-// clamp 把不合理的值换回默认。
+// clamp 把不合理的值换回默认：仓库根、工作区、文件这些该是绝对路径的，相对路径的丢掉；几张表去重、截到上限；
+// 越界的下标、读不懂的设置换回默认。只清理读不懂的，合法的数据原样留着。
 func (st *State) clamp() {
+	rel := func(p string) bool { return !filepath.IsAbs(p) }
 	st.clampPanels()
 	st.Settings.Clamp()
 	seen := map[string]bool{}
@@ -480,6 +492,20 @@ func (st *State) clamp() {
 	if len(st.TaskHistory) > MaxTaskHistory {
 		st.TaskHistory = st.TaskHistory[:MaxTaskHistory]
 	}
+	clear(seen)
+	st.Recent = slices.DeleteFunc(st.Recent, func(p string) bool {
+		drop := !filepath.IsAbs(p) || seen[p]
+		seen[p] = true
+		return drop
+	})
+	st.Recent = st.Recent[:min(len(st.Recent), MaxRecent)]
+	st.CommitMsgs = slices.DeleteFunc(st.CommitMsgs, func(m string) bool { return strings.TrimSpace(m) == "" })
+	st.CommitMsgs = st.CommitMsgs[:min(len(st.CommitMsgs), MaxCommitMsgs)]
+	st.SearchHistory = slices.DeleteFunc(st.SearchHistory, func(e SearchEntry) bool { return e.Text == "" })
+	st.SearchHistory = st.SearchHistory[:min(len(st.SearchHistory), MaxSearches)]
+	st.Windows = slices.DeleteFunc(st.Windows, func(p string) bool { return p != "" && !filepath.IsAbs(p) }) // "" 是空工作区的窗口
+	st.Windows = st.Windows[:min(len(st.Windows), MaxWindows)]
+	st.Added, st.Hidden = slices.DeleteFunc(st.Added, rel), slices.DeleteFunc(st.Hidden, rel)
 	for k, s := range st.Sessions {
 		if s == nil || k == "" {
 			delete(st.Sessions, k)
@@ -494,8 +520,29 @@ func (st *State) clamp() {
 		if s.Active < -1 || s.Active >= len(s.Tabs) {
 			s.Active = -1
 		}
-		rel := func(p string) bool { return !filepath.IsAbs(p) }
 		s.Added, s.Hidden = slices.DeleteFunc(s.Added, rel), slices.DeleteFunc(s.Hidden, rel)
+		s.Open, s.WtOpen = slices.DeleteFunc(s.Open, rel), slices.DeleteFunc(s.WtOpen, rel)
+		if rel(s.Repo) {
+			s.Repo = ""
+		}
+		for root, dirs := range s.Dirs {
+			// 目录是仓库内的相对路径，绝对路径的不认
+			if dirs = slices.DeleteFunc(dirs, func(d string) bool { return d == "" || filepath.IsAbs(d) }); rel(root) || len(dirs) == 0 {
+				delete(s.Dirs, root)
+			} else {
+				s.Dirs[root] = dirs
+			}
+		}
+		for root, fold := range s.Git {
+			if rel(root) || fold != "open" && fold != "closed" {
+				delete(s.Git, root)
+			}
+		}
+		for root := range s.Groups {
+			if rel(root) {
+				delete(s.Groups, root)
+			}
+		}
 		for root, ts := range s.Terms {
 			if ts == nil || !filepath.IsAbs(root) {
 				delete(s.Terms, root)

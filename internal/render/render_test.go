@@ -331,3 +331,40 @@ func TestRenderOpenFail(t *testing.T) {
 	r.Get(other)
 	eventually(t, "过了再试", func() bool { mu.Lock(); defer mu.Unlock(); return tries == 2 })
 }
+
+// Wait 在后台 goroutine 里等到这一张画好：画好了直接给缓存里的，源码错也返回（带 Err），到点、关了返回 false。
+func TestWait(t *testing.T) {
+	r, f, _ := newFake(t)
+	q := Request{Kind: SVG, Src: "<svg/>", Scale: 2}
+	res, ok := r.Wait(context.Background(), q)
+	if !ok || res.Bitmap == nil || res.W != 60 || res.H != 20 {
+		t.Fatalf("Wait = %+v %v", res, ok)
+	}
+	if res2, ok := r.Wait(context.Background(), q); !ok || res2.Bitmap != res.Bitmap || len(f.rendered()) != 1 {
+		t.Fatalf("第二次又画了：%v", f.rendered())
+	}
+	if res, ok := r.Wait(context.Background(), Request{Kind: SVG, Src: "bad svg", Scale: 2}); !ok || res.Err == "" {
+		t.Fatalf("源码错：%+v %v", res, ok)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, ok := r.Wait(ctx, Request{Kind: SVG, Src: "slow", Scale: 2}); ok {
+		t.Fatal("没到点就给了")
+	}
+	done := make(chan bool)
+	go func() {
+		_, ok := r.Wait(context.Background(), Request{Kind: SVG, Src: "slow2", Scale: 2})
+		done <- ok
+	}()
+	eventually(t, "排上 slow2", func() bool { return r.Pending(Request{Kind: SVG, Src: "slow2", Scale: 2}) })
+	r.Close()
+	close(f.release)
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("关了还给")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("关了 Wait 还在等")
+	}
+}

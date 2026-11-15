@@ -113,11 +113,7 @@ func inlineBlame(d *docs.Doc) editor.Inlay {
 		if len(sum) > inlineBlameMax {
 			sum = append(sum[:inlineBlameMax], '…')
 		}
-		comma := "，" // 没有汉字的串不进翻译表，英文界面换成半角
-		if i18n.Lang() == "en" {
-			comma = ", "
-		}
-		text = cm.Author + comma + git.Ago(cm.Time) + " · " + string(sum)
+		text = cm.Author + i18n.Comma() + git.Ago(cm.Time) + " · " + string(sum)
 	}
 	// 和行里的字隔开四个空格；不能有 Tab（编辑器按制表位排，宽度会跟着列变）
 	text = "    " + strings.Map(func(r rune) rune {

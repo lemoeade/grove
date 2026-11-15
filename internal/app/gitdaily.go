@@ -83,17 +83,19 @@ func (a *App) RebaseOnto(r *Repo, b git.Branch) {
 				return
 			}
 			var msg string
+			ask := a.Ask
 			if n == 0 {
 				msg = i18n.Tf("当前分支没有 %s 上没有的提交，会直接快进过去。", b.Name)
 			} else {
 				msg = i18n.Tn("当前分支的 %d 个提交会重写。", n)
-				if pushed > 0 {
+				if pushed > 0 { // 改写推送过的提交：红的确认
 					msg += i18n.Tn("其中 %d 个已经推送过，做完要强制推送（Git 菜单 → 强制推送）。", pushed)
+					ask = a.AskDanger
 				}
 			}
 			msg += i18n.T("有未提交的改动会先自动贮藏、做完再放回（--autostash）。")
 			label := i18n.Tf("变基到 %s", b.Name)
-			a.Ask(i18n.Tf("把 %s 变基到 %s？", cur.Name, b.Name), msg, i18n.T("开始变基"), func() {
+			ask(i18n.Tf("把 %s 变基到 %s？", cur.Name, b.Name), msg, i18n.T("开始变基"), func() {
 				a.stopOp(r, label, "rebase", "--autostash", b.Name)
 			})
 		})

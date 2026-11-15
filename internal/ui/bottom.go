@@ -165,10 +165,10 @@ func termTab(a *app.App, c *wui.Context, r *app.Repo, tt *app.TermTab, active bo
 		panelTabText(c, label, fg)
 		if n := len(tt.Panes()); n > 1 {
 			wui.Text(c, strconv.Itoa(n)).FontSize(10).TextColor(t.TextMuted).SingleLine().Padding(0, 4).Radius(999).
-				Background(t.Text.Alpha(0.07)).Tooltip(i18n.Tf("分成 %d 格", n))
+				Background(quietFill(t)).Tooltip(i18n.Tf("分成 %d 格", n))
 		}
 		// × 占着位置，只在当前和悬停的标签上画出来，免得标签宽度跟着鼠标跳。
-		x := wui.Box(c.Key("x")).Size(18, 18).AlignItems(wui.Center).Justify(wui.Center).Radius(5).Shrink(0).
+		x := wui.Box(c.Key("x")).Size(closeSize, closeSize).AlignItems(wui.Center).Justify(wui.Center).Radius(ctlRadius).Shrink(0).
 			Label(i18n.T("关闭终端标签")).Tooltip(i18n.T("关闭终端标签"))
 		xc := wui.Transparent
 		if active || hover {
@@ -200,7 +200,7 @@ func renameTab(a *app.App, c *wui.Context, r *app.Repo, tt *app.TermTab) {
 	panelTab(c, true).Padding(0, 6).Children(func() {
 		wui.Icon(c, iconTerminal).FontSize(iconRow).TextColor(t.Text)
 		in := wui.TextInput(c.Key("name"), &e.Text).Label(i18n.T("终端标签的名字")).Placeholder(r.TermLabel(&app.TermTab{Num: tt.Num})).
-			FontSize(12).TextColor(t.Text).Width(140).
+			FontSize(barFont).TextColor(t.Text).Width(140).
 			OnTextKey(func(k wui.TextKey) bool {
 				if k.Key != wui.KeyEscape || k.Mods != 0 {
 					return false
@@ -362,7 +362,7 @@ func termPane(a *app.App, c *wui.Context, r *app.Repo, tab *app.TermTab, p *app.
 		case p.Connecting(): // 在连终端后台进程（第一次要先起它）
 			wui.Row(c.Key("connecting")).Padding(12, 14).Gap(8).AlignItems(wui.Center).Children(func() {
 				wui.Spinner(c)
-				wui.Text(c, i18n.T("启动中…")).FontSize(12).TextColor(t.TextMuted)
+				wui.Text(c, i18n.T("启动中…")).FontSize(noteFont).TextColor(t.TextMuted)
 			})
 		case p.Term != nil:
 			tv := terminal.View(c.Key(paneKey{p.ID, p.Gen()}), p.Term).Fill().Bind(&p.View)
@@ -393,7 +393,7 @@ func termPane(a *app.App, c *wui.Context, r *app.Repo, tab *app.TermTab, p *app.
 func paneClose(a *app.App, c *wui.Context, r *app.Repo, tab *app.TermTab, p *app.TermPane) {
 	t := c.Theme()
 	wui.Box(c.Key("close")).Absolute().Top(5).Right(5).Padding(1).Radius(7).Background(t.Background).Border(1, t.Border).
-		Shadow(0, 2, 6, 0, wui.RGBA(0, 0, 0, 0.12)).Children(func() {
+		Shadow(shadowLow()).Children(func() {
 		rowButton(c, iconClose, i18n.T("关闭这一格分屏"), app.Tip(i18n.T("关闭这一格分屏"), "term.closePane"), func() { a.ClosePane(r, tab, p) })
 	})
 }
@@ -411,9 +411,9 @@ func exitedBar(a *app.App, c *wui.Context, r *app.Repo, tab *app.TermTab, p *app
 		msg = i18n.Tf("shell 已退出，退出码 %d；会话还在后台进程里，重新启动会换一个", p.ExitCode)
 	}
 	wui.Row(c.Key("exited")).Absolute().Left(8).Right(8).Bottom(8).Padding(6, 6, 6, 10).Gap(4).AlignItems(wui.Center).Radius(8).
-		Background(t.Background).Border(1, t.Border).Shadow(0, 4, 12, 0, wui.RGBA(0, 0, 0, 0.18)).Children(func() {
+		Background(t.Background).Border(1, t.Border).Shadow(shadowFloat()).Children(func() {
 		wui.Icon(c, iconTerminal).FontSize(iconRow).TextColor(t.TextMuted)
-		wui.Text(c, msg).FontSize(12).TextColor(t.Text).SingleLine().Ellipsis("…").MinWidth(0).Tooltip(msg)
+		wui.Text(c, msg).FontSize(noteFont).TextColor(t.Text).SingleLine().Ellipsis("…").MinWidth(0).Tooltip(msg)
 		wui.Spacer(c).Grow(1)
 		if iconAction(c.Key("restart"), iconRefresh, i18n.T("重新启动"), i18n.T("重新启动终端"), "", wui.Transparent) {
 			a.RestartPane(r, p)
@@ -433,9 +433,9 @@ func termFind(a *app.App, c *wui.Context, p *app.TermPane) {
 		p.Term.Search(f.Text)
 	}
 	wui.Row(c.Key("find")).Absolute().Top(6).Right(10).Height(32).Padding(0, 4, 0, 10).Gap(4).AlignItems(wui.Center).Radius(8).
-		Background(t.Background).Border(1, t.Border).Shadow(0, 4, 12, 0, wui.RGBA(0, 0, 0, 0.18)).Children(func() {
+		Background(t.Background).Border(1, t.Border).Shadow(shadowFloat()).Children(func() {
 		wui.Icon(c, iconSearch).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
-		in := wui.TextInputBase(c.Key("q"), &f.Text).Label(i18n.T("在终端里查找")).Placeholder(i18n.T("查找")).FontSize(12.5).Width(170).
+		in := wui.TextInputBase(c.Key("q"), &f.Text).Label(i18n.T("在终端里查找")).Placeholder(i18n.T("查找")).FontSize(bodyFont).Width(170).
 			OnTextKey(func(k wui.TextKey) bool {
 				switch {
 				case k.Key == wui.KeyEscape && k.Mods == 0:
@@ -486,7 +486,7 @@ func bottomTab(a *app.App, c *wui.Context, which int, ic *wui.SVG, label string,
 	b.Children(func() {
 		wui.Icon(c, ic).FontSize(iconRow).TextColor(fg)
 		if n > 0 {
-			wui.Text(c, strconv.Itoa(n)).FontSize(12).FontWeight(500).TextColor(fg).SingleLine().FontFeatures("tnum").Margin(0, 0, textNudge, 0)
+			wui.Text(c, strconv.Itoa(n)).FontSize(barFont).FontWeight(500).TextColor(fg).SingleLine().FontFeatures("tnum").Margin(0, 0, textNudge, 0)
 		}
 	})
 	if b.Clicked() {

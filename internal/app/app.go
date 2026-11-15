@@ -156,6 +156,12 @@ type BranchDialog struct {
 	Repo *Repo  // 建在哪个仓库（历史里从某个提交新建时是那个提交的仓库）；nil = 当前仓库
 }
 
+// OpenNewBranch 开"新建分支"对话框：建在 r 里（nil = 当前仓库），从 from 起（空 = 那个仓库的 HEAD）。
+// 菜单栏、各仓库的分支 / Git 菜单、历史里"从这里新建分支"都走这里，哪个仓库的菜单就建在哪个仓库。
+func (a *App) OpenNewBranch(r *Repo, from string) {
+	a.Branch = BranchDialog{Open: true, From: from, Repo: r}
+}
+
 // 底栏的标签。
 const (
 	BottomTerminal = iota
@@ -245,7 +251,7 @@ type App struct {
 	excludeOn    string                // 文件树最近按的设置里的"隐藏的文件"（exclude.go）
 	CompareSel   *CompareItem          // 文件树右键"选择以进行比较"记下的文件（filecompare.go）
 	FileUndo     []FileOp              // 文件树能撤销的操作，最新的在后（fileundo.go）
-	excludeTimer *time.Timer           // 设置里的"隐藏的文件"停手之后重读
+	excludeWait  debounce              // 设置里的"隐藏的文件"停手之后重读
 	wsExclude    []string              // 工作区文件 settings 的 files.exclude（exclude.go）
 	wsMod        time.Time             // 读 wsExclude 时工作区文件的修改时间
 	tree         treeCache
@@ -301,13 +307,12 @@ type App struct {
 	Palette PaletteState
 
 	// 右栏历史的搜索框（不记；所有分支的开关在 St 里，文件历史在各仓库的 Hist 里）
-	HistQuery string
-	HistAgent bool      // 右栏历史只看 agent 写的提交（头部的四角星开关），见 ToggleHistAgent
-	HistFind  bool      // 右栏历史头部的搜索框展开着（点放大镜开，Esc 收起）
-	HistField ui.Handle // 右栏历史的搜索框（展开时把焦点给它）
-	HistFocus bool      // 下一帧把焦点给右栏历史的搜索框（刚点了放大镜）
-	histTimer *time.Timer
-	histTick  int
+	HistQuery  string
+	HistAgent  bool      // 右栏历史只看 agent 写的提交（头部的四角星开关），见 ToggleHistAgent
+	HistFind   bool      // 右栏历史头部的搜索框展开着（点放大镜开，Esc 收起）
+	HistField  ui.Handle // 右栏历史的搜索框（展开时把焦点给它）
+	FocusHist  bool      // 下一帧把焦点给右栏历史的搜索框（刚点了放大镜）
+	histTyping debounce  // 历史搜索框停手之后重读
 
 	FocusDoc   bool     // 下一帧把焦点给当前标签的编辑器（从面板打开文件、跳行之后）
 	StartFocus int      // 起始页（没打开文件时的编辑区）上键盘在第几行（从 1 数，0 为不在起始页上）；↑↓ 改它
@@ -470,9 +475,7 @@ func (a *App) Close() {
 	a.stopAgents()
 	a.stopWatching()
 	a.Search.stop()
-	if a.Search.timer != nil {
-		a.Search.timer.Stop()
-	}
+	a.Search.typing.stop()
 	for _, r := range a.Repos {
 		r.close()
 	}

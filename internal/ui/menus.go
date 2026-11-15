@@ -56,7 +56,7 @@ func wsMenu(a *app.App, m menu) {
 		a.InFinder(a.WsPath)
 	}
 	if m.Item(i18n.T("复制工作区文件路径")).Disabled(none).Chosen() {
-		copyText(a.WsPath)
+		app.CopyText(a.WsPath)
 	}
 }
 
@@ -110,7 +110,7 @@ func gitMenu(a *app.App, m menu, r *app.Repo) {
 	}
 	m.Separator()
 	if m.Item(i18n.T("新建分支…")).Chosen() {
-		a.Branch = app.BranchDialog{Open: true}
+		a.OpenNewBranch(r, "")
 	}
 	if m.Item(i18n.T("运行 git 命令…")).Chosen() {
 		a.OpenPalette(">git ")
@@ -182,7 +182,7 @@ func branchMenu(a *app.App, m menu, r *app.Repo) {
 	}).Disabled(why != "")
 	m.Separator()
 	if m.Item(i18n.T("新建分支…")).Chosen() {
-		a.Branch = app.BranchDialog{Open: true}
+		a.OpenNewBranch(r, "")
 	}
 	cur, onBranch := app.CurrentBranch(r)
 	if whyItem(m, i18n.T("重命名当前分支…"), app.RenameBranchWhy(r)).Chosen() {
@@ -239,11 +239,7 @@ func withWhy(label, why string) string {
 	if why == "" {
 		return label
 	}
-	label = strings.TrimSuffix(label, "…")
-	if i18n.Lang() == "en" {
-		return label + " (" + why + ")"
-	}
-	return label + "（" + why + "）"
+	return strings.TrimSuffix(label, "…") + i18n.Paren(why)
 }
 
 // refItems 是"合并到当前分支 / 把当前分支变基到"子菜单的内容：别的本地分支（最多 30 个）、分隔、远程分支
@@ -354,7 +350,7 @@ func remoteItems(a *app.App, m menu, r *app.Repo) {
 			m.Separator()
 		}
 		if m.Item(rm.Name + "  " + rm.URL).Chosen() {
-			copyText(rm.URL)
+			app.CopyText(rm.URL)
 			a.Toast = i18n.Tf("已复制 %s 的地址", rm.Name)
 		}
 		if m.Item(i18n.Tf("抓取 %s", rm.Name)).Chosen() {
@@ -392,7 +388,7 @@ func repoMenu(a *app.App, m menu, r *app.Repo, tree bool) {
 		a.InFinder(r.Root)
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(r.Root)
+		app.CopyText(r.Root)
 	}
 	if !r.Plain {
 		m.Separator()
@@ -551,10 +547,10 @@ func fileMenu(a *app.App, m menu, r *app.Repo, row files.Row) {
 		a.InFinder(full)
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(full)
+		app.CopyText(full)
 	}
 	if m.Item(i18n.T("复制仓库内路径")).Chosen() {
-		copyText(row.Path)
+		app.CopyText(row.Path)
 	}
 	m.Separator()
 	clipItems(a, m, tr, []app.TreeRow{tr})
@@ -643,7 +639,7 @@ func linkedMenu(a *app.App, m menu, r *app.Repo, row files.Row) {
 		a.InFinder(full)
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(full)
+		app.CopyText(full)
 	}
 }
 
@@ -706,7 +702,7 @@ func chosenMenu(a *app.App, m menu, at app.TreeRow, rows []app.TreeRow) {
 			a.RevealRows(rows)
 		}
 		if m.Item(i18n.Tn("复制 %d 个路径", n)).Chosen() {
-			copyText(app.RowPaths(rows, false))
+			app.CopyText(app.RowPaths(rows, false))
 		}
 		return
 	}
@@ -723,10 +719,10 @@ func chosenMenu(a *app.App, m menu, at app.TreeRow, rows []app.TreeRow) {
 		a.RevealRows(rows)
 	}
 	if m.Item(i18n.Tn("复制 %d 个路径", n)).Chosen() {
-		copyText(app.RowPaths(rows, false))
+		app.CopyText(app.RowPaths(rows, false))
 	}
 	if m.Item(i18n.Tn("复制 %d 个仓库内路径", n)).Chosen() {
-		copyText(app.RowPaths(rows, true))
+		app.CopyText(app.RowPaths(rows, true))
 	}
 	m.Separator()
 	clipItems(a, m, at, rows)
@@ -759,10 +755,10 @@ func chosenChangeMenu(a *app.App, m menu, rows []app.ChangeRow) {
 		a.RevealChanges(rows)
 	}
 	if m.Item(i18n.Tn("复制 %d 个路径", n)).Chosen() {
-		copyText(app.ChangePaths(rows, false))
+		app.CopyText(app.ChangePaths(rows, false))
 	}
 	if m.Item(i18n.Tn("复制 %d 个仓库内路径", n)).Chosen() {
-		copyText(app.ChangePaths(rows, true))
+		app.CopyText(app.ChangePaths(rows, true))
 	}
 }
 
@@ -830,10 +826,10 @@ func changeMenu(a *app.App, m menu, r *app.Repo, ch git.Change) {
 		a.InFinder(full)
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(full)
+		app.CopyText(full)
 	}
 	if m.Item(i18n.T("复制仓库内路径")).Chosen() {
-		copyText(ch.Path)
+		app.CopyText(ch.Path)
 	}
 	m.Separator()
 	if m.Item(i18n.T("用默认应用打开")).Disabled(ch.Code == 'D').Chosen() {
@@ -865,10 +861,10 @@ func commitMenu(a *app.App, m menu, r *app.Repo, cm git.Commit) {
 		return true
 	}
 	if chosen(m.Item(i18n.T("复制提交哈希"))) {
-		copyText(cm.Hash)
+		app.CopyText(cm.Hash)
 	}
 	if chosen(m.Item(i18n.Tf("复制短哈希 %s", cm.Short))) {
-		copyText(cm.Short)
+		app.CopyText(cm.Short)
 	}
 	if w := a.WebOf(r); w.OK() && chosen(m.Item(i18n.Tf("在 %s 打开", w.Site())).Disabled(!r.Extra.Pushed(cm.Hash))) {
 		a.OpenWeb(w.Commit(cm.Hash))
@@ -878,11 +874,11 @@ func commitMenu(a *app.App, m menu, r *app.Repo, cm git.Commit) {
 		if cm.Body != "" {
 			msg += "\n\n" + cm.Body
 		}
-		copyText(msg)
+		app.CopyText(msg)
 	}
 	m.Separator()
 	if chosen(m.Item(i18n.T("从这里新建分支…"))) {
-		a.Branch = app.BranchDialog{Open: true, From: cm.Short, Repo: r}
+		a.OpenNewBranch(r, cm.Short)
 	}
 	if chosen(m.Item(i18n.T("在这里打标签…"))) {
 		a.OpenNewTag(r, cm.Short)
@@ -951,7 +947,7 @@ func stashMenu(a *app.App, m menu, r *app.Repo, s git.Stash) {
 	}
 	m.Separator()
 	if m.Item(i18n.Tf("复制名字 %s", s.Ref)).Chosen() {
-		copyText(s.Ref)
+		app.CopyText(s.Ref)
 	}
 }
 
@@ -994,7 +990,7 @@ func tabMenu(a *app.App, m menu, d *docs.Doc) {
 	m.Separator()
 	splitItems(a, m, d)
 	if m.Item(i18n.T("固定标签")).Disabled(d.Pinned).Chosen() {
-		d.Pinned = true
+		a.PinTab(d)
 	}
 	if d.Kind == docs.File && a.RepoOf(d) != nil {
 		if m.Item(i18n.T("在文件树里显示")).Chosen() {
@@ -1112,7 +1108,7 @@ func pathItems(a *app.App, m menu, d *docs.Doc) {
 		a.OpenWeb(u)
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(d.Abs)
+		app.CopyText(d.Abs)
 	}
 }
 

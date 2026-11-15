@@ -14,6 +14,8 @@ import (
 // 这个文件是快速打开里的"名字@符号"：文件按名字打分取第一名（Sublime 的做法），第一行是那个文件，
 // 下面是它大纲里模糊匹配"符号"的项，回车打开文件跳到那个符号。开着的文件用标签的大纲；没开的在后台读盘、
 // 解析，结果按 abs + 大小 + 修改时间记在 olCache（最近用过的 maxOutlineCache 个）。
+// 读盘、解析（statOutline / parseOutline）和工作区符号的索引（symindex.go）共用；缓存各记各的：这里要整棵树
+// （"父 › 子"的路径给面板匹配），只记几个；索引记所有文件，只留拷出来的名字、小字和行号，省内存。
 
 // maxOutlineCache 是记住几个没开着的文件的大纲。
 const maxOutlineCache = 32
@@ -23,6 +25,28 @@ type olKey struct {
 	abs   string
 	size  int64
 	mtime int64
+}
+
+// statOutline 看磁盘上的 abs：是普通文件、不超过 outline.MaxBytes 时给出它这一版的 olKey。
+func statOutline(abs string) (olKey, bool) {
+	fi, err := os.Stat(abs)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > outline.MaxBytes {
+		return olKey{}, false
+	}
+	return olKey{abs, fi.Size(), fi.ModTime().UnixNano()}, true
+}
+
+// parseOutline 读盘、解码、解析 abs 的大纲（按 rel 认语言）；读不了、太大、是二进制为 nil。在后台调。
+func parseOutline(abs, rel string) *outline.Tree {
+	data, err := os.ReadFile(abs)
+	if err != nil || len(data) > outline.MaxBytes {
+		return nil
+	}
+	text, enc, _ := docs.Decode(data)
+	if enc == docs.Binary {
+		return nil
+	}
+	return outline.Build(outline.Parse(rel, text))
 }
 
 // olCache 是没开着的文件的大纲（"名字@符号"读的），最近用过的在 keys 末尾；pending 是正在后台读的。
@@ -150,11 +174,10 @@ func (a *App) outlineOf(r *Repo, rel string) (tree *outline.Tree, loading bool) 
 		}
 	}
 	abs := docs.NewFile(r.Root, rel).Abs
-	fi, err := os.Stat(abs)
-	if err != nil || fi.IsDir() || fi.Size() > outline.MaxBytes {
+	k, ok := statOutline(abs)
+	if !ok {
 		return nil, false
 	}
-	k := olKey{abs, fi.Size(), fi.ModTime().UnixNano()}
 	c := &a.olCache
 	if t, ok := c.get(k); ok {
 		return t, false
@@ -168,12 +191,7 @@ func (a *App) outlineOf(r *Repo, rel string) (tree *outline.Tree, loading bool) 
 	c.pending[k] = true
 	up := a.Update
 	go func() {
-		var t *outline.Tree
-		if data, err := os.ReadFile(abs); err == nil && len(data) <= outline.MaxBytes {
-			if text, enc, _ := docs.Decode(data); enc != docs.Binary {
-				t = outline.Build(outline.Parse(rel, text))
-			}
-		}
+		t := parseOutline(abs, rel)
 		up(func() {
 			delete(c.pending, k)
 			c.put(k, t)

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lemoeade/grove/internal/testutil"
 )
 
 // 高级正则：RE2 编不了的反向引用 / 环视走 regexp2。
@@ -158,7 +160,7 @@ func TestRegexp2Timeout(t *testing.T) {
 	if !res.Advanced || res.TimedOut != 1 || res.Skipped != 1 || res.Searched != 1 || len(res.Matches) != 1 || res.Matches[0].Path != "ok.txt" {
 		t.Fatalf("advanced=%v timedOut=%d skipped=%d searched=%d matches=%v", res.Advanced, res.TimedOut, res.Skipped, res.Searched, where(res.Matches))
 	}
-	if d := time.Since(start); d > 5*time.Second {
+	if d := time.Since(start); d > testutil.Budget(5*time.Second) {
 		t.Errorf("跑了 %v", d)
 	}
 	// 重读一个文件、替换前核对，超时的都当没有

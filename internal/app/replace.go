@@ -362,7 +362,7 @@ func (a *App) reportReplace(results []replaced) {
 			readonly++
 		}
 		if r.repo == nil {
-			fails = append(fails, fmt.Sprintf("%s：%v", r.path, r.err))
+			fails = append(fails, fmt.Sprintf("%s%s%v", r.path, i18n.Colon(), r.err))
 			continue
 		}
 		l := logs[r.repo]
@@ -373,8 +373,8 @@ func (a *App) reportReplace(results []replaced) {
 		}
 		switch {
 		case r.err != nil:
-			fails = append(fails, fmt.Sprintf("%s/%s：%v", r.repo.Name, r.path, r.err))
-			l.lines, l.failed = append(l.lines, fmt.Sprintf("%s：%v", r.path, r.err)), true
+			fails = append(fails, fmt.Sprintf("%s/%s%s%v", r.repo.Name, r.path, i18n.Colon(), r.err))
+			l.lines, l.failed = append(l.lines, fmt.Sprintf("%s%s%v", r.path, i18n.Colon(), r.err)), true
 		case r.done > 0:
 			l.n, l.files = l.n+r.done, l.files+1
 			l.lines = append(l.lines, i18n.Tf("%s：%d 处", r.path, r.done))

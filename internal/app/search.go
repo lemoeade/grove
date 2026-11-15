@@ -58,9 +58,8 @@ type SearchState struct {
 	draft     search.Query      // 开始翻之前框里的字和开关，翻回最近那条之后再 ↓ 回到它
 	draftGl   bool              // 开始翻之前包含 / 排除展没展开
 	collapsed map[fileKey]bool
-	gen       int // 每次开始搜递增，旧的结果作废
-	tick      int // 每次改查询递增，过期的定时器不再搜
-	timer     *time.Timer
+	gen       int      // 每次开始搜递增，旧的结果作废
+	typing    debounce // 改了查询之后停手 SearchDebounce 再搜
 	cancel    context.CancelFunc
 
 	lastReplace *replaceUndo     // 上次替换直接写了盘的文件，"撤销上次替换"用（replaceundo.go）；换了搜索词也留着
@@ -123,24 +122,12 @@ func (a *App) ShowSearch() {
 // SearchChanged 在查询（文字、开关、包含 / 排除）变了之后调：停 SearchDebounce 再搜；清空了就清掉结果。
 func (a *App) SearchChanged() {
 	s := &a.Search
-	s.tick++
-	if s.timer != nil {
-		s.timer.Stop()
-		s.timer = nil
-	}
 	if s.Query.Text == "" {
+		s.typing.stop()
 		a.SearchNow()
 		return
 	}
-	tick := s.tick
-	up := a.Update
-	s.timer = time.AfterFunc(SearchDebounce, func() {
-		up(func() {
-			if a.Search.tick == tick {
-				a.SearchNow()
-			}
-		})
-	})
+	s.typing.kick(a.Update, SearchDebounce, a.SearchNow)
 }
 
 // SearchNow 立刻搜（回车、停止敲字之后），取消还没搜完的上一次；"再读"加上去的上限回到 search.MaxMatches。
@@ -191,11 +178,7 @@ func (a *App) Research() {
 func (a *App) search(limit int, more bool) {
 	s := &a.Search
 	s.Query.Limit = limit
-	s.tick++
-	if s.timer != nil {
-		s.timer.Stop()
-		s.timer = nil
-	}
+	s.typing.stop()
 	s.stop()
 	s.stopFollow()
 	s.gen++

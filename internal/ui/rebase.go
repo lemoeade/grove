@@ -70,7 +70,7 @@ func rebaseRow(a *app.App, row wui.ListRow, p *docs.RebasePlan, i int, locked bo
 			wui.Textf(c, "%d", i+1).Font(mono()).FontSize(11).TextColor(muted).Width(20).Shrink(0)
 			// 动作选择：点开是 Grove 菜单（当前的打勾，不能合并的灰着）
 			act := wui.ButtonBase(c).Width(84).Height(22).Shrink(0).Padding(0, 4, 0, 8).Gap(4).AlignItems(wui.Center).
-				Radius(5).Border(1, t.Border).Label(i18n.Tf("第 %d 行做什么：%s", i+1, s.Action)).Tooltip(s.Action.Text()).Disabled(locked)
+				Radius(ctlRadius).Border(1, t.Border).Label(i18n.Tf("第 %d 行做什么：%s", i+1, s.Action)).Tooltip(s.Action.Text()).Disabled(locked)
 			if act.Hovered() && !locked {
 				act.Background(toolFill(t, 0.06))
 			}
@@ -93,7 +93,7 @@ func rebaseRow(a *app.App, row wui.ListRow, p *docs.RebasePlan, i int, locked bo
 				}
 			})
 			wui.Text(c, s.Commit.Short).Font(mono()).FontSize(11).TextColor(mark).SingleLine().Shrink(0)
-			subject := wui.Text(c, s.Commit.Subject).FontSize(12.5).FontWeight(500).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			subject := wui.Text(c, s.Commit.Subject).FontSize(bodyFont).FontWeight(500).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 			if s.Action == docs.RebaseDrop {
 				subject.Strikethrough().TextColor(muted)
 			}
@@ -115,7 +115,7 @@ func rebaseRow(a *app.App, row wui.ListRow, p *docs.RebasePlan, i int, locked bo
 				label = i18n.Tf("第 %d 行合在一起的提交信息", i+1)
 			}
 			wui.TextArea(c.Key("msg"), &s.Msg).Lines(2, 8).Label(label).Placeholder(i18n.T("提交信息")).
-				Font(mono()).FontSize(12).ReadOnly(locked).Margin(0, 0, 0, 28)
+				Font(mono()).FontSize(noteFont).ReadOnly(locked).Margin(0, 0, 0, 28)
 		case s.Action == docs.RebaseEdit:
 			wui.Text(c, i18n.T("会停在这里；改完用 Git 栏的横幅继续")).FontSize(11).TextColor(muted).Margin(0, 0, 0, 28)
 		}
@@ -157,7 +157,7 @@ func rebaseFooter(a *app.App, c *wui.Context, d *docs.Doc) {
 	wui.Row(c).Padding(6, 10).Gap(8).AlignItems(wui.Center).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 		wui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 			wui.Row(c).Gap(10).AlignItems(wui.Center).Children(func() {
-				wui.Text(c, i18n.Tn("%d 个提交 → %d 个", len(p.Steps), app.RebaseResult(p))).FontSize(12).FontWeight(600).SingleLine().Shrink(0)
+				wui.Text(c, i18n.Tn("%d 个提交 → %d 个", len(p.Steps), app.RebaseResult(p))).FontSize(noteFont).FontWeight(600).SingleLine().Shrink(0)
 				pushed := app.RebasePushed(p)
 				color := t.TextMuted
 				if pushed > 0 {

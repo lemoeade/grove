@@ -43,11 +43,11 @@ func submoduleMenu(a *app.App, m menu, r *app.Repo, p string) {
 		a.InFinder(filepath.Join(r.Root, filepath.FromSlash(p)))
 	}
 	if m.Item(i18n.T("复制 URL")).Disabled(s.URL == "").Chosen() {
-		copyText(s.URL)
+		app.CopyText(s.URL)
 		a.Toast = i18n.Tf("已复制 %s 的地址", p)
 	}
 	if m.Item(i18n.T("复制仓库内路径")).Chosen() {
-		copyText(p)
+		app.CopyText(p)
 	}
 }
 

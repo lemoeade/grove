@@ -26,7 +26,7 @@ func queueButton(a *app.App, c *wui.Context, r *app.Repo) {
 		}
 		tip += i18n.Tf("排队 %d 条", n)
 	}
-	b := wui.ButtonBase(c).Label(label).Tooltip(tip+"\n"+i18n.T("点开可以取消")).Height(20).Padding(0, 4).Gap(4).Radius(5).
+	b := wui.ButtonBase(c).Label(label).Tooltip(tip+"\n"+i18n.T("点开可以取消")).Height(20).Padding(0, 4).Gap(4).Radius(ctlRadius).
 		AlignItems(wui.Center).Cursor(wui.CursorPointer).Shrink(0)
 	if b.Hovered() {
 		b.Background(toolFill(t, 0.06))
@@ -71,12 +71,12 @@ func batchStatus(a *app.App, c *wui.Context, b *app.Batch) {
 	t := c.Theme()
 	text := i18n.Tf("%s %d/%d", b.Label, min(b.Done+1, b.Total), b.Total)
 	if b.Cur != nil {
-		text += i18n.Tf("：%s…", b.Cur.Name)
+		text += i18n.Colon() + b.Cur.Name + "…"
 	}
 	wui.Row(c).Gap(5).AlignItems(wui.Center).Shrink(0).Children(func() {
 		wui.Spinner(c).Size(11, 11)
 		wui.Text(c, text).FontSize(10.5).FontWeight(500).TextColor(t.TextMuted).SingleLine() // 不加 Label：读屏读的就是这段进度
 		stop := i18n.Tf("停止全部%s", b.Label)
-		squareButton(c, iconClose, stop, stop+i18n.T("（正在跑的那个仓库取消，后面的不跑了）"), 16, iconInline, false, a.StopBatch)
+		squareButton(c, iconClose, stop, stop+i18n.T("（正在跑的那个仓库取消，后面的不跑了）"), tinyToolSize, iconInline, false, a.StopBatch)
 	})
 }

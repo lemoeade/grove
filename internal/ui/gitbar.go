@@ -297,7 +297,7 @@ func repoHeader(a *app.App, c *wui.Context, r *app.Repo) {
 // tip 和标题栏的同一个按钮一样（syncOf）。带 key：刷新时前面的改动数、勾会出来 / 没了，不带 key 的话
 // 按下和松开之间换了位置就不是同一个元素，点不着。
 func syncButton(c *wui.Context, key string, ic *wui.SVG, label, tip, arrow string, n int, off, busy bool, fn func()) wui.Element {
-	b := wui.Row(c.Key(key)).Height(syncSize).MinWidth(syncSize).Gap(2).Label(label)
+	b := wui.Row(c.Key(key)).Height(midToolSize).MinWidth(midToolSize).Gap(2).Label(label)
 	tooltip(c, b, tip)
 	fg := toolStyle(c, b, false, off)
 	if n > 0 {
@@ -533,7 +533,7 @@ func changeRow(a *app.App, row wui.ListRow, cr app.ChangeRow, g *gitFrame) {
 	el := wui.Row(c).Padding(rowPadY, 8, rowPadY, left).Gap(8).AlignItems(wui.Center)
 	// 菜单每帧重建：选中的几行（MenuChanges）按当时的多选算，和打开时一样（菜单开着时点不到列表）
 	ctxMenuRow(a, c, row, el, cr.Key(), func(m menu) {
-		if rows := a.MenuChanges(cr); rows != nil {
+		if rows := a.MenuChanges(cr); len(rows) > 1 {
 			chosenChangeMenu(a, m, rows)
 			return
 		}
@@ -562,7 +562,7 @@ const rowPadY = 3
 
 // changeActions 是变更行右边的行内按钮，从左到右和 VS Code 一样：未暂存的是打开文件（删掉的不出）· 丢弃改动 · 暂存，
 // 未跟踪的是打开文件 · 删除文件 · 暂存，已暂存的是打开文件 · 取消暂存，冲突是标记为已解决。指针所在的行在多选里时
-// 暂存 / 取消暂存 / 丢弃作用于选中的全部（ActChanges，同右键菜单），提示里写数量；打开文件只开这一行。丢弃、删除照旧先问。
+// 暂存 / 取消暂存 / 丢弃作用于选中的全部（MenuChanges，同右键菜单），提示里写数量；打开文件只开这一行。丢弃、删除照旧先问。
 func changeActions(a *app.App, c *wui.Context, cr app.ChangeRow, do func(func())) {
 	r, ch := cr.Repo, cr.Change
 	if ch.Kind == git.Conflict {
@@ -577,7 +577,7 @@ func changeActions(a *app.App, c *wui.Context, cr app.ChangeRow, do func(func())
 
 // stageActions 是行内的丢弃 / 删除、暂存、取消暂存按钮（变更行和未跟踪目录行共用），文案同右键菜单，提示带 git 命令和快捷键。
 func stageActions(a *app.App, c *wui.Context, cr app.ChangeRow, do func(func())) {
-	rows := a.ActChanges(cr)
+	rows := a.MenuChanges(cr)
 	multi := len(rows) > 1
 	switch cr.Change.Kind {
 	case git.Unstaged, git.Untracked:
@@ -623,7 +623,7 @@ func dirRow(a *app.App, row wui.ListRow, cr app.ChangeRow, g *gitFrame) {
 	toggle := func() { a.ToggleUntrackedDir(r, ch.Path) }
 	el := wui.Row(c).Padding(rowPadY, 8, rowPadY, 12).AlignItems(wui.Center)
 	ctxMenuRow(a, c, row, el, cr.Key(), func(m menu) {
-		if rows := a.MenuChanges(cr); rows != nil {
+		if rows := a.MenuChanges(cr); len(rows) > 1 {
 			chosenChangeMenu(a, m, rows)
 			return
 		}

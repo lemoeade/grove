@@ -57,20 +57,17 @@ func (a *App) StashDrop(r *Repo, s git.Stash) {
 	})
 }
 
-// StashFileRows 是右键贮藏里的文件 cr 时“应用”管哪些文件：它在两行以上的选中里，就是选中的、同一条贮藏里的文件；不然只有它。
+// StashFileRows 是右键贮藏里的文件 cr 时“应用”管哪些文件（见 actOn）：它在两行以上的选中里，就是选中的、同一条贮藏里的文件；不然只有它。
 func (a *App) StashFileRows(cr ChangeRow) []git.Change {
-	if a.GitChosen.Has(cr.Key()) {
+	return actOn(cr.Change, a.GitChosen.Has(cr.Key()), func() []git.Change {
 		var out []git.Change
 		for _, o := range a.GitRows() {
 			if o.Kind == RowStashFile && o.Repo == cr.Repo && o.Stash.Hash == cr.Stash.Hash && a.GitChosen.Has(o.Key()) {
 				out = append(out, o.Change)
 			}
 		}
-		if len(out) > 1 {
-			return out
-		}
-	}
-	return []git.Change{cr.Change}
+		return out
+	})
 }
 
 // ApplyStashFiles 只把贮藏里的这几个文件放回工作区（git restore --source --worktree：暂存区不动，贮藏留着）。

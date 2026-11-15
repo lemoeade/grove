@@ -11,7 +11,8 @@ import (
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
-// 文件树的右键菜单是 Grove 自己画的（issue #48），状态机是 app.PopMenu（App.Menu），这里只管喂事件和画：
+// 右键菜单和按钮的菜单是 Grove 自己画的（issue #48、#58），状态机是 app.PopMenu（App.Menu），这里只管喂事件和画。
+// 下面以文件树为例，别处用 ctxMenu / ctxMenuRow / menuButton 装上，行为一样：
 //
 //   - 文件树的行（文件 / 目录行、仓库行、钉在顶上的行、压缩目录的每一段）和列表的空白处在右键按下时打开它
 //     （menuPress）；按下归了那一行，按着拖的移动和松开都还送到那一行，转给菜单（按住拖到项上松开选它）。
@@ -20,7 +21,8 @@ import (
 //   - 开着时在文件树别处右键（或 ⌃点）：关掉这份、在那里开一份新的（menuPress 每帧把能开菜单的地方登记给
 //     PopMenu.AddTarget）；左键和别的键点外面只关、被吞掉。
 //   - 文件树有键盘时 ⇧F10 / 菜单键在光标那一行下面打开它（openTreeMenuByKey），第一项高亮着。
-//   - 建菜单的函数和系统菜单共用（menus.go 用 menu / menuItem 接口），别处的 ContextMenu 不变。
+//   - 建菜单的函数和 mygo 的菜单共用（menus.go 用 menu / menuItem 接口）。还是 mygo 菜单的：编辑器的右键菜单、
+//     设置窗口的“更多”、标题栏的面包屑（为什么见 docs/architecture.md）。
 //
 // 为什么不用 mygo 的 PopoverMenu：它不能按住右键拖到项上松开，子菜单没有悬停延迟和安全三角，灰着的项说不了原因，
 // 点外面的那一下还会落到底下。见 docs/mygo-pitfalls.md。
@@ -386,13 +388,8 @@ func luminance(c wui.Color) float64 {
 	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
 }
 
-// gmenuBg 是菜单面板的底色：浅色白、深色比卡片亮一档。
-func gmenuBg(t *wui.Theme) wui.Color {
-	if t.Dark {
-		return wui.RGBA(44, 44, 48, 1)
-	}
-	return wui.RGBA(255, 255, 255, 1)
-}
+// gmenuBg 是菜单面板的底色：浅色白、深色比卡片亮一档（raisedBg，和展开的提交卡片一样）。
+func gmenuBg(t *wui.Theme) wui.Color { return raisedBg(t) }
 
 // 面板是磨砂的：窗口画在它底下的东西糊开（gmenuBlur，mygo 的 glass.Blur），上面盖一层半透明的底色（gmenuTint）。
 // 糊的是窗口自己画的内容，不是窗口后面的桌面。
@@ -418,13 +415,9 @@ func gmenuFrosted(c *wui.Context) bool {
 // （query 是打的字，hint 是没字时的灰字），项在它下面滚。press 是无障碍树里按了第 i 项（读屏、按名字按；指针和键盘走接收层）。
 func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, hint string, press func(i int)) wui.Element {
 	r := l.Rect
-	shadow := wui.RGBA(0, 0, 0, 0.18)
-	if t.Dark {
-		shadow = wui.RGBA(0, 0, 0, 0.45)
-	}
 	frosted := gmenuFrosted(c)
 	panel := wui.Column(c).Absolute().Left(r.X).Top(r.Y).Width(r.W).Height(r.H).Radius(gmenuRadius).
-		Border(1, t.Border.Alpha(0.9)).Shadow(0, 6, 18, 0, shadow).Clip().Role(wui.RoleMenu)
+		Border(1, t.Border.Alpha(0.9)).Shadow(shadowMenu(t)).Clip().Role(wui.RoleMenu)
 	if frosted {
 		panel.Material(glass.Blur{Radius: gmenuBlur})
 	} else {
@@ -534,13 +527,6 @@ func gmenuItem(c *wui.Context, t *wui.Theme, it app.MenuEntry, hot bool, textL f
 
 // gmenuTip 是灰着的项的原因：画在那项右边（右边放不下画在左边），和树行提示一样的反色小块。
 func gmenuTip(c *wui.Context, t *wui.Theme, l app.MenuLevel, i int, why string, winW float32) {
-	fill, text := t.Inverse, t.InverseText
-	if fill == wui.Transparent {
-		fill = t.Text
-	}
-	if text == wui.Transparent {
-		text = t.Background
-	}
 	r := l.Rect
 	y := r.Y + l.ItemY(i) - l.Scroll
 	w := min(t.Space(80), winW/2)
@@ -551,7 +537,6 @@ func gmenuTip(c *wui.Context, t *wui.Theme, l app.MenuLevel, i int, why string, 
 	} else {
 		tip.Left(x)
 	}
-	tip.Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).Background(fill).TextColor(text).FontSize(t.FontSize-1).
-		Shadow(0, 2, 8, 0, wui.RGBA(0, 0, 0, 0.2))
+	tipStyle(t, tip)
 	tip.Children(func() { wui.Text(c, why).PassThrough() })
 }

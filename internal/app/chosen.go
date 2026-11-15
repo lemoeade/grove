@@ -54,12 +54,21 @@ func (a *App) ChosenRows() []TreeRow {
 	return out
 }
 
-// MenuRows 是右键 row 弹的菜单作用于哪些行：row 在选中里就是选中的全部，不然只是它（右键不改选中）。
-func (a *App) MenuRows(row TreeRow) []TreeRow {
-	if a.FileChosen.Has(row.Key()) {
-		return a.ChosenRows()
+// actOn 是对 row 的动作（右键菜单、行内按钮、拖动）作用于哪些项，文件树、Git 栏、贮藏里的文件共用这一个约定：
+// row 在选中里（inChosen）、选中的（chosen 按显示的顺序给出）有两项以上时是选中的全部，不然只有 row（右键不改选中）。
+// 结果总不空，len > 1 就是对多选。
+func actOn[T any](row T, inChosen bool, chosen func() []T) []T {
+	if inChosen {
+		if rows := chosen(); len(rows) > 1 {
+			return rows
+		}
 	}
-	return []TreeRow{row}
+	return []T{row}
+}
+
+// MenuRows 是右键 row 弹的菜单（拖 row）作用于哪些行，见 actOn。
+func (a *App) MenuRows(row TreeRow) []TreeRow {
+	return actOn(row, a.FileChosen.Has(row.Key()), a.ChosenRows)
 }
 
 // ClearTreeSel 是点了文件树行下面的空白处：一行也不选（光标也去掉），键盘留在树上。

@@ -23,9 +23,9 @@ func TestTreeCompactGuides(t *testing.T) {
 	repo.Commit("init")
 	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")
 	var copied string
-	keep := copyText
-	copyText = func(s string) { copied = s }
-	t.Cleanup(func() { copyText = keep })
+	keep := app.CopyText
+	app.CopyText = func(s string) { copied = s }
+	t.Cleanup(func() { app.CopyText = keep })
 	a.ShowSidebar(workspace.ModeFiles)
 	r := a.Current()
 	a.EnsureFiles(r)

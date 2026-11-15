@@ -12,7 +12,7 @@ import (
 
 // 这个文件是 Git 栏的多选：⌘点加减、⇧点一段、⌘A 全选、拖着选都是列表（ChangeList.Selection）做的，
 // 选中按行的键（ChangeKey）记。选了好几行时点击不预览，右键其中一行一次暂存 / 取消暂存 / 丢弃选中的全部（跨仓库也行），
-// 回车把它们都开成固定的 Diff。行里悬停出来的暂存 / 取消暂存 / 丢弃按钮（ActChanges）和列表有焦点时的空格 / ⌘⌫
+// 回车把它们都开成固定的 Diff。行里悬停出来的暂存 / 取消暂存 / 丢弃按钮（MenuChanges）和列表有焦点时的空格 / ⌘⌫
 // （KeyChanges）也一样：指针所在的行在多选里就作用于选中的全部，不然只管那一行。
 
 // rowKey 是第 i 行的键，i 不在范围里是零值（不会在选中里）。
@@ -56,15 +56,10 @@ func (a *App) ChosenChanges() []ChangeRow {
 	return out
 }
 
-// MenuChanges 是右键第 i 行（一项变更）的菜单作用于哪些行：它在两行以上的选中里就是选中的全部，不然为 nil（只对它，右键不改选中）。
+// MenuChanges 是变更行 cr 的右键菜单、行内的暂存 / 取消暂存 / 丢弃按钮作用于哪些行，见 actOn：
+// 它在两行以上的选中里就是选中的全部，不然只有它。
 func (a *App) MenuChanges(cr ChangeRow) []ChangeRow {
-	if !a.GitChosen.Has(cr.Key()) {
-		return nil
-	}
-	if rows := a.ChosenChanges(); len(rows) > 1 {
-		return rows
-	}
-	return nil
+	return actOn(cr, a.GitChosen.Has(cr.Key()), a.ChosenChanges)
 }
 
 // ClearGitChosen 是 Git 栏里的 Esc：不再多选，选中回到当前标签那一行。
@@ -205,14 +200,6 @@ func (g gitAfter) pick(rows []ChangeRow) int {
 		return i
 	}
 	return nextStop(rows, at, -1)
-}
-
-// ActChanges 是变更行上行内按钮作用于哪些行：cr 在两行以上的多选里时是选中的全部（同右键菜单），不然只有它。
-func (a *App) ActChanges(cr ChangeRow) []ChangeRow {
-	if rows := a.MenuChanges(cr); rows != nil {
-		return rows
-	}
-	return []ChangeRow{cr}
 }
 
 // KeyChanges 是 Git 栏键盘上的暂存 / 丢弃键（命令面板里的同一条）作用于哪些行：选中的变更；

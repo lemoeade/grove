@@ -163,12 +163,12 @@ func wtActions(a *app.App, c *wui.Context, r *app.Repo, w app.Worktree, st app.W
 	any := false
 	if ag.Pane != nil {
 		any = true
-		squareButton(c.Key("term"), iconTerminal, i18n.T("跳到终端"), i18n.T("跳到这个工作树上的 agent 终端"), wtBtnSize, iconRow, false,
+		squareButton(c.Key("term"), iconTerminal, i18n.T("跳到终端"), i18n.T("跳到这个工作树上的 agent 终端"), smallToolSize, iconRow, false,
 			func() { do(func() { a.GoToPane(ag.Repo, ag.Tab, ag.Pane) }) })
 	}
 	if st == app.WtMergeable || st == app.WtDirty {
 		any = true
-		squareButton(c.Key("review"), iconEye, i18n.T("审查"), i18n.T("审查：在主区看它比主分支多出的改动（main...分支）"), wtBtnSize, iconRow, false,
+		squareButton(c.Key("review"), iconEye, i18n.T("审查"), i18n.T("审查：在主区看它比主分支多出的改动（main...分支）"), smallToolSize, iconRow, false,
 			func() { do(func() { a.ReviewWorktree(r, w) }) })
 	}
 	if st == app.WtMerged && !w.Main {
@@ -178,14 +178,11 @@ func wtActions(a *app.App, c *wui.Context, r *app.Repo, w app.Worktree, st app.W
 		if why != "" {
 			tip = i18n.Tf("移除工作树：%s", why)
 		}
-		squareButton(c.Key("remove"), iconTrash, i18n.T("移除工作树…"), tip, wtBtnSize, iconRow, why != "",
+		squareButton(c.Key("remove"), iconTrash, i18n.T("移除工作树…"), tip, smallToolSize, iconRow, why != "",
 			func() { do(func() { a.RemoveWorktree(r, w) }) })
 	}
 	return any
 }
-
-// wtBtnSize 是工作树一行、摘要行上的图标按钮见方的边长。
-const wtBtnSize = 22
 
 // worktreeMenu 是一个工作树的右键菜单；主工作树只有打开、终端、访达、复制路径。
 func worktreeMenu(a *app.App, m menu, r *app.Repo, w app.Worktree) {
@@ -207,7 +204,7 @@ func worktreeMenu(a *app.App, m menu, r *app.Repo, w app.Worktree) {
 		a.InFinder(w.Path)
 	}
 	if m.Item(i18n.T("复制路径")).Chosen() {
-		copyText(w.Path)
+		app.CopyText(w.Path)
 	}
 	if w.Main {
 		return
@@ -357,7 +354,7 @@ func newWorktreeDlg(a *app.App, c *wui.Context, r *app.Repo) (dialogOpts, func()
 				sel = head
 			}
 			dlgField(c, i18n.T("起点"), "", func() {
-				if wui.Select(c, &sel, opts).Label(i18n.T("起点")).FontSize(12.5).TextColor(t.Text).Changed() {
+				if wui.Select(c, &sel, opts).Label(i18n.T("起点")).FontSize(bodyFont).TextColor(t.Text).Changed() {
 					d.Base = ""
 					if sel != head {
 						d.Base = sel
@@ -371,7 +368,7 @@ func newWorktreeDlg(a *app.App, c *wui.Context, r *app.Repo) (dialogOpts, func()
 					wui.Text(c, i18n.T("没有空着的本地分支：都在别的工作树里检出了")).FontSize(11).TextColor(t.TextMuted)
 					return
 				}
-				if wui.Select(c, &d.Existing, free).Label(i18n.T("分支")).FontSize(12.5).TextColor(t.Text).Changed() {
+				if wui.Select(c, &d.Existing, free).Label(i18n.T("分支")).FontSize(bodyFont).TextColor(t.Text).Changed() {
 					a.WtDirFollow()
 				}
 			})
@@ -391,7 +388,7 @@ func newWorktreeDlg(a *app.App, c *wui.Context, r *app.Repo) (dialogOpts, func()
 			}
 			submitted(in)
 		})
-		wui.Checkbox(c, &d.OpenAfter, i18n.T("建好后在工作区中打开")).FontSize(12)
+		wui.Checkbox(c, &d.OpenAfter, i18n.T("建好后在工作区中打开")).FontSize(noteFont)
 		if a.WtCanCreate() {
 			dlgCommand(c, newWorktreeCmd(d))
 		}
@@ -462,7 +459,7 @@ func removeWorktreeDlg(a *app.App, c *wui.Context, r *app.Repo) (dialogOpts, fun
 			wui.Text(c, i18n.T("它锁着：也要再确认一次。")).FontSize(11.5).TextColor(t.Warning)
 		}
 		if w.Branch != "" {
-			wui.Checkbox(c, &d.DeleteBranch, i18n.Tf("同时删除分支 %s", w.Branch)).FontSize(12).
+			wui.Checkbox(c, &d.DeleteBranch, i18n.Tf("同时删除分支 %s", w.Branch)).FontSize(noteFont).
 				Tooltip(i18n.T("git branch -d：没合并的分支会再问一次"))
 		}
 	}

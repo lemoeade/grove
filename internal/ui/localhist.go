@@ -49,7 +49,7 @@ func localBody(c *wui.Context, e lhist.Entry, sel bool, muted wui.Color, icon bo
 		wui.Icon(c, iconClock).FontSize(iconRow).TextColor(muted).Shrink(0)
 	}
 	wui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
-		wui.Text(c, app.LocalTitle(e)).FontSize(12.5).FontWeight(500).SingleLine().Ellipsis("…").MinWidth(0).Tooltip(e.From)
+		wui.Text(c, app.LocalTitle(e)).FontSize(bodyFont).FontWeight(500).SingleLine().Ellipsis("…").MinWidth(0).Tooltip(e.From)
 		wui.Text(c, app.LocalMeta(e)).FontSize(10.5).TextColor(muted).SingleLine().
 			Tooltip(e.Time().Local().Format("2006-01-02 15:04:05"))
 	})

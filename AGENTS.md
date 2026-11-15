@@ -44,7 +44,7 @@ Git 审阅 + 终端。工作区可以是一个 `.code-workspace` 文件，也可
    - 快捷键无冲突（`TestShortcutConflicts`，按分派域算）。
    - 空闲内存 ≤ 100 MB，硬上限 300 MB。
    - 界面文案一律 `i18n.T("中文")` / `i18n.Tf(…)`，改了文案跑 `TestCatalog -update` 再补 `en.json`。
-   - 术语和 README 一致：已暂存 / 未暂存 / 未跟踪、局部 / 全文、并排 / 统一、抓取 / 拉取 / 推送、贮藏、丢弃改动、预览 / 固定标签、工作区干净……
+   - 术语以界面为准（`internal/i18n/zh-CN.json` 里的写法），README、CHANGELOG、注释跟着用，清单见 [docs/terms.md](docs/terms.md)：已暂存 / 未暂存 / 未跟踪（后两者同在“改动”一组）、只看改动附近 / 全文、并排 / 统一、抓取 / 拉取 / 推送、贮藏、丢弃改动、拣选、预览标签 / 固定标签、工作区干净……
 6. **state.json 向后兼容**：`~/Library/Application Support/Grove/state.json` 带格式版本（`workspace.Version`），旧格式的文件照常读、
    一步步迁到现在的格式（见 [docs/architecture.md](docs/architecture.md)）。新加字段时旧文件照常读（缺的当默认），`TestStateMigration` / `TestStateSessions` 要跟着加。
 7. **改了行为要同步文档**：README（功能、快捷键）、`CHANGELOG.md` 的"## 未发布"、`docs/architecture.md`、
@@ -118,7 +118,13 @@ MYGO_FRAME_STATS=all                         # mygo 的帧统计写进日志（�
 **图标和图标按钮**：图标大小只用 `widgets.go` 的三档常量 `iconInline`（11，跟着字的小标）/ `iconRow`（13，列表行、标签、输入框）/
 `iconTool`（16，图标按钮），空态中央的大图标用 `iconEmpty`；`TestIconSizes` 扫源码，`Icon(...).FontSize` 写数字就挂。
 图标按钮用 `toolButton` / `iconButton`（`toolSize` 28 见方）、`rowButton`（20）、`toggleButton`；自己拼的按钮用 `toolStyle` 上样子，
-悬停底色用 `toolFill`，别用 `SurfaceHover`。
+悬停底色用 `toolFill`，别用 `SurfaceHover`。按钮热区（见方边长）只取 `widgets.go` 的几档：新按钮用 `toolSize`（28，标题栏、卡片头、
+侧栏头）或 `rowToolSize`（20，列表行里）；另外几档是现有几处专用的——`headToolSize` 26（右栏历史头部）、`midToolSize` 24（Git 段头的
+拉取 / 推送、展开的提交卡片、工作树行上的审查 / 合并）、`smallToolSize` 22（工作树行、筛选开关）、`closeSize` 18（标签上的 ×）、
+`tinyToolSize` 16（状态栏进度后面的停止），和旁边的东西对齐时才用。`squareButton` / `iconActionSize` 和 `ButtonBase` / `ToggleBase`
+的 `Size` 写数字 `TestButtonSizes` 就挂。字号 12 / 12.5 / 14.5 和圆角 5 也有常量（`sideSub` / `barFont` / `noteFont`、`bodyFont` / `sideMono`、
+`repoFont`、`rowRadius` / `ctlRadius`），写数字 `TestVisualConsts` 挂。阴影用 `widgets.go` 的 `shadowCard` / `shadowLow` / `shadowFloat` /
+`shadowDialog` …（`el.Shadow(shadowDialog())`），提示框的样子用 `tipStyle`。
 
 **新动作**先进 `internal/app/commands.go` 的注册表（菜单、快捷键、悬停提示、`docs/shortcuts.md` 都从那里来），再在界面上调它。
 

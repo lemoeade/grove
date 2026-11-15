@@ -1,6 +1,7 @@
-// Package docs 是主区标签里打开的东西：工作区文件（可编辑）、历史里的版本（只读）、
-// 一项变更的 diff 和终端输出的快照（只读）。这里只有数据和同步的读写；Read* 可以在后台 goroutine 里调用
-// （只用传进去的值），Apply* 和其他方法只在主线程上用。
+// Package docs 是主区标签里打开的东西（Doc，种类见 Kind）：磁盘上的文件（可编辑）、历史里的版本、一项变更的 diff、
+// 终端输出的快照、交互式变基向导、替换预览、搜索结果、两个文件的比较、开在编辑器区的终端、设置的 JSON。
+// 哪些只读、只在内存里、记不记进会话按种类的方法判断（InMemory 等）。这里只有数据和同步的读写；Read* 可以在后台
+// goroutine 里调用（只用传进去的值），Apply* 和其他方法只在主线程上用。
 package docs
 
 import (
@@ -50,7 +51,33 @@ const (
 	Compare                    // 比较两个文件（app/filecompare.go）：左边 Abs，右边 Right 或剪贴板（RightText）；只读，只在内存里，不记进会话、最近打开和 ⇧⌘T
 	Term                       // 开在编辑器区的终端标签（app 的 Repo.EdTerms 里 Num 为 TermNum 的那个）：记进会话，不记最近打开和 ⇧⌘T
 	SettingsDoc                // 设置的 JSON（app.OpenSettingsDoc）：可编辑，⌘S 是套用设置、不写盘；只在内存里，不记进会话、最近打开和 ⇧⌘T
+	MDPreview                  // 并排的 Markdown 预览（app.OpenSidePreview）：跟着 MDSource 那个标签的源码画，只在内存里，不记进会话、最近打开和 ⇧⌘T
+
+	numKinds // 只给测试数：新加的 Kind 放在它前面，再在下面三个方法里各归一类（TestKindClasses）
 )
+
+// 按种类判断的规矩收在这几个方法里，别在各处再列一遍 d.Kind == … || d.Kind == …。
+
+// InMemory 是只在内存里的标签：关了就没了，不记进会话、最近打开和 ⇧⌘T。
+func (k Kind) InMemory() bool {
+	switch k {
+	case TermText, Rebase, ReplacePreview, SearchDoc, Compare, SettingsDoc, MDPreview:
+		return true
+	}
+	return false
+}
+
+// Reopenable 是关了能用 ⇧⌘T 再开的：文件、历史版本、Diff。编辑器区的终端记进会话，但关了就结束了。
+func (k Kind) Reopenable() bool { return k == File || k == Version || k == Diff }
+
+// Titled 是没有自己那一个文件路径的标签：状态栏和提示里写标题（Where）。替换预览是某个文件的 diff，写路径。
+func (k Kind) Titled() bool {
+	switch k {
+	case TermText, Rebase, SearchDoc, Compare, Term, SettingsDoc, MDPreview:
+		return true
+	}
+	return false
+}
 
 // Doc 是一个标签。
 type Doc struct {
@@ -153,6 +180,12 @@ type Doc struct {
 	Preview bool
 	MD      *markdown.Options // 预览的选项和读好的图片；第一次预览时建，改名后重建
 	Anchor  string            // 预览里点了 #标题 的链接，下一帧滚到那个标题
+	// AnchorLine 是要滚到的源码行加一（0 是没有）：预览里点大纲、并排预览跟着编辑器时滚到这一行所在的块
+	AnchorLine int
+	// MDView 是预览界面自己留着的状态（internal/ui 的 mdView：整理过的源码、分块、滚动位置），切回源码再切回来接着用
+	MDView any
+	// MDSource 是并排预览（Kind == MDPreview）跟着的 Markdown 标签
+	MDSource *Doc
 	mdText  string
 	mdVer   uint64
 	mdOK    bool
@@ -851,7 +884,7 @@ func (d *Doc) Convertible() bool {
 // Where 是状态栏和提示里显示的路径。
 func (d *Doc) Where() string {
 	switch {
-	case d.Kind == TermText || d.Kind == Rebase || d.Kind == SearchDoc || d.Kind == Compare || d.Kind == Term || d.Kind == SettingsDoc:
+	case d.Kind.Titled():
 		return d.Title
 	case d.Kind == Version:
 		return d.Rel + " @ " + git.Short(d.Commit)

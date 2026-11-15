@@ -53,7 +53,7 @@ func noRepos(a *app.App, c *wui.Context) {
 	wui.Column(c).Grow(1).MinHeight(0).Justify(wui.Center).AlignItems(wui.Center).Gap(10).Padding(16).Children(func() {
 		wui.Icon(c, iconFolder).FontSize(iconEmpty).TextColor(t.TextMuted.Alpha(0.6))
 		if a.WsPath == "" { // 空工作区：第一次用，或最近的都打不开了
-			wui.Text(c, i18n.T("没有打开的工作区")).FontSize(12).TextColor(t.TextMuted)
+			wui.Text(c, i18n.T("没有打开的工作区")).FontSize(sideSub).TextColor(t.TextMuted)
 			if wui.Button(c, i18n.T("打开文件夹…")).Tooltip(app.Tip(i18n.T("打开文件夹"), "file.openFolder")).Clicked() {
 				a.Exec("file.openFolder")
 			}
@@ -65,7 +65,7 @@ func noRepos(a *app.App, c *wui.Context) {
 			}
 			return
 		}
-		wui.Text(c, i18n.T("列表里没有仓库")).FontSize(12).TextColor(t.TextMuted)
+		wui.Text(c, i18n.T("列表里没有仓库")).FontSize(sideSub).TextColor(t.TextMuted)
 		if wui.Button(c, i18n.T("添加仓库…")).Tooltip(app.Tip(i18n.T("添加仓库"), "repo.add")).Clicked() {
 			a.ChooseRepoDir()
 		}
@@ -240,7 +240,7 @@ func filesView(a *app.App, c *wui.Context, tools bool) {
 		// 底下不留 padding：筛选框的底边和右边卡片的底边一条线（卡片下面的缝算在状态栏里）
 		wui.Box(c).Padding(6, 8, 0, 8).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
 			field := wui.SearchField(c.Key("filter"), &a.Filter).Label(i18n.T("筛选文件")).
-				Tooltip(i18n.Tf("按名字筛选所有仓库的文件；跨仓库模糊找文件用快速打开（%s）", app.Find("file.quickOpen").Keys())).FontSize(12).Fill()
+				Tooltip(app.Tip(i18n.T("按名字筛选所有仓库的文件；跨仓库模糊找文件用快速打开"), "file.quickOpen")).FontSize(sideSub).Fill()
 			if field.Changed() {
 				a.SetFilter(a.Filter)
 			}
@@ -341,13 +341,12 @@ func guidesFor(a *app.App) treeGuides {
 }
 
 // 侧栏（文件树、Git、搜索、大纲、打开的编辑器）的字号：sideFont 是正文（文件名、仓库名、变更、结果），
-// sideSub 是次要的（分支、计数、目录、分组标题、说明），sideMono 是搜索结果里的等宽代码行。
+// sideSub 是次要的（分支、计数、目录、分组标题、说明，还有侧栏和右栏历史的筛选框、搜索框），sideMono 是搜索结果里的等宽代码行。
 // 次要的只比正文小两号，层级还在、又不至于小得费眼（#5：原来是 13 / 10.5–11）。
 const (
 	sideFont = 14
 	sideSub  = 12
-	repoFont = 14.5 // Git 栏仓库段头的仓库名
-	syncSize = 24   // Git 栏仓库段头的拉取 / 推送按钮见方
+	repoFont = 14.5 // Git 栏仓库段头、右栏历史头部的仓库名
 	sideMono = 12.5
 )
 
@@ -890,8 +889,7 @@ func stickyStack(a *app.App, c *wui.Context, rows []app.TreeRow, box wui.Rect) {
 		if k == low {
 			// 和编辑器的粘性滚动一样是柔和的阴影、不画硬边线：被顶住一半的那行读起来是从栈底下滚过去的。
 			// 往上、往两边的那点被上面的层和列表的 Clip 盖住
-			x, y, blur, col := stickyShadow(t)
-			pin.Shadow(x, y, blur, 0, col)
+			pin.Shadow(stickyShadow(t))
 		}
 		pin.Children(func() {
 			var el wui.Element
@@ -934,13 +932,13 @@ func stickyYields(a *app.App, rows []app.TreeRow, box wui.Rect) bool {
 	return !y.Scrolled
 }
 
-// stickyShadow 是吸顶栈底下的阴影（x、y 偏移、模糊、颜色）：浅色同编辑器的粘性滚动（sticky.go）；
+// stickyShadow 是吸顶栈底下的阴影（Shadow 的五个参数）：浅色同编辑器的粘性滚动（shadowLow）；
 // 深色底本来就暗，黑 12% 看不出来，加深到 45%。
-func stickyShadow(t *wui.Theme) (x, y, blur float32, col wui.Color) {
+func stickyShadow(t *wui.Theme) (x, y, blur, spread float32, col wui.Color) {
 	if t.Dark {
-		return 0, 2, 6, wui.RGBA(0, 0, 0, 0.45)
+		return 0, 2, 6, 0, wui.RGBA(0, 0, 0, 0.45)
 	}
-	return 0, 2, 6, wui.RGBA(0, 0, 0, 0.12)
+	return shadowLow()
 }
 
 // stickyLayers 算吸顶栈。栈满（仓库 + 两级目录）时见 stickyFull；没满时和 VS Code 的一样：列表顶往下、栈底下那条线上的那行，

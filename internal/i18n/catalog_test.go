@@ -349,3 +349,57 @@ func walkSource(t *testing.T, fn func(path string, lit *ast.BasicLit, parent ast
 		}
 	}
 }
+
+// bareFullwidth 是没有汉字的串里不该有的全角标点（这样的串不进翻译表，英文界面会原样露出来）。
+// 弯引号 “” 不算：英文译文里也用。
+var bareFullwidth = regexp.MustCompile(`[，。：；？！（）、【】「」]`)
+
+// bareFullwidthOK 是故意带全角标点、又没有汉字的串：不是给人看的文案（解析用户输入时认全角冒号）。
+var bareFullwidthOK = []string{
+	":：",
+}
+
+// TestNoBareFullwidth：代码里没有汉字、却含全角标点的串报错（"%s：%s"、r.Name+"："）。这类串 TestCatalog 不收，
+// 英文界面里就是全角的；改成带汉字的格式串，或者用 i18n.Colon / Comma / Question / ListSep / Paren 拼。
+// 和 collect 一样不看 ShortcutDoc（生成中文文档，长串拆成几段拼，有的段里正好没汉字）、log 和 panic 的参数。
+func TestNoBareFullwidth(t *testing.T) {
+	for _, dir := range sourceDirs {
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+			ast.Inspect(f, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.FuncDecl:
+					return x.Name.Name != "ShortcutDoc"
+				case *ast.CallExpr:
+					if id, ok := x.Fun.(*ast.Ident); ok && (id.Name == "panic" || strings.HasSuffix(id.Name, "Logf")) {
+						return false
+					}
+					if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "log" {
+							return false
+						}
+					}
+				case *ast.BasicLit:
+					s, err := strconv.Unquote(x.Value)
+					if x.Kind != token.STRING || err != nil || hasHan(s) || !bareFullwidth.MatchString(s) || slices.Contains(bareFullwidthOK, s) {
+						return true
+					}
+					t.Errorf("%s:%d：%q 没有汉字却有全角标点，英文界面会原样露出来；用 i18n.Colon / Comma / Question / ListSep / Paren 或带汉字的格式串",
+						path, fset.Position(x.Pos()).Line, s)
+				}
+				return true
+			})
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}

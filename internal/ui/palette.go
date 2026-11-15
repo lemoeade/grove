@@ -2,12 +2,12 @@ package ui
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	wui "github.com/egoist/mygo/ui"
 
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/i18n"
+	"github.com/lemoeade/grove/internal/search"
 )
 
 // paletteRows 是面板列表最多同时显示几行，多了滚动。
@@ -28,7 +28,7 @@ func palette(a *app.App, c *wui.Context) {
 	wui.DialogBase(c, &p.Open, func(back, panel wui.Element) {
 		back.Justify(wui.Start).Padding(56, 16, 16, 16)
 		panel.Width(640).Padding(6).Gap(4).Radius(dlgRadius).Background(t.Background).Border(1, t.Border).
-			Shadow(0, 12, 32, 0, wui.RGBA(0, 0, 0, 0.22)) // 和 dialogFrame 一样的圆角、阴影
+			Shadow(shadowDialog()) // 和 dialogFrame 一样的圆角、阴影
 		wui.Row(c).Padding(2, 8).Gap(8).AlignItems(wui.Center).Children(func() {
 			icon := iconSearch
 			if strings.HasPrefix(p.Text, ">") {
@@ -149,11 +149,11 @@ func paletteRow(a *app.App, row wui.ListRow, it app.PaletteItem) bool {
 				ic = iconHistory
 			}
 			wui.Icon(c, ic).FontSize(iconRow).TextColor(muted).Shrink(0)
-			wui.Text(c, it.Text).Font(mono()).FontSize(12.5).TextColor(text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+			wui.Text(c, it.Text).Font(mono()).FontSize(bodyFont).TextColor(text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 			wui.Spacer(c).Grow(1)
 			wui.Text(c, it.Detail).FontSize(11).TextColor(muted).SingleLine().Shrink(0)
 		case app.ItemSymbol:
-			wui.Text(c, symbolGlyph(it.Sym)).FontSize(12).FontWeight(600).TextColor(muted).Width(14).Shrink(0)
+			wui.Text(c, symbolGlyph(it.Sym)).FontSize(noteFont).FontWeight(600).TextColor(muted).Width(14).Shrink(0)
 			if it.Loc != "" { // "#"：名字、签名，右边是在哪
 				hitSpans(c, it.Text, it.Hits, 0, 13, text, hl).Shrink(0).MaxWidth(360)
 				wui.Text(c, it.Detail).FontSize(11.5).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
@@ -209,10 +209,7 @@ func hitText(c *wui.Context, s string, hits []int, off int, hl wui.Color) wui.El
 			continue
 		}
 		plain(at, i)
-		n := 1
-		for i+n < len(s) && !utf8.RuneStart(s[i+n]) {
-			n++
-		}
+		n := search.RuneCeil(s, i+1) - i
 		spans = append(spans, wui.Span{Text: s[i : i+n], Background: hl, Radius: 2})
 		at = i + n
 	}

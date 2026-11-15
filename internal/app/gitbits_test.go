@@ -1,7 +1,6 @@
 package app
 
 import (
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -327,7 +326,7 @@ func TestChosenChanges(t *testing.T) {
 	if a.CurrentDoc() != preview || !a.gitMulti {
 		t.Errorf("取消光标那行后预览了")
 	}
-	if a.MenuChanges(rows[rowIndex(t, rows, "alpha.txt")]) != nil {
+	if got := a.MenuChanges(rows[rowIndex(t, rows, "alpha.txt")]); len(got) != 1 {
 		t.Errorf("只选了一行时右键应只对它")
 	}
 	// 换了标签：多选收回到当前标签那一行
@@ -532,15 +531,7 @@ func TestDiscardChosenSubs(t *testing.T) {
 		m.Git("-c", "protocol.file.allow=always", "submodule", "add", "-q", lib.Root, p)
 	}
 	m.Commit("加子模块")
-	run := func(dir string, args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = filepath.Join(m.Root, dir)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v %s", args, err, out)
-		}
-	}
-	run("s/c", "checkout", "-q", "HEAD~1")
+	m.In(filepath.Join(m.Root, "s/c")).Git("checkout", "-q", "HEAD~1")
 	m.Write("s/m/a.txt", "改了\n")
 	m.Write("s/u/new.txt", "新\n")
 	m.Write("README.md", "改了\n")

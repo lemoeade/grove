@@ -169,10 +169,10 @@ func (a *App) WritesRunning() []string {
 	var ops []string
 	for _, r := range a.Repos {
 		if o := r.running; o != nil {
-			ops = append(ops, r.Name+"："+o.Label)
+			ops = append(ops, r.Name+i18n.Colon()+o.Label)
 		}
 		for _, o := range r.Queue {
-			ops = append(ops, r.Name+"："+o.Label)
+			ops = append(ops, r.Name+i18n.Colon()+o.Label)
 		}
 	}
 	for _, cl := range a.Clones {

@@ -419,6 +419,13 @@ func (a *App) readDoc(d *docs.Doc, fresh bool) {
 // Reload 丢掉这里的改动重读磁盘上的（冲突条的"重新读取"）。
 func (a *App) Reload(d *docs.Doc) { a.loadDoc(d) }
 
+// PinTab 把预览标签固定下来（双击标签、打开的编辑器里双击、右键"固定标签"），下一个单击打开的不会再顶掉它。
+func (a *App) PinTab(d *docs.Doc) {
+	if d != nil {
+		d.Pinned = true
+	}
+}
+
 // KeepMine 是冲突条的"保留我的"：下次 ⌘S 直接覆盖，不再问。
 func (a *App) KeepMine(d *docs.Doc) {
 	d.KeepMine()
@@ -604,7 +611,7 @@ func (a *App) RemoveDoc(d *docs.Doc) {
 	if r, tab := a.TermTabOf(d); tab != nil {
 		a.killEdTab(r, tab)
 	}
-	if !copies && d.Snapshot == 0 && d.Kind != docs.TermText && d.Kind != docs.Rebase && d.Kind != docs.ReplacePreview && d.Kind != docs.SearchDoc && d.Kind != docs.Compare && d.Kind != docs.Term && d.Kind != docs.SettingsDoc { // 终端输出的快照、变基向导、替换预览、搜索编辑器、比较、终端、设置文档关了就没了
+	if !copies && d.Snapshot == 0 && d.Kind.Reopenable() { // 只在内存里的、编辑器区的终端关了就没了（docs.Kind 的分类）
 		a.closed = append(a.closed, closedDoc{kind: d.Kind, root: d.Root, rel: d.Rel, abs: d.Abs, ch: d.Change, enc: d.ForcedEnc,
 			lang: d.Lang, ind: d.Indent})
 		if len(a.closed) > 20 {

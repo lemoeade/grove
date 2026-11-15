@@ -28,6 +28,20 @@ let theme = "", seq = 0;
 
 // svgOf 是一张的 SVG 元素和它的大小（CSS 像素 = DIP；行内公式 depth 是基线以下多少）。
 async function svgOf(kind, src, dark, size, color) {
+  if (kind === "svg") {
+    // 带文字的 SVG 图片（徽章）：原样画，大小按 width / height，没有就按 viewBox
+    const el = new DOMParser().parseFromString(src, "image/svg+xml").documentElement;
+    if (el.nodeName !== "svg") throw new Error("not an SVG");
+    const vb = el.viewBox && el.viewBox.baseVal;
+    const len = (a) => { const v = el.getAttribute(a) || ""; return /%$/.test(v) ? 0 : parseFloat(v) || 0 };
+    let w = len("width"), h = len("height");
+    if (!w && !h && vb && vb.width) { w = vb.width; h = vb.height }
+    else if (!w && vb && vb.height) w = h * vb.width / vb.height;
+    else if (!h && vb && vb.width) h = w * vb.height / vb.width;
+    el.setAttribute("width", w);
+    el.setAttribute("height", h);
+    return { el, w, h, depth: 0 };
+  }
   if (kind === "mermaid") {
     await load("mermaid.min.js");
     const t = dark ? "dark" : "default";

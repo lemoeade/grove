@@ -94,6 +94,51 @@ func TestStartPageClickChange(t *testing.T) {
 	}
 }
 
+// 三个仓库：有改动的两个（alpha 改了一个、多一个未跟踪的，beta 改了一个）的改动都列出来，干净的 gamma 不列；
+// ↓ 一行行走过 alpha 走进 beta，⏎ 开的是 beta 那一项的 Diff，当前仓库跟到 beta（第一原则）。
+func TestStartPageThreeRepos(t *testing.T) {
+	_, beta, _, ws := testutil.ThreeRepos(t)
+	a, tt, wait := newUI(t, ws, "")
+	a.St.BottomBar = false
+	bareStartPage = false
+	t.Cleanup(func() { bareStartPage = true })
+	for _, r := range a.Repos {
+		a.RefreshRepo(r, app.WhyManual)
+	}
+	wait("三个仓库的状态", loaded(a))
+	tt.Frame()
+	if !tt.HasText("有改动的文件") {
+		t.Fatalf("起始页上没有改动：%q", tt.Texts())
+	}
+	rows := []string{"alpha/alpha.txt", "alpha/notes.md", "beta/beta.go"}
+	if hasLabel(tt, "gamma/gamma.md") {
+		t.Fatal("干净的 gamma 不该列改动")
+	}
+	a.StartFocus = 1
+	tt.Frame()
+	tt.Frame()
+	for i, want := range rows {
+		if i > 0 {
+			tt.Key(0, wui.KeyDown)
+			tt.Frame()
+			tt.Frame()
+		}
+		for _, r := range rows {
+			if tt.Focused(r) != (r == want) {
+				t.Fatalf("第 %d 步焦点应在 %q；%q 是 %v（texts=%q）", i+1, want, r, tt.Focused(r), tt.Texts())
+			}
+		}
+	}
+	tt.Key(0, wui.KeyEnter)
+	tt.Frame()
+	if d := a.CurrentDoc(); d == nil || d.Root != beta.Root || d.Rel != "beta.go" {
+		t.Fatalf("⏎ 应开 beta.go 的 Diff：%+v", d)
+	}
+	if cur := a.Current(); cur == nil || cur.Root != beta.Root {
+		t.Errorf("开了 beta 的改动，当前仓库应跟到 beta：%+v", cur)
+	}
+}
+
 // TestScreenshotStartPage 是 start-page.png / start-page-dark.png（WORKBENCH_SHOT=目录 时才跑）：两个仓库都有改动，
 // 最近打开过三个文件，api-server 有一个有改动的工作树；编辑区没开文件，画的是起始页。
 func TestScreenshotStartPage(t *testing.T) {

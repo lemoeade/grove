@@ -21,12 +21,8 @@ func (a *App) OpenLink(dir, link string) bool {
 		return false
 	}
 	p, j, at := splitLine(link)
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false
-		}
-		p = home + p[1:]
+	if p = untilde(p); p == "~" || strings.HasPrefix(p, "~/") {
+		return false // 取不到家目录
 	} else if !filepath.IsAbs(p) {
 		p = filepath.Join(dir, p)
 	}

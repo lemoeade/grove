@@ -215,7 +215,7 @@ func stickyRows(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element, left f
 	}
 	box := wui.Box(c).Absolute().Top(0).Left(left).Right(right).Height(float32(height)).Clip().
 		Background(ct.Background).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
-		Shadow(0, 2, 6, 0, wui.RGBA(0, 0, 0, 0.12)).Label(i18n.T("粘性滚动")).
+		Shadow(shadowLow()).Label(i18n.T("粘性滚动")).
 		Draw(func(*wui.Painter, wui.Rect) { check() }).
 		HandleInput(func(ev wui.InputEvent) bool { // 滚轮透给编辑器
 			if ev.Kind == wui.InputScroll && ev.DY != 0 {
@@ -249,7 +249,7 @@ func stickyRow(c *wui.Context, d *docs.Doc, f *outline.Flat, depth int, top, lh 
 	el := wui.Box(c.Key(stickyRowKey{f.Line})).Absolute().Left(0).Right(0).Top(top).Height(lh).
 		Background(ct.Background).Cursor(wui.CursorPointer).Label(src)
 	if el.Hovered() {
-		el.Background(t.Text.Alpha(0.06))
+		el.Background(toolFill(t, 0.06))
 	}
 	el.Children(func() {
 		if g.numRight > 0 {

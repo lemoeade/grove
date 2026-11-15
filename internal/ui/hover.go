@@ -9,6 +9,9 @@ import (
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
+// 这个文件画编辑器的悬停提示：找声明、取注释在 app/hover.go（不碰界面），这里只把结果装进编辑器的 OnHover、
+// 画提示里的声明、注释和“在哪里”那一行。
+
 // hoverSetup 给文件标签装上悬停提示（app/hover.go）：指针停在名字上、跑 editor.showHover 时给声明、注释和位置；
 // 设置关了、不是代码文件的不装（检查报的问题照样由编辑器自己出）。
 func hoverSetup(a *app.App, d *docs.Doc) {

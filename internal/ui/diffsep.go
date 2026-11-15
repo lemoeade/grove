@@ -20,7 +20,7 @@ func diffSep(c *wui.Context, sep wui.Element, s *editor.DiffSeparator) {
 				Background(ct.Text.Alpha(0.04)).Label(i18n.Tn("展开 %d 行未修改", s.Lines)).
 				Tooltip(i18n.T("点一下往改动那边展开；按住 ⇧ 一次展开全部"))
 			if b.Hovered() {
-				b.Background(ct.Text.Alpha(0.08))
+				b.Background(toolFill(t, 0.08))
 			}
 			b.Children(func() {
 				wui.Icon(c, iconFold).FontSize(iconInline).TextColor(t.TextMuted)

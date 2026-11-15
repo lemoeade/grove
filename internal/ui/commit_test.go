@@ -2,7 +2,6 @@ package ui
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -133,12 +132,7 @@ func TestAbortMerge(t *testing.T) {
 	repo.Git("switch", "-q", "main")
 	repo.Write("c.txt", "主线上改的\n")
 	repo.Commit("主线上改")
-	cmd := exec.Command("git", "merge", "feature")
-	cmd.Dir = repo.Root
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
-	if out, err := cmd.CombinedOutput(); err == nil {
-		t.Fatalf("应有冲突: %s", out)
-	}
+	repo.GitFails("merge", "feature") // 应停在冲突上
 	ws := testutil.Workspace(t, repo.Root)
 
 	a, tt, wait := newUI(t, ws, "")
@@ -213,7 +207,7 @@ func TestCommitButton(t *testing.T) {
 		if btn.X+btn.W > box.X+box.W+0.5 {
 			t.Errorf("%d 个文件：提交按钮 %v 超出了输入框 %v 的右边", want, btn, box)
 		}
-		if btn.H > wtBtnSize+2 {
+		if btn.H > midToolSize {
 			t.Errorf("提交按钮高了: %v", btn)
 		}
 	}

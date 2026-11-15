@@ -82,7 +82,7 @@ func problems(a *app.App, c *wui.Context) {
 			r.Children(func() {
 				wui.Icon(c, ic).FontSize(iconRow).TextColor(col).Shrink(0)
 				wui.Text(c, a.ProblemPlace(q)).FontSize(11).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(0).MaxWidth(360)
-				wui.Text(c, q.Msg).FontSize(12).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).Grow(1).Basis(0)
+				wui.Text(c, q.Msg).FontSize(noteFont).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).Grow(1).Basis(0)
 				if q.Source != "" {
 					wui.Text(c, q.Source).FontSize(10.5).TextColor(muted).SingleLine().Shrink(0)
 				}

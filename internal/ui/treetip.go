@@ -38,18 +38,10 @@ func treeTip(a *app.App, c *wui.Context, el wui.Element, key app.FileKey, full, 
 		return
 	}
 	t := c.Theme()
-	fill, text := t.Inverse, t.InverseText // 同 mygo 的 Theme.inverse（tooltip 也这么取）
-	if fill == wui.Transparent {
-		fill = t.Text
-	}
-	if text == wui.Transparent {
-		text = t.Background
-	}
 	// 提示盖在下一行上：里面的字也要 PassThrough，不然按在下一行上的点击落到字上（mygo 的 PassThrough 不管子元素）
 	wui.Overlay(c, func() {
 		tip := wui.Column(c).Absolute().PassThrough().Role(wui.RoleTooltip)
-		tip.MaxWidth(t.Space(80)).Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).Gap(2).
-			Background(fill).TextColor(text).FontSize(t.FontSize-1).Shadow(0, 2, 8, 0, wui.RGBA(0, 0, 0, 0.2))
+		tipStyle(t, tip).MaxWidth(t.Space(80)).Gap(2)
 		tip.Children(func() {
 			if full != "" {
 				wui.Text(c, full).FontWeight(600).PassThrough()

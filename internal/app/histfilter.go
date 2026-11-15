@@ -53,28 +53,12 @@ func (a *App) HistQueryErr() string {
 
 // HistQueryChanged 在历史搜索框的字变了之后调：停 HistDebounce 再按新的字重读读过的历史。
 func (a *App) HistQueryChanged() {
-	a.histTick++
-	if a.histTimer != nil {
-		a.histTimer.Stop()
-	}
-	tick := a.histTick
-	up := a.Update
-	a.histTimer = time.AfterFunc(HistDebounce, func() {
-		up(func() {
-			if a.histTick == tick {
-				a.ReloadHistories()
-			}
-		})
-	})
+	a.histTyping.kick(a.Update, HistDebounce, a.ReloadHistories)
 }
 
 // ReloadHistories 按现在的筛选重读每个读过（或正在读）历史的仓库；回车、开关变了时直接调。
 func (a *App) ReloadHistories() {
-	a.histTick++
-	if a.histTimer != nil {
-		a.histTimer.Stop()
-		a.histTimer = nil
-	}
+	a.histTyping.stop()
 	q := strings.TrimSpace(a.HistQuery)
 	for _, r := range a.Repos {
 		if h := &r.Hist; (h.Loaded || h.Loading) && (h.query != q || h.all != a.St.HistBranches || h.agent != a.HistAgent || h.path != h.Path || h.ref != h.Ref) {

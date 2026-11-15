@@ -27,17 +27,21 @@ about 79 MiB of memory when idle.
 | --- | --- |
 | ![Git bar](docs/screenshots/gitbar.png) | ![Commit graph](docs/screenshots/history-graph.png) |
 | ![Split editors](docs/screenshots/split-editors.png) | ![Terminals](docs/screenshots/terminals.png) |
+| ![Start page](docs/screenshots/start-page.png) | ![History of all repos](docs/screenshots/history-all.png) |
 
-- **Workspace**: open a `.code-workspace` file or a folder, with support for multiple windows. Select and drag files
+- **Workspace**: open a `.code-workspace` file or a folder, with support for multiple windows. Each repo gets a color,
+  used in the file tree, the Git bar, terminal tabs and the merged history to show which repo something belongs to.
+  With nothing open, the editor area shows a start page: changed files across all repos, recently opened files and
+  other worktrees, which you can open with ↑↓ ⏎. Select and drag files
   across repos in the file tree, undo the last file operation, and press Space for the system Quick Look
   (images and PDFs included).
 - **Editor**: drag a tab to an edge to split the editor. Includes an outline, sticky scroll, snippets and Markdown
   previews with Mermaid and math. ⌘-click or F12 goes to a definition by name (across all repositories, with a list when there are several),
+  resting the pointer on a name shows its declaration and comment, ⇧F12 finds references in every repository,
   and typing suggests words from the file, open files and the symbol index (⌃Space to ask). Supports encodings such as GB18030 and Big5. Click the language in the
   status bar to switch it; type in the menu to filter. Run formatters like gofmt and prettier,
   or checks like go vet and eslint, on save. A file replaced in the preview tab reopens where you left it.
 - **Git**: stage changes by hunk or line, edit an unstaged diff in place (the pencil on the tab strip; ⌘S writes the file), and resolve conflicts in the editor. View a commit graph for one repo, or the
-  resting the pointer on a name shows its declaration and comment, ⇧F12 finds references in every repository,
   history of all repos merged by time; the expanded commit card names any coding agent that co-authored it, and you can filter to those commits. Merge, rebase (including interactive rebase), cherry-pick, stash, worktree and submodule operations
   are available in the UI. Each repo's header in the Git panel has its own Pull and Push buttons, with ahead / behind
   commit counts; in each repo the commit box sits at the top: a single input line, whose button (a paper plane) appears once there is a message, its tooltip saying how many files it will commit; with nothing staged it commits all changes, untracked files included, and its ▾ holds Commit and Push, Amend Last Commit and Undo Last Commit. Change rows show the same file icon as the file tree, with M / A / D at the row end; when space runs out the path shrinks before the filename. Untracked files share the "Changes" group with unstaged
@@ -49,6 +53,9 @@ about 79 MiB of memory when idle.
   next buttons to jump between them. The left of the status bar sums up every repository (how many have changes or commits to push,
   which one is mid-merge); click it to open the Git view. Git actions that are greyed out say why ("Push (in sync with origin)"), and button tooltips show the
   git command they run.
+  The history in the right panel shows one commit per line, grouped into Today / Yesterday / This week / Last week /
+  This month / earlier months (the group header sticks to the top while scrolling). The selected commit expands into a
+  card with the full title, author, time, branches, message body and changed files.
   Hovering (or selecting with the keyboard) a changed file shows inline Open File, Discard Changes and Stage / Unstage
   buttons; with the list focused, Space stages / unstages and ⌘⌫ discards, acting on all selected rows.
 - **Terminals**: each repo has its own set of terminals, built on Ghostty's libghostty-vt, with split panes. Layout

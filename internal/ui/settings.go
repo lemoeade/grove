@@ -128,6 +128,13 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
+			{0, "Markdown 预览里显示网上的图片", "README 里 https 地址的徽章、截图；只取图片本身，不带 Cookie。关了显示图片的说明文字", func(c *wui.Context, l, d string) {
+				on := !s.NoRemoteImages
+				toggle(c, l, d, &on, func() {
+					s.NoRemoteImages = !on
+					done()
+				})
+			}},
 			{1, "字体", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.EditorFont, mono(), nil, done, fontName) }},
 			{1, "字号", "", func(c *wui.Context, l, d string) { number(c, l, d, &s.EditorSize, 12.5, 9, 32, 0.5, done) }},
 			{1, "缩进", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Indent, workspace.Indents, indentNames, done) }},
@@ -355,7 +362,7 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 							found = true
 						}
 						if !found {
-							wui.Text(c, i18n.T("没有匹配的设置")).FontSize(12.5).TextColor(t.TextMuted).AlignSelf(wui.Center).Margin(24, 0, 0, 0)
+							wui.Text(c, i18n.T("没有匹配的设置")).FontSize(bodyFont).TextColor(t.TextMuted).AlignSelf(wui.Center).Margin(24, 0, 0, 0)
 						}
 						return
 					}
@@ -535,7 +542,7 @@ func termdField(a *app.App, c *wui.Context, label string) {
 	}
 	settingField(c, label, "", func() {
 		wui.Row(c).Gap(10).AlignItems(wui.Center).Children(func() {
-			wui.Text(c, msg).FontSize(12.5).TextColor(t.TextMuted)
+			wui.Text(c, msg).FontSize(bodyFont).TextColor(t.TextMuted)
 			if wui.Button(c, i18n.T("停止…")).Disabled(!st.Running || st.Total == 0).Tooltip(i18n.T("停止终端后台进程…")).Clicked() {
 				if a.Win != nil {
 					a.Win.Focus()
@@ -949,7 +956,7 @@ func snippetTables(a *app.App, c *wui.Context) {
 	row := func(cells [4]string, head bool) {
 		wui.Row(c).Gap(10).Padding(3, 0).AlignItems(wui.Start).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 			for i, s := range cells {
-				x := wui.Text(c, s).FontSize(12).MinWidth(0)
+				x := wui.Text(c, s).FontSize(noteFont).MinWidth(0)
 				switch {
 				case head:
 					x.FontSize(11).FontWeight(600).TextColor(t.TextMuted)
@@ -968,7 +975,7 @@ func snippetTables(a *app.App, c *wui.Context) {
 	}
 	for _, lang := range set.Langs() {
 		wui.Column(c.Key(lang)).Gap(0).Margin(10, 0, 0, 0).Children(func() {
-			wui.Text(c, snippetLangName(lang)).FontSize(12.5).FontWeight(600).Margin(0, 0, 4, 0)
+			wui.Text(c, snippetLangName(lang)).FontSize(bodyFont).FontWeight(600).Margin(0, 0, 4, 0)
 			row([4]string{i18n.T("前缀"), i18n.T("名字"), i18n.T("来源"), i18n.T("说明")}, true)
 			for _, sn := range set.Of(lang) {
 				row([4]string{sn.Prefix, sn.Name, app.SnippetFileOf(sn), sn.Description()}, false)

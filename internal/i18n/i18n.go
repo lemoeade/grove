@@ -59,10 +59,52 @@ func T(s string) string {
 
 // List 把几项连成一句里的列举：中文用 "、"，英文用 ", "。
 func List(items []string) string {
+	return strings.Join(items, ListSep())
+}
+
+// 拼接用的标点。TestCatalog 只收带汉字的串，"%s：%s"、"，" 这种没有汉字的串不进翻译表，
+// 里面的全角标点在英文界面会原样露出来（TestNoBareFullwidth 查）。拼文案时能写成带汉字的格式串
+// （"已暂存：%s"）就那样写；拼的只是名字、路径、错误这类不翻译的片段时，标点从下面拿：
+// 中文给全角，英文给半角（该带的空格也带上）。弯引号 “” 中英文都用，不在这里。
+
+// Colon 是 "标签：内容" 里的冒号：中文 "："，英文 ": "。如 r.Name + i18n.Colon() + err.Error()。
+func Colon() string {
 	if Lang() == "en" {
-		return strings.Join(items, ", ")
+		return ": "
 	}
-	return strings.Join(items, "、")
+	return "："
+}
+
+// Comma 是分句的逗号：中文 "，"，英文 ", "。
+func Comma() string {
+	if Lang() == "en" {
+		return ", "
+	}
+	return "，"
+}
+
+// Question 是问句末尾的问号：中文 "？"，英文 "?"。如对话框标题 label + i18n.Question()。
+func Question() string {
+	if Lang() == "en" {
+		return "?"
+	}
+	return "？"
+}
+
+// ListSep 是列举的分隔（List 用的）：中文 "、"，英文 ", "。
+func ListSep() string {
+	if Lang() == "en" {
+		return ", "
+	}
+	return "、"
+}
+
+// Paren 是跟在文字后面的括注：中文 "（s）"，英文 " (s)"（前面带空格）。如 text + i18n.Paren(key)。
+func Paren(s string) string {
+	if Lang() == "en" {
+		return " (" + s + ")"
+	}
+	return "（" + s + "）"
 }
 
 // Tf 是 fmt.Sprintf(T(format), args...)。

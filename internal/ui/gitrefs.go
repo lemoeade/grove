@@ -92,7 +92,7 @@ func refDialog(a *app.App, c *wui.Context) {
 		switch d.Kind {
 		case app.DlgDeleteTag:
 			if rm := app.TagRemote(r); rm != "" {
-				wui.Checkbox(c, &d.Also, i18n.Tf("同时删除 %s 上的", rm)).FontSize(12).
+				wui.Checkbox(c, &d.Also, i18n.Tf("同时删除 %s 上的", rm)).FontSize(noteFont).
 					Tooltip(i18n.Tf("本地删掉后再跑 git push %s --delete", rm))
 			}
 		case app.DlgNewTag:

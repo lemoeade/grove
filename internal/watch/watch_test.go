@@ -94,7 +94,7 @@ func TestWatchRepo(t *testing.T) {
 		if !errors.Is(err, ErrGone) {
 			t.Fatalf("删了目录报的是 %v", err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(testutil.Budget(3 * time.Second)):
 		t.Fatal("删了仓库目录，监听没停")
 	}
 }
@@ -264,7 +264,7 @@ func TestWatchPlain(t *testing.T) {
 	}
 	wait := func(what string, ok func(Change) bool) {
 		t.Helper()
-		deadline := time.After(2 * time.Second)
+		deadline := time.After(testutil.Budget(2 * time.Second))
 		for {
 			select {
 			case c := <-changes:

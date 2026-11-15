@@ -357,14 +357,16 @@ func (a *App) StartRebase(d *docs.Doc) {
 	}
 	n := len(p.Steps)
 	msg := i18n.Tn("这 %d 个提交会换成新的 %d 个（新的哈希）。", n, RebaseResult(p))
-	if k := RebasePushed(p); k > 0 {
+	ask := a.Ask
+	if k := RebasePushed(p); k > 0 { // 改写推送过的提交：红的确认（和修改、撤销推送过的提交一样）
 		msg += i18n.Tn("其中 %d 个已经推送过，做完要强制推送（Git 菜单 → 强制推送）。", k)
+		ask = a.AskDanger
 	}
 	if r.Status.Staged+r.Status.Unstaged > 0 {
 		msg += i18n.T("没提交的改动先自动贮藏，做完再恢复。")
 	}
 	msg += i18n.T("有冲突或停在 edit 时会停下来，在 Git 栏的横幅里继续、跳过或放弃。")
-	a.Ask(i18n.Tn("改写 %s 的 %d 个提交？", r.Name, n), msg, i18n.T("开始变基"), func() { a.runRebase(r, d) })
+	ask(i18n.Tn("改写 %s 的 %d 个提交？", r.Name, n), msg, i18n.T("开始变基"), func() { a.runRebase(r, d) })
 }
 
 // runRebase 写好 todo、排进仓库的队列：git rebase -i --autostash <Base>（根提交是 --root）。

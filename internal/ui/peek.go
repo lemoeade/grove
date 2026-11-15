@@ -2,8 +2,6 @@ package ui
 
 import (
 	"strconv"
-	"unicode"
-	"unicode/utf8"
 
 	wui "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -117,7 +115,7 @@ func peekHead(a *app.App, c *wui.Context, d *docs.Doc, h editor.DiffHunk, i, n i
 		toolButton(c, iconChevronUp, i18n.T("上一处改动"), !a.CanStepPeek(-1), func() { a.PeekStep(-1) })
 		toolButton(c, iconChevron, i18n.T("下一处改动"), !a.CanStepPeek(1), func() { a.PeekStep(1) })
 		if app.PeekEditable(d) {
-			if peekButton(c, upperFirst(i18n.T("还原")), i18n.T("换回 HEAD 里的样子（⌘Z 能撤）"), false) {
+			if peekButton(c, i18n.T("丢弃"), i18n.T("换回 HEAD 里的样子（⌘Z 能撤）"), false) {
 				a.PeekRevert()
 			}
 		}
@@ -167,7 +165,7 @@ func peekBody(c *wui.Context, d *docs.Doc, h editor.DiffHunk, lh float32, ct *ed
 // peekButton 是卡头上的字按钮（还原、暂存、在 Diff 中打开）：禁用时灰掉、点了不算，提示照样有。
 func peekButton(c *wui.Context, label, tip string, disabled bool) bool {
 	t := c.Theme()
-	b := wui.Box(c).Padding(2, 7).Radius(5).Shrink(0)
+	b := wui.Box(c).Padding(2, 7).Radius(ctlRadius).Shrink(0)
 	tooltip(c, b, tip)
 	fg := t.TextMuted
 	switch {
@@ -181,15 +179,6 @@ func peekButton(c *wui.Context, label, tip string, disabled bool) bool {
 	}
 	b.Children(func() { wui.Text(c, label).FontSize(11).FontWeight(500).TextColor(fg).SingleLine() })
 	return !disabled && b.Clicked()
-}
-
-// upperFirst 把头一个字母换成大写：英文表里的"还原"是 revert（git.Ongoing 的名字，嵌在句子里所以小写），卡上当按钮用。中文不变。
-func upperFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	r, n := utf8.DecodeRuneInString(s)
-	return string(unicode.ToUpper(r)) + s[n:]
 }
 
 // expandTabs 把行首和行里的 Tab 换成空格（按 size，0 当 4），卡里的旧行和编辑器对得上。

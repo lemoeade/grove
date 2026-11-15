@@ -65,7 +65,7 @@ func (a *App) ContinueOngoing(r *Repo) {
 	a.runStep(r, op.ContinueLabel(), op.ContinueArgs())
 }
 
-// SkipOngoing 跳过停在的这个提交（git rebase --skip 之类），先问：它的改动不会进结果。合并没有跳过。
+// SkipOngoing 跳过停在的这个提交（git rebase --skip 之类），先用红的确认问：它的改动不会进结果。合并没有跳过。
 func (a *App) SkipOngoing(r *Repo) {
 	op := r.Extra.Ongoing
 	args := op.SkipArgs()
@@ -77,7 +77,7 @@ func (a *App) SkipOngoing(r *Repo) {
 		what = git.Short(r.Extra.Progress.Head)
 	}
 	label := op.SkipLabel()
-	a.Ask(i18n.Tf("跳过 %s 停在的这个提交？", r.Name), i18n.Tf("它（%s）的改动不会进结果；想找回要翻 reflog。", what),
+	a.AskDanger(i18n.Tf("跳过 %s 停在的这个提交？", r.Name), i18n.Tf("它（%s）的改动不会进结果；想找回要翻 reflog。", what),
 		label, func() { a.runStep(r, label, args) })
 }
 

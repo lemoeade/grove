@@ -72,7 +72,7 @@ func renderedBlock(c *wui.Context, r *render.Renderer, q render.Request, zoom fl
 			Role(wui.RoleImage).Label(label).Draw(func(p *wui.Painter, rc wui.Rect) { drawRendered(p, r, q, res, rc, zoom) })
 	case ok && res.Err != "":
 		wui.Column(c).AlignSelf(wui.Stretch).Gap(6).Children(func() {
-			wui.Text(c, i18n.Tf("画不出来：%s", res.Err)).FontSize(12).TextColor(t.Danger).Selectable()
+			wui.Text(c, i18n.Tf("画不出来：%s", res.Err)).FontSize(noteFont).TextColor(t.Danger).Selectable()
 			fallback()
 		})
 	default:

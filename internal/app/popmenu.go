@@ -13,7 +13,7 @@ import (
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
-// 文件树的右键菜单是 Grove 自己画的（issue #48）：mygo 的 PopoverMenu 不能按住右键拖到项上松开、子菜单没有悬停延迟
+// 右键菜单和按钮的菜单是 Grove 自己画的（issue #48 起是文件树，#58 起大多数地方；还是 mygo 的几处见 docs/architecture.md）：mygo 的 PopoverMenu 不能按住右键拖到项上松开、子菜单没有悬停延迟
 // 和安全三角、灰着的项说不了原因、点菜单外面那一下还会落到底下的行上。这里是它的状态机，不碰界面：
 // 项由建菜单的函数经 MenuSink 收集，位置、命中、计时都按窗口坐标（DIP）算，界面（internal/ui/gmenu.go）
 // 每帧把指针、按键、时间喂进来，再照着 PopMenu 画。测试直接喂事件（popmenu_test.go），Tester 按不住右键也测得到。

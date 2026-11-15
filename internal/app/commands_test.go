@@ -352,3 +352,43 @@ func TestEditorCommands(t *testing.T) {
 		}
 	}
 }
+
+// 没有 Run 的命令（合并冲突的 ⌥]、提交框的 ⌘↩、搜索结果和文件树列表自己接的键……）只在注册表里登记键：
+// 菜单栏、命令面板都没有它（Group 空），键由界面上那个元素自己接，按 id 认（keyIs / KeyOf……）。
+// 所以每一个都要有键，id 也要在 internal/ui 的源码里出现过，不然这个键谁也不接。
+func TestRunlessCommandsHandled(t *testing.T) {
+	files, _ := filepath.Glob("../ui/*.go")
+	var src strings.Builder
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src.Write(b)
+	}
+	if src.Len() == 0 {
+		t.Fatal("没读到 internal/ui 的源码")
+	}
+	n := 0
+	for _, c := range Commands {
+		if c.Run != nil {
+			continue
+		}
+		n++
+		if c.Group != "" || c.Context == Global {
+			t.Errorf("没有 Run 的命令 %s 只能是某个上下文里界面自己接的键（Group 空、Context 不是全局）", c.ID)
+		}
+		if c.Key == 0 {
+			t.Errorf("没有 Run 的命令 %s 也没有键，登记它没有用", c.ID)
+		}
+		if !strings.Contains(src.String(), `"`+c.ID+`"`) {
+			t.Errorf("没有 Run 的命令 %s 在 internal/ui 里没人接", c.ID)
+		}
+	}
+	if n == 0 {
+		t.Error("一个没有 Run 的命令都没数到，注册表读错了？")
+	}
+}

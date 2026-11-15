@@ -2,10 +2,7 @@ package app
 
 import (
 	"hash/fnv"
-	"os/exec"
-	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -358,60 +355,4 @@ func matchAgent(names []string, job string) bool {
 		}
 	}
 	return false
-}
-
-// foregroundJobs 用一次 ps 读各个 shell（进程号 pids）前台的命令：shell 的进程组不是它终端的前台进程组时，
-// 前台那一组组长的名字；在提示符那里的不在表里。脚本写的 agent（node / bun / python 跑的）按脚本的名字算。
-func foregroundJobs(pids []int) map[int]string {
-	out, err := exec.Command("ps", "-A", "-o", "pid=,pgid=,tpgid=,args=").Output()
-	if err != nil {
-		return nil
-	}
-	type row struct {
-		pgid, tpgid int
-		args        []string
-	}
-	rows := map[int]row{}
-	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 4 {
-			continue
-		}
-		pid, _ := strconv.Atoi(f[0])
-		pgid, _ := strconv.Atoi(f[1])
-		tpgid, _ := strconv.Atoi(f[2])
-		rows[pid] = row{pgid, tpgid, f[3:]}
-	}
-	jobs := map[int]string{}
-	for _, pid := range pids {
-		sh, ok := rows[pid]
-		if !ok || sh.tpgid <= 0 || sh.tpgid == sh.pgid {
-			continue
-		}
-		if lead, ok := rows[sh.tpgid]; ok {
-			jobs[pid] = jobName(lead.args)
-		} else {
-			jobs[pid] = "?"
-		}
-	}
-	return jobs
-}
-
-// jobName 是命令行 args 的命令名：argv[0] 的文件名（登录 shell 的 - 去掉）；解释器跑的脚本取脚本的名字（去掉扩展名）。
-func jobName(args []string) string {
-	if len(args) == 0 {
-		return "?"
-	}
-	name := strings.TrimPrefix(filepath.Base(args[0]), "-")
-	switch name {
-	case "node", "bun", "deno", "python", "python3", "ruby":
-		for _, arg := range args[1:] {
-			if strings.HasPrefix(arg, "-") || arg == "run" {
-				continue
-			}
-			base := filepath.Base(arg)
-			return strings.TrimSuffix(base, filepath.Ext(base))
-		}
-	}
-	return name
 }

@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/egoist/mygo"
 	wui "github.com/egoist/mygo/ui"
 
 	"github.com/lemoeade/grove/internal/app"
@@ -72,7 +71,7 @@ func wsButton(a *app.App, c *wui.Context) {
 	}
 	b.Children(func() {
 		wui.Icon(c, iconLayers).FontSize(iconRow).TextColor(t.TextMuted)
-		wui.Text(c, name).FontSize(12.5).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Margin(0, 0, textNudge, 0)
+		wui.Text(c, name).FontSize(bodyFont).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Margin(0, 0, textNudge, 0)
 		wui.Icon(c, iconChevron).FontSize(iconInline).TextColor(t.TextMuted)
 	})
 	menuButton(a, c, b, menuOwner{"workspace", ""}, func(m menu) { wsMenu(a, m) })
@@ -141,7 +140,7 @@ func breadcrumb(a *app.App, c *wui.Context, tb wui.Element) {
 		}
 		if r == nil || rel == "" {
 			kind()
-			wui.Text(c, tip).FontSize(12).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Tooltip(tip).
+			wui.Text(c, tip).FontSize(barFont).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Tooltip(tip).
 				Margin(0, 0, textNudge, 4)
 			return
 		}
@@ -154,7 +153,7 @@ func breadcrumb(a *app.App, c *wui.Context, tb wui.Element) {
 		l := crumbFit(c, avail, r.Name, dirs, file)
 		crumb(a, c, r, "", r.Name, false).MaxWidth(l.repoMax)
 		sep := func() {
-			wui.Text(c, "›").FontSize(12).TextColor(t.TextMuted.Alpha(0.6)).Shrink(0).Margin(0, 0, textNudge, 0)
+			wui.Text(c, "›").FontSize(barFont).TextColor(t.TextMuted.Alpha(0.6)).Shrink(0).Margin(0, 0, textNudge, 0)
 		}
 		for i := 0; i < len(dirs); i++ {
 			sep()
@@ -234,13 +233,15 @@ func crumbFit(c *wui.Context, avail float32, repo string, dirs []string, file st
 // crumbMore 是面包屑里收起来的目录 dirs[lo:hi]：点开列出它们，每个是那个目录的菜单。
 func crumbMore(a *app.App, c *wui.Context, r *app.Repo, dirs []string, lo, hi int) {
 	t := c.Theme()
-	b := wui.ButtonBase(c).Label(i18n.T("位置 省略的目录")).Padding(2, 4).Radius(5).Shrink(0).Cursor(wui.CursorPointer).
+	b := wui.ButtonBase(c).Label(i18n.T("位置 省略的目录")).Padding(2, 4).Radius(ctlRadius).Shrink(0).Cursor(wui.CursorPointer).
 		Tooltip(strings.Join(dirs[lo:hi], "/"))
 	if b.Hovered() {
 		b.Background(toolFill(t, 0.06))
 		a.EnsureFiles(r)
 	}
-	b.Children(func() { wui.Text(c, "…").FontSize(12).TextColor(t.TextMuted).SingleLine().Margin(0, 0, textNudge, 0) })
+	b.Children(func() {
+		wui.Text(c, "…").FontSize(barFont).TextColor(t.TextMuted).SingleLine().Margin(0, 0, textNudge, 0)
+	})
 	b.Menu(func(m *wui.Menu) {
 		for i := lo; i < hi; i++ {
 			path := strings.Join(dirs[:i+1], "/")
@@ -263,7 +264,7 @@ func crumb(a *app.App, c *wui.Context, r *app.Repo, path, text string, file bool
 		label += "/" + path
 	}
 	// 位置不够时只缩目录段，仓库段和文件段不让、由 breadcrumb 按 crumbFit 给最宽多少
-	b := wui.ButtonBase(c).Label(label).Padding(2, 4).Radius(5).MinWidth(0).Shrink(1).MaxWidth(crumbDirMax).Cursor(wui.CursorPointer)
+	b := wui.ButtonBase(c).Label(label).Padding(2, 4).Radius(ctlRadius).MinWidth(0).Shrink(1).MaxWidth(crumbDirMax).Cursor(wui.CursorPointer)
 	if file || path == "" {
 		b.Shrink(0)
 	}
@@ -276,7 +277,7 @@ func crumb(a *app.App, c *wui.Context, r *app.Repo, path, text string, file bool
 		color = t.Text
 	}
 	b.Children(func() {
-		wui.Text(c, text).Label(label).FontSize(12).TextColor(color).SingleLine().Ellipsis("…").MinWidth(0).Margin(0, 0, textNudge, 0)
+		wui.Text(c, text).Label(label).FontSize(barFont).TextColor(color).SingleLine().Ellipsis("…").MinWidth(0).Margin(0, 0, textNudge, 0)
 	})
 	if file {
 		if b.Clicked() {
@@ -290,6 +291,7 @@ func crumb(a *app.App, c *wui.Context, r *app.Repo, path, text string, file bool
 }
 
 // dirMenu 是面包屑里目录段的菜单：在文件树里显示，然后是目录里的子目录（子菜单，最多两层）和文件（选了打开）。
+// 还是 mygo 的菜单（wui.Menu）：Grove 菜单每帧连子菜单一起重建，两层 × 每层 80 项最坏几十万项，要先让子菜单按需建（docs/architecture.md）。
 func dirMenu(a *app.App, m *wui.Menu, r *app.Repo, dir string, depth int) {
 	a.EnsureFiles(r)
 	if depth == 0 {
@@ -327,7 +329,7 @@ func dirMenu(a *app.App, m *wui.Menu, r *app.Repo, dir string, depth int) {
 		}
 	}
 	if rest := len(n.Dirs) + len(n.Files) - k; rest > 0 {
-		m.Item(i18n.Tf("还有 %d 项，用快速打开（%s）找", rest, app.Find("file.quickOpen").Keys())).Disabled(true)
+		m.Item(app.KeyHint("file.quickOpen", "还有 %d 项，用快速打开（%s）找", "还有 %d 项，用快速打开找", rest)).Disabled(true)
 	}
 }
 
@@ -338,11 +340,11 @@ func quickOpen(a *app.App, c *wui.Context) {
 	b := wui.ButtonBase(c).Label(i18n.T("快速打开")).Gap(6).AlignItems(wui.Center).Padding(3, 10).Radius(6).Width(260).MinWidth(120).Shrink(1).
 		Background(t.Text.Alpha(0.05)).BorderWidth(1).BorderColor(t.Border).Cursor(wui.CursorPointer).Tooltip(tip)
 	if b.Hovered() {
-		b.Background(t.Text.Alpha(0.08))
+		b.Background(toolFill(t, 0.08))
 	}
 	b.Children(func() {
 		wui.Icon(c, iconSearch).FontSize(iconRow).TextColor(t.TextMuted)
-		wui.Text(c, i18n.T("快速打开")).FontSize(12).TextColor(t.TextMuted).SingleLine().Grow(1).MinWidth(0).Margin(0, 0, textNudge, 0)
+		wui.Text(c, i18n.T("快速打开")).FontSize(barFont).TextColor(t.TextMuted).SingleLine().Grow(1).MinWidth(0).Margin(0, 0, textNudge, 0)
 		wui.Text(c, app.Find("file.quickOpen").Keys()).FontSize(11).TextColor(t.TextMuted.Alpha(0.7)).SingleLine().Shrink(0).Margin(0, 0, textNudge, 0)
 	})
 	if b.Clicked() {
@@ -454,10 +456,10 @@ func branchButton(a *app.App, c *wui.Context, r *app.Repo) {
 		label += "  " + s
 	}
 	b := wui.ButtonBase(c).Label(i18n.Tf("分支 %s", r.Status.Branch)).Gap(5).AlignItems(wui.Center).Padding(2, 6, 2, 8).Radius(999).
-		Background(t.Text.Alpha(0.06)).Cursor(wui.CursorPointer).MinWidth(0).Shrink(1).Margin(0, 4, 0, 0).
+		Background(quietFill(t)).Cursor(wui.CursorPointer).MinWidth(0).Shrink(1).Margin(0, 4, 0, 0).
 		Tooltip(i18n.Tf("切换 %s 的分支", r.Name))
 	if b.Hovered() {
-		b.Background(t.Text.Alpha(0.1))
+		b.Background(toolFill(t, 0.12))
 	}
 	b.Children(func() {
 		wui.Icon(c, iconBranch).FontSize(iconInline).TextColor(t.TextMuted)
@@ -468,6 +470,3 @@ func branchButton(a *app.App, c *wui.Context, r *app.Repo) {
 		openMenuBelow(a, c, b.Bounds(), menuOwner{"branch", r.Root}, func(m menu) { branchMenu(a, m, r) })
 	}
 }
-
-// copyText 把文字放进剪贴板；测试里换成记下来的（测试不碰剪贴板）。
-var copyText = func(s string) { mygo.Clipboard.WriteText(s) }

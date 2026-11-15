@@ -89,7 +89,7 @@ func openEditorRow(a *app.App, c *wui.Context, r app.OpenEditorRow, indent float
 		a.PickOpenEditor(r)
 	}
 	if el.DoubleClicked() {
-		d.Pinned = true // 和标签条一样：双击固定
+		a.PinTab(d) // 和标签条一样：双击固定
 	}
 	el.Children(func() {
 		if cur && !on {

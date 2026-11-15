@@ -264,7 +264,7 @@ func (a *App) ChooseRepoDir() {
 				}
 			}
 			if len(errs) > 0 {
-				go mygo.Dialog.Error(i18n.T("有目录没加进来"), strings.Join(errs, "\n"))
+				a.Fail(i18n.T("有目录没加进来"), humanErr(strings.Join(errs, "\n")))
 			}
 		})
 	}()

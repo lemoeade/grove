@@ -156,7 +156,7 @@ func (a *App) SwitchBranch(r *Repo, b git.Branch) {
 	label := i18n.Tf("切换到 %s", target)
 	do := func() { a.RunOp(r, label, args...) }
 	if n := r.Status.Conflicts + r.Status.Staged + r.Status.Unstaged; n > 0 {
-		a.Ask(i18n.Tf("%s？", label), i18n.Tn("有 %d 项未提交的改动。git switch 会试着把它们带到那个分支，带不过去时会失败并保持原样。", n), i18n.T("切换"), do)
+		a.Ask(label+i18n.Question(), i18n.Tn("有 %d 项未提交的改动。git switch 会试着把它们带到那个分支，带不过去时会失败并保持原样。", n), i18n.T("切换"), do)
 		return
 	}
 	do()

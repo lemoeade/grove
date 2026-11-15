@@ -383,7 +383,7 @@ func (a *App) copyAll(r *Repo, srcs []string, dir string, dup bool) {
 			rel := files.JoinPath(dir, name)
 			var d bool
 			if d, err = copyIn(src, filepath.Join(root, filepath.FromSlash(rel))); err != nil {
-				err = fmt.Errorf("%s：%w", filepath.Base(src), err)
+				err = fmt.Errorf("%s%s%w", filepath.Base(src), i18n.Colon(), err)
 				break
 			}
 			done, isDir = append(done, rel), append(isDir, d)

@@ -199,7 +199,7 @@ func subDiffNote(ctx context.Context, root string, ch Change) (note string, ok b
 		note = i18n.Tf("子模块 %s：%s", ch.Path, short(from))
 	}
 	if s := SubText(strings.ReplaceAll(ch.Sub, "C", "")); s != "" && ch.Kind == Unstaged { // 里面的改动只在工作区那边
-		note += i18n.Tf("（%s）", s)
+		note += i18n.Paren(s)
 	}
 	return note, true
 }

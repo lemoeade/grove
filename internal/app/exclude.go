@@ -71,17 +71,11 @@ func (a *App) reloadExclude() {
 	if a.excludeOn == a.St.Settings.Exclude {
 		return
 	}
-	if a.excludeTimer != nil {
-		a.excludeTimer.Stop()
-	}
-	up := a.Update
-	a.excludeTimer = time.AfterFunc(ExcludeDelay, func() {
-		up(func() {
-			if a.excludeOn != a.St.Settings.Exclude {
-				a.excludeOn = a.St.Settings.Exclude
-				a.reloadAllFiles()
-			}
-		})
+	a.excludeWait.kick(a.Update, ExcludeDelay, func() {
+		if a.excludeOn != a.St.Settings.Exclude {
+			a.excludeOn = a.St.Settings.Exclude
+			a.reloadAllFiles()
+		}
 	})
 }
 

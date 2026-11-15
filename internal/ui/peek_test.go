@@ -9,7 +9,7 @@ import (
 )
 
 // 装订线改动块的就地卡：点块里的行号（OnGutterClick）弹卡，头一行“第 1 / 2 处改动”、−1 +1，下面是 HEAD 里的旧行；
-// 纯新增的块写一句；没保存时暂存灰着；点还原，编辑器里那一行换回去；Esc 关；块外的行号照旧选中那一行。
+// 纯新增的块写一句；没保存时暂存灰着；点丢弃，编辑器里那一行换回去；Esc 关；块外的行号照旧选中那一行。
 func TestPeekCardUI(t *testing.T) {
 	repo := testutil.NewRepo(t, "peek")
 	repo.Write("a.txt", "1\n2\n3\n4\n5\n6\n7\n8\n9\n")
@@ -27,7 +27,7 @@ func TestPeekCardUI(t *testing.T) {
 	d.St.OnGutterClick(1)
 	tt.Frame()
 	tt.Frame()
-	for _, s := range []string{"第 1 / 2 处改动", "−1", "+1", "2", "还原", "暂存", "在 Diff 中打开"} {
+	for _, s := range []string{"第 1 / 2 处改动", "−1", "+1", "2", "丢弃", "暂存", "在 Diff 中打开"} {
 		if !shown(tt, s) {
 			t.Fatalf("卡上没有 %q：%q", s, tt.Texts())
 		}
@@ -40,7 +40,7 @@ func TestPeekCardUI(t *testing.T) {
 	}
 	tt.Click("上一处改动")
 	tt.Frame()
-	if err := tt.Click("还原"); err != nil {
+	if err := tt.Click("丢弃"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

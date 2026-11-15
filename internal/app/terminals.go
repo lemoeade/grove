@@ -3,12 +3,10 @@ package app
 import (
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,11 +19,14 @@ import (
 	"github.com/lemoeade/grove/internal/workspace"
 )
 
-// 这个文件是底栏的终端：每个仓库一排终端标签，每个标签一格或分屏的几格，每格一个 shell。
+// 这个文件是终端的模型和操作：每个仓库一排终端标签，每个标签一格或分屏的几格（TermNode 拆分树），每格一个 shell。
+// 标签在底栏（Repo.Terms）或开在编辑器区（Repo.EdTerms，挪来挪去见 termeditor.go），这里的新建、分屏、关格 / 关标签
+// （前台有命令先问）、重启、改名、查找、往终端里敲命令、会话的读写两处共用。
 // shell 第一次要显示时才启动（懒启动：底栏开着、当前仓库是它、是它当前的标签）；切仓库再切回来
 // 还是同一个 shell，回滚都在。标签的名字、顺序、分屏的样子和每格 shell 所在的目录记进会话；关窗口时
 // 在应用进程里的格的回滚写进 termhist（termhist.go），下次启动这一格时喂回去。
 // 设置里开了"关掉窗口后终端继续在后台运行"时 shell 跑在终端后台进程里（termd.go），会话还记各格的 sid、接回来时按格还原。
+// shell 的进程号怎么认领、前台在跑什么、在哪个目录见 termjobs.go。
 
 // MaxPanes 是一个终端标签最多分的格数。
 const MaxPanes = 8
@@ -682,7 +683,7 @@ func jobMessage(jobs []string) string {
 	if len(named) == 0 {
 		return i18n.T("终端里可能还有命令在运行，关掉会结束它。")
 	}
-	return i18n.Tf("“%s”还在运行，关掉终端会结束它。", strings.Join(slices.Compact(named), "”、“"))
+	return i18n.Tf("“%s”还在运行，关掉终端会结束它。", strings.Join(slices.Compact(named), "”"+i18n.ListSep()+"“"))
 }
 
 func (a *App) dropPane(r *Repo, tab *TermTab, p *TermPane) {
@@ -1195,126 +1196,4 @@ func atRoot(r *Repo, dir string) bool {
 	}
 	real, err := filepath.EvalSymlinks(r.Root)
 	return err == nil && dir == real
-}
-
-// 认领 shell 的进程号：mygo 的终端不给进程号，只好看应用的子进程里有终端（tty）的那些
-// （git 子进程没有终端），按进程号从小到大分给按启动先后排队的格。认领过的进程号整个进程里不再给别的格
-// （测试里一个进程有好几个 App）。还没认领到就关掉的格，closeTerm 等它的 shell 退干净，免得被下一个格认走。
-// （试过把记号放进 shell 的环境再用 ps -E 对，本机的 ps 看不到别的进程的环境。）
-var (
-	claimMu sync.Mutex
-	claimed = map[int]bool{}
-)
-
-// pollPids 在后台找排队的格的 shell 的进程号，最多找 3 秒。
-func (a *App) pollPids() {
-	if a.pidPolling || a.Update == nil {
-		return
-	}
-	a.pidPolling = true
-	var done atomic.Bool
-	up := a.Update
-	go func() {
-		for i := 0; i < 20 && !done.Load(); i++ {
-			time.Sleep(150 * time.Millisecond)
-			kids := ttyChildren()
-			last := i == 19
-			up(func() {
-				if a.claimPids(kids) || last {
-					done.Store(true)
-					a.pidPolling = false
-				}
-			})
-		}
-	}()
-}
-
-// claimPids 把 kids 里没认领过的分给排队的格，返回还有没有格在等。
-func (a *App) claimPids(kids []int) bool {
-	a.pidWait = slices.DeleteFunc(a.pidWait, func(p *TermPane) bool { return p.Term == nil || p.pid != 0 })
-	claimMu.Lock()
-	for _, k := range kids {
-		if len(a.pidWait) == 0 {
-			break
-		}
-		if !claimed[k] {
-			claimed[k] = true
-			a.pidWait[0].pid = k
-			a.pidWait = a.pidWait[1:]
-		}
-	}
-	claimMu.Unlock()
-	a.syncAgents()
-	return len(a.pidWait) == 0
-}
-
-// ttyChildren 是应用有终端（tty）的子进程，按进程号排好。
-func ttyChildren() []int {
-	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,tty=").Output()
-	if err != nil {
-		return nil
-	}
-	me := os.Getpid()
-	var kids []int
-	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 3 || f[2] == "??" || f[2] == "-" {
-			continue
-		}
-		pid, _ := strconv.Atoi(f[0])
-		ppid, _ := strconv.Atoi(f[1])
-		if ppid == me && pid > 0 {
-			kids = append(kids, pid)
-		}
-	}
-	slices.Sort(kids)
-	return kids
-}
-
-// Job 是这一格前台在跑的命令的名字：没在跑为 ""，不知道 shell 的进程号（还没认领到）为 "?"。
-func (p *TermPane) Job() string {
-	if p.Term == nil || p.Exited {
-		return ""
-	}
-	if p.pid == 0 {
-		return "?"
-	}
-	return foregroundJob(p.pid)
-}
-
-// foregroundJob 是 shell（进程号 pid）前台在跑的命令：shell 的进程组不是它终端的前台进程组时，
-// 前台那一组的组长的名字（叫不出名字为 "?"）；在提示符那里等着、只有后台任务（&）的为 ""。
-func foregroundJob(pid int) string {
-	out, err := exec.Command("ps", "-o", "pgid=,tpgid=", "-p", strconv.Itoa(pid)).Output()
-	if err != nil {
-		return "" // shell 已经没了
-	}
-	f := strings.Fields(string(out))
-	if len(f) < 2 {
-		return ""
-	}
-	pgid, _ := strconv.Atoi(f[0])
-	tpgid, _ := strconv.Atoi(f[1])
-	if tpgid <= 0 || tpgid == pgid {
-		return ""
-	}
-	name, _ := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(tpgid)).Output()
-	if n := strings.TrimSpace(string(name)); n != "" {
-		return strings.TrimPrefix(filepath.Base(n), "-")
-	}
-	return "?"
-}
-
-// procCwd 是进程现在的工作目录（lsof），读不到为 ""。
-func procCwd(pid int) string {
-	out, err := exec.Command("lsof", "-a", "-p", strconv.Itoa(pid), "-d", "cwd", "-Fn").Output()
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		if d, ok := strings.CutPrefix(line, "n"); ok && filepath.IsAbs(d) {
-			return d
-		}
-	}
-	return ""
 }

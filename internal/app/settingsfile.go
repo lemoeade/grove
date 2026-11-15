@@ -240,14 +240,6 @@ func (a *App) ImportSettings(parent *mygo.Window) {
 	}()
 }
 
-// tildePath 是给人看的路径：家目录换成 ~。
-func tildePath(p string) string {
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home+string(filepath.Separator)) {
-		return "~" + p[len(home):]
-	}
-	return p
-}
-
 // importSettings 是 ImportSettings 读到文件之后的那半。
 func (a *App) importSettings(data []byte) {
 	s, ignored, err := workspace.ReadSettingsFile(data)

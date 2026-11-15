@@ -118,7 +118,7 @@ func CloneProgress(s string) (text string, pct int, ok bool) {
 
 // OpenClone 打开克隆对话框：剪贴板里像 git 地址就预填，放到上次克隆的目录，没有就第一个仓库的父目录、再没有就家目录。
 func (a *App) OpenClone() {
-	d := CloneDialog{Open: true, Parent: tildeOf(a.cloneParent())}
+	d := CloneDialog{Open: true, Parent: tildePath(a.cloneParent())}
 	if s := strings.TrimSpace(ReadClipboard()); LooksGitURL(s) {
 		d.URL, d.Prefilled = s, true
 	}
@@ -142,7 +142,7 @@ func (a *App) cloneParent() string {
 // ChooseCloneParent 弹系统的选目录对话框选"放到"（对话框里的"选择…"）；对话框会阻塞，所以在 goroutine 里开。
 func (a *App) ChooseCloneParent() {
 	up, win, open := a.Update, a.Win, a.OpenDialog
-	def := untilde(strings.TrimSpace(a.CloneDlg.Parent))
+	def := typedPath(strings.TrimSpace(a.CloneDlg.Parent))
 	go func() {
 		paths, err := open(mygo.OpenDialogOptions{
 			Parent:      win,
@@ -157,7 +157,7 @@ func (a *App) ChooseCloneParent() {
 		}
 		up(func() {
 			if a.CloneDlg.Open {
-				a.CloneDlg.Parent = tildeOf(paths[0])
+				a.CloneDlg.Parent = tildePath(paths[0])
 			}
 		})
 	}()
@@ -176,7 +176,7 @@ func (d *CloneDialog) Sync() {
 
 // Dest 是会克隆到的目录（绝对路径，~ 展开）；父目录或目录名空时为空。
 func (d *CloneDialog) Dest() string {
-	parent, name := untilde(strings.TrimSpace(d.Parent)), strings.TrimSpace(d.Name)
+	parent, name := typedPath(strings.TrimSpace(d.Parent)), strings.TrimSpace(d.Name)
 	if parent == "" || name == "" {
 		return ""
 	}
@@ -186,7 +186,7 @@ func (d *CloneDialog) Dest() string {
 // DestLabel 是说明行里的"克隆到 …"（家目录写成 ~）；Command 是会跑的命令。
 func (d *CloneDialog) DestLabel() string {
 	if p := d.Dest(); p != "" {
-		return tildeOf(p)
+		return tildePath(p)
 	}
 	return ""
 }
@@ -202,7 +202,7 @@ func (d *CloneDialog) Command() string {
 // CloneErrs 是对话框里的红字：父目录不在、目录名不合法 / 已经有了而且不空 / 正在往那里克隆。空的不算错（按钮灰着就行）。
 func (a *App) CloneErrs() (parentErr, nameErr string) {
 	d := &a.CloneDlg
-	parent, name := untilde(strings.TrimSpace(d.Parent)), strings.TrimSpace(d.Name)
+	parent, name := typedPath(strings.TrimSpace(d.Parent)), strings.TrimSpace(d.Name)
 	if parent != "" && !isDir(parent) {
 		parentErr = i18n.T("没有这个目录")
 	}
@@ -233,7 +233,7 @@ func (a *App) StartClone() {
 	}
 	d := a.CloneDlg
 	a.CloneDlg = CloneDialog{}
-	cl := &Clone{URL: strings.TrimSpace(d.URL), Parent: untilde(strings.TrimSpace(d.Parent)), Name: strings.TrimSpace(d.Name),
+	cl := &Clone{URL: strings.TrimSpace(d.URL), Parent: typedPath(strings.TrimSpace(d.Parent)), Name: strings.TrimSpace(d.Name),
 		Dest: d.Dest(), Sub: d.Sub, Text: i18n.T("连接中…"), Pct: -1}
 	_, err := os.Stat(cl.Dest)
 	cl.existed = err == nil
@@ -334,27 +334,9 @@ func emptyOrMissing(p string) bool {
 	return len(ents) == 0
 }
 
-// tildeOf 把家目录开头的路径写成 ~/…（框里显示）；untilde 反过来。
-func tildeOf(p string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return p
-	}
-	if p == home {
-		return "~"
-	}
-	if strings.HasPrefix(p, home+string(filepath.Separator)) {
-		return "~" + p[len(home):]
-	}
-	return p
-}
-
-func untilde(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, p[1:])
-		}
-	}
+// typedPath 是框里填的目录：~ 换成家目录（untilde），相对路径按当前目录变成绝对的。
+func typedPath(p string) string {
+	p = untilde(p)
 	if p != "" && !filepath.IsAbs(p) {
 		return absPath(p)
 	}

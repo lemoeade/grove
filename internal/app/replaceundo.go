@@ -138,8 +138,8 @@ func (a *App) undoReplace(u *replaceUndo) {
 			continue
 		}
 		if err := os.WriteFile(abs, f.before, f.mode); err != nil {
-			fails = append(fails, fmt.Sprintf("%s/%s：%v", r.Name, f.rel, err))
-			l.lines, l.failed = append(l.lines, fmt.Sprintf("%s：%v", f.rel, err)), true
+			fails = append(fails, fmt.Sprintf("%s/%s%s%v", r.Name, f.rel, i18n.Colon(), err))
+			l.lines, l.failed = append(l.lines, fmt.Sprintf("%s%s%v", f.rel, i18n.Colon(), err)), true
 			continue
 		}
 		restored++

@@ -31,14 +31,14 @@ func startPage(a *app.App, c *wui.Context) {
 				wui.Column(c).Gap(4).Children(func() {
 					wui.Text(c, a.WsName()).FontSize(20).FontWeight(650).TextColor(t.Text).SingleLine()
 					text, bad, _ := reposSummary(a.Repos)
-					wui.Text(c, joinNonEmpty(" · ", text, bad)).FontSize(12).TextColor(t.TextMuted).SingleLine()
+					wui.Text(c, joinNonEmpty(" · ", text, bad)).FontSize(noteFont).TextColor(t.TextMuted).SingleLine()
 				})
 				startChanges(a, c)
 				startRecent(a, c)
 				startWorktrees(a, c)
 				if startRows == 0 {
 					wui.Text(c, app.KeyHint("file.quickOpen", "在侧栏里点一个文件或一项变更，或 %s 按名字找", "在侧栏里点一个文件或一项变更，或用快速打开按名字找")).
-						FontSize(12).TextColor(t.TextMuted)
+						FontSize(noteFont).TextColor(t.TextMuted)
 				}
 				wui.Row(c).Gap(14).AlignItems(wui.Center).Children(func() {
 					startLink(c, iconSearch, app.KeyHint("file.quickOpen", "快速打开 %s", "快速打开"), func() { a.Exec("file.quickOpen") })
@@ -107,7 +107,7 @@ func startChanges(a *app.App, c *wui.Context) {
 		for _, r := range dirty {
 			wui.Row(c.Key(r.Root)).Height(26).Padding(0, 8).Gap(6).AlignItems(wui.Center).Children(func() {
 				repoDot(a, c, r, false)
-				wui.Text(c, r.Name).FontSize(12.5).FontWeight(600).TextColor(t.Text).SingleLine()
+				wui.Text(c, r.Name).FontSize(bodyFont).FontWeight(600).TextColor(t.Text).SingleLine()
 				wui.Icon(c, iconBranch).FontSize(iconInline).TextColor(t.TextMuted)
 				wui.Text(c, r.Status.Branch).FontSize(11.5).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0)
 				wui.Spacer(c).Grow(1)
@@ -115,7 +115,7 @@ func startChanges(a *app.App, c *wui.Context) {
 			})
 			chs := r.Status.Changes
 			for i, ch := range chs[:min(5, len(chs))] {
-				startRow(a, c.Key(r.Root+strconv.Itoa(i)), r.Name+"/"+ch.Path, func() { a.OpenDiff(r, ch, true) }, func() {
+				startRow(a, c.Key(r.Root+strconv.Itoa(i)), r.Name+"/"+ch.Path, func() { a.UseRepo(r); a.OpenDiff(r, ch, true) }, func() {
 					wui.Box(c).Width(14).Shrink(0)
 					startFile(a, c, ch.Path)
 					codeLetter(c, t, ch.Code, false)
@@ -124,7 +124,7 @@ func startChanges(a *app.App, c *wui.Context) {
 			if n := len(chs) - 5; n > 0 {
 				startRow(a, c.Key(r.Root+"more"), i18n.Tn("还有 %d 个…", n), func() { a.UseRepo(r); a.ShowSidebar(workspace.ModeGit) }, func() {
 					wui.Box(c).Width(14).Shrink(0)
-					wui.Text(c, i18n.Tn("还有 %d 个…", n)).FontSize(12).TextColor(t.TextMuted)
+					wui.Text(c, i18n.Tn("还有 %d 个…", n)).FontSize(noteFont).TextColor(t.TextMuted)
 				})
 			}
 		}
@@ -234,7 +234,7 @@ func startLink(c *wui.Context, ic *wui.SVG, label string, fn func()) {
 	}
 	b.Children(func() {
 		wui.Icon(c, ic).FontSize(iconRow).TextColor(col)
-		wui.Text(c, label).FontSize(12).TextColor(col)
+		wui.Text(c, label).FontSize(noteFont).TextColor(col)
 	})
 	if b.Clicked() {
 		fn()

@@ -121,14 +121,14 @@ func wtSummaryRow(a *app.App, row wui.ListRow, cr app.ChangeRow, g *gitFrame) {
 		}
 		wui.Spacer(c).Grow(1)
 		squareButton(c.Key("review"), iconEye, i18n.T("审查"), i18n.T("审查：在主区看它比主分支多出的改动（main...分支）"),
-			wtBtnSize+2, iconRow, false, func() { g.do(func() { a.ReviewWorktree(r, w) }) })
+			midToolSize, iconRow, false, func() { g.do(func() { a.ReviewWorktree(r, w) }) })
 		into := r.Status.Branch
 		if into == "" {
 			into = "main"
 		}
 		// 合并：普通图标按钮、强调色的图标（不再是实心的方底）；不能合并时灰着、提示里写原因
 		label := i18n.Tf("合并到 %s…", into)
-		if iconActionSize(c.Key("merge"), wtBtnSize+2, iconMerge, label, label, app.MergeWorktreeWhy(r, w), t.Accent) {
+		if iconActionSize(c.Key("merge"), midToolSize, iconMerge, label, label, app.MergeWorktreeWhy(r, w), t.Accent) {
 			g.do(func() { a.MergeWorktree(r, w) })
 		}
 	})
@@ -226,9 +226,9 @@ func needYouBar(a *app.App, c *wui.Context) {
 			}
 		})
 		wui.Spacer(c).Grow(1)
-		squareButton(c.Key("prev"), iconChevronUp, i18n.T("上一个需要你的工作树"), i18n.T("上一个需要你的工作树"), wtBtnSize, iconRow, false,
+		squareButton(c.Key("prev"), iconChevronUp, i18n.T("上一个需要你的工作树"), i18n.T("上一个需要你的工作树"), smallToolSize, iconRow, false,
 			func() { a.StepNeedsYou(-1) })
-		squareButton(c.Key("next"), iconChevron, i18n.T("下一个需要你的工作树"), i18n.T("下一个需要你的工作树"), wtBtnSize, iconRow, false,
+		squareButton(c.Key("next"), iconChevron, i18n.T("下一个需要你的工作树"), i18n.T("下一个需要你的工作树"), smallToolSize, iconRow, false,
 			func() { a.StepNeedsYou(1) })
 	})
 }

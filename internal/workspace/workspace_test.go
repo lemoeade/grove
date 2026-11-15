@@ -188,10 +188,22 @@ func TestStateSessions(t *testing.T) {
 			Active: 1, Repo: "/a", Open: []string{"/a"}, Dirs: map[string][]string{"/a": {"docs", "docs/img"}},
 			Git:    map[string]string{"/a": "closed", "/b": "open"},
 			Groups: map[string][]string{"/a": {"stash", "untracked"}},
-			Terms:  map[string]*Terms{"/a": {Tabs: []TermTab{{Name: "构建", Dir: "/a/docs"}, {Sids: []string{"s1", "s2"}}}, Active: 1}},
-			Added:  []string{"/x"}, Hidden: []string{"/b"},
+			Terms: map[string]*Terms{"/a": {Tabs: []TermTab{{Name: "构建", Dir: "/a/docs"}, {Sids: []string{"s1", "s2"}},
+				{Split: &TermSplit{Row: true, Ratio: 0.4, A: &TermSplit{Hist: "1793001600000-3.vt"}, B: &TermSplit{Dir: "/a/src", Sid: "s3", Profile: "fish"}}},
+				{InEditor: true, Num: 4}}, Active: 1}},
+			Added: []string{"/x"}, Hidden: []string{"/b"},
+			WtOpen: []string{"/a"},
+			Layout: &Layout{Row: true, Ratio: 0.5, A: &Layout{Tabs: []int{0}}, B: &Layout{Tabs: []int{1, 2}, Sel: 1, Focus: true}},
+			Panels: &Panels{Sidebar: true, BottomBar: true, SidebarMode: ModeGit, SidebarW: 300, TermW: 420, Unified: true, HistAll: true, HistNoGraph: true, OpenEditorsFolded: true},
 		},
 	}
+	st.Sessions["/w/one.code-workspace"].Tabs = append(st.Sessions["/w/one.code-workspace"].Tabs,
+		Tab{Path: "/a", Kind: TabVersion, Repo: "/a", Change: &TabChange{Kind: "commit", Path: "a.go", Code: "M", Commit: "5fd1", Parent: "d1e9"}, Enc: "gbk", Hex: true},
+		Tab{Path: "/a", Kind: TabDiff, Repo: "/a", Change: &TabChange{Kind: "unstaged", Path: "a.go", Code: "M"}},
+		Tab{Path: "/a", Kind: TabTerm, Repo: "/a", TermNum: 4},
+		Tab{Path: "/a/x.go", Copy: 1, Lang: "Go", Indent: "tab", Preview: true})
+	st.AppVersion, st.OpenEditorsFolded, st.TermW, st.CloneDir = "0.2.0", true, 420, "/src"
+	st.TaskHistory = []TaskRun{{Repo: "/a", Cmd: "make test"}}
 	st.RecentWs = []string{"/w/one.code-workspace", "/w/dir"}
 	st.HistNoGraph = true
 	st.HistBranches, st.CommitMsgs, st.Settings.TermBlink, st.Settings.TermTheme = true, []string{"修复登录", "初始提交"}, true, "Dracula"
@@ -361,6 +373,122 @@ func TestStateSessions(t *testing.T) {
 	if DefaultAccent != "forest" || Accents[0] != "system" || Accents[1] != "" || len(Accents) != len(AccentKeys) || slices.Contains(Accents, DefaultAccent) {
 		t.Errorf("强调色的选项 %q（默认 %q）", Accents, DefaultAccent)
 	}
+}
+
+// 读的时候清理会话和几张表：该是绝对路径的（仓库根、工作区、文件）相对路径的丢掉，几张表截到上限；合法的原样留着。
+func TestStateClamp(t *testing.T) {
+	dir := t.TempDir()
+	many := func(n int, f func(i int) string) string {
+		var parts []string
+		for i := range n {
+			parts = append(parts, f(i))
+		}
+		return strings.Join(parts, ",")
+	}
+	data := `{"version":4,
+	 "recent":["rel.go","/a/0.go","/a/0.go",` + many(MaxRecent+5, func(i int) string { return `"/a/` + strconv.Itoa(i) + `.go"` }) + `],
+	 "commitMsgs":["", "  ",` + many(MaxCommitMsgs+5, func(i int) string { return `"m` + strconv.Itoa(i) + `"` }) + `],
+	 "searchHistory":[{"text":""},` + many(MaxSearches+5, func(i int) string { return `{"text":"q` + strconv.Itoa(i) + `"}` }) + `],
+	 "windows":["rel.code-workspace","","/w/one.code-workspace",""],
+	 "added":["rel","/x"],
+	 "sessions":{"/w/one.code-workspace":{
+	   "repo":"rel","open":["rel","/a"],"wtOpen":["/a","b"],
+	   "dirs":{"rel":["docs"],"/a":["docs","/abs",""],"/b":["/abs"]},
+	   "git":{"rel":"open","/a":"closed","/b":"sideways"},
+	   "groups":{"rel":["stash"],"/a":["stash"]}}}}`
+	if err := os.WriteFile(filepath.Join(dir, StateFile), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := LoadState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Recent) != MaxRecent || st.Recent[0] != "/a/0.go" || st.Recent[1] != "/a/1.go" {
+		t.Errorf("最近的文件：%d 个 %q…", len(st.Recent), st.Recent[:min(3, len(st.Recent))])
+	}
+	if len(st.CommitMsgs) != MaxCommitMsgs || st.CommitMsgs[0] != "m0" {
+		t.Errorf("提交信息：%d 条 %q…", len(st.CommitMsgs), st.CommitMsgs[:min(3, len(st.CommitMsgs))])
+	}
+	if len(st.SearchHistory) != MaxSearches || st.SearchHistory[0].Text != "q0" {
+		t.Errorf("最近搜索：%d 条 %+v…", len(st.SearchHistory), st.SearchHistory[:min(3, len(st.SearchHistory))])
+	}
+	if !reflect.DeepEqual(st.Windows, []string{"", "/w/one.code-workspace", ""}) || !reflect.DeepEqual(st.Added, []string{"/x"}) {
+		t.Errorf("窗口 %q、added %q", st.Windows, st.Added)
+	}
+	s := st.Sessions["/w/one.code-workspace"]
+	want := &Session{Active: -1, Open: []string{"/a"}, WtOpen: []string{"/a"},
+		Dirs:   map[string][]string{"/a": {"docs"}},
+		Git:    map[string]string{"/a": "closed"},
+		Groups: map[string][]string{"/a": {"stash"}}}
+	if !reflect.DeepEqual(s, want) {
+		t.Errorf("会话读成了 %+v，要 %+v", s, want)
+	}
+
+	// 合法的一点不丢：满上限的表、空工作区的窗口重复、仓库根下的目录
+	full := Default()
+	for i := range MaxRecent {
+		full.Recent = append(full.Recent, "/a/"+strconv.Itoa(i)+".go")
+	}
+	for i := range MaxCommitMsgs {
+		full.CommitMsgs = append(full.CommitMsgs, "修了第 "+strconv.Itoa(i)+" 个\n\n正文")
+	}
+	for i := range MaxSearches {
+		full.SearchHistory = append(full.SearchHistory, SearchEntry{Text: "q" + strconv.Itoa(i), Regexp: i%2 == 0})
+	}
+	full.Windows = []string{"", "", "/w/a.code-workspace", "/w/dir"}
+	full.Sessions = map[string]*Session{"/w/a.code-workspace": {Active: -1, Repo: "/a", Open: []string{"/a", "/b"}, WtOpen: []string{"/b"},
+		Dirs: map[string][]string{"/a": {"docs", "docs/img"}}, Git: map[string]string{"/a": "open", "/b": "closed"},
+		Groups: map[string][]string{"/b": {"staged"}}}}
+	if err := SaveState(dir, full); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := LoadState(dir); err != nil || !reflect.DeepEqual(again, full) {
+		t.Errorf("合法的读回来变了（%v）:\n%+v\n%+v", err, again, full)
+	}
+}
+
+// architecture.md 的 state.json 示例要写出 State、Session（连同它挂的 Tab、Terms、Layout、Panels……）的每个键：
+// 加了字段却没补文档时这里报。Settings 的键太多，不要求都在示例里。
+func TestStateDocKeys(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	start := strings.Index(doc, "### state.json")
+	if start < 0 {
+		t.Fatal("architecture.md 里没有 \"### state.json\" 一节")
+	}
+	doc = doc[start:]
+	if i := strings.Index(doc, "```json"); i >= 0 {
+		doc = doc[i:]
+		if j := strings.Index(doc[len("```json"):], "```"); j >= 0 {
+			doc = doc[:len("```json")+j]
+		}
+	}
+	seen := map[reflect.Type]bool{}
+	var walk func(typ reflect.Type, path string)
+	walk = func(typ reflect.Type, path string) {
+		for typ.Kind() == reflect.Pointer || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Map {
+			typ = typ.Elem()
+		}
+		if typ.Kind() != reflect.Struct || seen[typ] || typ == reflect.TypeOf(Settings{}) {
+			return
+		}
+		seen[typ] = true
+		for i := range typ.NumField() {
+			f := typ.Field(i)
+			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if name == "" || name == "-" {
+				continue
+			}
+			if !strings.Contains(doc, `"`+name+`"`) {
+				t.Errorf("docs/architecture.md 的 state.json 示例里没有 %s.%s（%q）：补进示例", path, f.Name, name)
+			}
+			walk(f.Type, path+"."+f.Name)
+		}
+	}
+	walk(reflect.TypeOf(State{}), "State")
 }
 
 func TestStateBadFile(t *testing.T) {

@@ -537,7 +537,7 @@
 - 系统右键菜单（`ContextMenu`）在窗口靠下的地方会折起来（issue #6）：mygo 的 darwin 后端用 `popUpMenuPositioningItem:nil atLocation:inView:` 弹（v0.7.4 到 v0.8.3 都是，`internal/darwin/menu.go` 第一个参数还是 0），
   左上角钉在点的地方，下面（到屏幕底 / Dock）放不下时 AppKit 不往上翻，而是把菜单截短、底下出滚动箭头。Grove 碰不到这个调用（位置也改不了），
   所以文件树的右键菜单（`treeMenu`、`rowMenu`、仓库行、钉在顶上的行、压缩目录的每一段）画在窗口里（先是 `PopoverMenu`，issue #48 起是 Grove 自己画的
-  `ui/gmenu.go`），下面放不下就往上开，窗口本身都放不下才滚。样子跟着主题，磨砂是自己加的（下一条）。别处的右键菜单是 mygo 画的（`SetMenuPresentation(PopoverMenus)`）。
+  `ui/gmenu.go`），下面放不下就往上开，窗口本身都放不下才滚。样子跟着主题，磨砂是自己加的（下一条）。后来（issue #58）大多数右键菜单和按钮的菜单也换成了它；还是 mygo 画的（`SetMenuPresentation(PopoverMenus)`）只剩编辑器的右键菜单、设置窗口的“更多”、标题栏的面包屑，名单见 `docs/architecture.md`。
 - 画在窗口里的面板要磨砂用 `Element.Material` + `plugins/glass`（v0.9.0，和 mygo 同一个模块，不加依赖）：`glass.Blur{Radius}` 只糊不上色，
   `Material` 顶替 `Background`，所以底色要另铺一层半透明的子元素（`gmenuTint`）；`glass.Glass{}` 是 macOS 26 那种带亮边的玻璃。
   糊的是这一帧里画在它底下的元素，不是窗口后面的桌面（那是窗口的 `Vibrancy`）。“减少透明度”开着时 `glass.Blur` 自己会画成主题的 `Background`，

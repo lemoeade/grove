@@ -56,7 +56,7 @@ func dialogFrame(c *wui.Context, open *bool, o dialogOpts, body, footer func()) 
 		// 居中在去掉底下 20% 的那块里：矮的确认框顶边落在窗高三成左右，高的表单照样放得下
 		back.Background(wui.RGBA(0, 0, 0, dlgShade(t))).Padding(16, 16, 16+h*0.2, 16)
 		panel.Width(w).MaxWidth(max(cw-32, 200)).MaxHeight(max(h*0.8-32, 120)).Padding(14, dlgPad, 14, dlgPad).Gap(12).
-			Radius(dlgRadius).Background(t.Background).Border(1, t.Border).Shadow(0, 12, 32, 0, wui.RGBA(0, 0, 0, 0.22)).Label(o.Title)
+			Radius(dlgRadius).Background(t.Background).Border(1, t.Border).Shadow(shadowDialog()).Label(o.Title)
 		if o.Enter != nil && panel.OverlayShortcut(0, wui.KeyEnter) {
 			enter = true
 		}
@@ -151,7 +151,7 @@ func dlgHint(c *wui.Context, parts ...string) {
 			}
 			k := wui.Text(c, s).TextColor(t.TextMuted).Padding(0, 4).Radius(4).Border(1, t.Border).Shrink(0)
 			if s == "⏎" {
-				k.FontSize(12).LineHeight(10.5 / 12 * 1.3)
+				k.FontSize(noteFont).LineHeight(10.5 / 12 * 1.3)
 			} else {
 				k.Font(mono()).FontSize(10.5)
 			}
@@ -175,7 +175,8 @@ func dlgButton(c *wui.Context, label string, k btnKind, disabled, focus bool) bo
 	t := c.Theme()
 	b := wui.ButtonBase(c).Label(label).Height(26).Padding(0, 12).Radius(6).AlignItems(wui.Center).Justify(wui.Center).Shrink(0).
 		Disabled(disabled)
-	base, hover, press, fg := t.Surface, t.SurfaceHover, t.SurfacePressed, t.Text
+	base, fg := t.Surface, t.Text
+	hover, press := toolFill(t, 0.06).Over(base), toolFill(t, 0.12).Over(base) // 同图标按钮的悬停 / 按下，盖在不透明的底上
 	switch k {
 	case btnPrimary:
 		base, hover, press, fg = t.Accent, t.AccentHover, t.AccentPressed, t.AccentText
@@ -198,7 +199,7 @@ func dlgButton(c *wui.Context, label string, k btnKind, disabled, focus bool) bo
 	if focus && !disabled {
 		b.AutoFocus()
 	}
-	b.Children(func() { wui.Text(c, label).FontSize(12.5).FontWeight(500).TextColor(fg).SingleLine() })
+	b.Children(func() { wui.Text(c, label).FontSize(bodyFont).FontWeight(500).TextColor(fg).SingleLine() })
 	return !disabled && b.Clicked()
 }
 
@@ -212,7 +213,7 @@ func dlgField(c *wui.Context, label, errMsg string, fn func()) {
 // dlgInput 给对话框里的输入框统一的样子：26 高、描边、圆角 6、底是窗口底色（不要灰底）、正文色（不跟 dlgField 的次级色）。
 func dlgInput(c *wui.Context, in wui.Element) wui.Element {
 	t := c.Theme()
-	return in.Height(26).Radius(6).Background(t.Background).Border(1, t.Border).FontSize(12.5).TextColor(t.Text)
+	return in.Height(26).Radius(6).Background(t.Background).Border(1, t.Border).FontSize(bodyFont).TextColor(t.Text)
 }
 
 // dlgCommand 是表单底下"会跑的命令"：等宽 11 次级色，浅底圆角，一行放不下截断。

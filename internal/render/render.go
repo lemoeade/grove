@@ -21,6 +21,7 @@ const (
 	Mermaid = "mermaid" // ```mermaid 代码块
 	Math    = "math"    // 块级公式（$$…$$、\[…\]）
 	Inline  = "inline"  // 行内公式（$…$、\(…\)）
+	SVG     = "svg"     // 带文字的 SVG 图片（徽章）：mygo 的 SVG 解析器不画文字，交给 WebKit 画
 )
 
 // 缓存和队列的上限，后端的几个时间。
@@ -86,7 +87,7 @@ type base struct {
 
 func keyOf(q Request) key {
 	size := q.Size
-	if q.Kind == Mermaid {
+	if q.Kind == Mermaid || q.Kind == SVG {
 		size = 0
 	}
 	return key{base{q.Kind, sha256.Sum256([]byte(q.Src)), size}, q.Dark, q.Scale, q.Color}
@@ -121,6 +122,7 @@ type Renderer struct {
 	bytes    int
 	queue    []job // 后来的先渲染：正在看的、刚改的先出来
 	queued   map[key]bool
+	waiters  map[key][]chan struct{} // Wait 等着的：渲染完（不管成败）关掉
 	running  bool
 	timer    *time.Timer
 	gen      uint64
@@ -137,7 +139,7 @@ type Renderer struct {
 // New 是一个渲染器：open 建后端（web.go 的 WebView），wake 在有结果时叫界面重画。
 func New(open func() (Backend, error), wake func()) *Renderer {
 	return &Renderer{open: open, wake: wake, Idle: IdleClose, lru: list.New(), cache: map[key]*list.Element{},
-		near: map[base]*list.Element{}, queued: map[key]bool{}}
+		near: map[base]*list.Element{}, queued: map[key]bool{}, waiters: map[key][]chan struct{}{}}
 }
 
 // Get 是 q 渲染好的结果：有就给（ok）；没有就排进队列，先给同一张换主题 / 缩放之前的版本顶着（大小一样），
@@ -166,6 +168,47 @@ func (r *Renderer) Get(q Request) (res Result, ok bool) {
 	return Result{}, false
 }
 
+// Wait 等 q 渲染好再返回（后台 goroutine 里读图片时用，界面线程别调）：已经有的直接给；ctx 到点、渲染器关了
+// 返回 ok 为 false。只认这一张本身，不拿换主题、缩放之前的版本顶。
+func (r *Renderer) Wait(ctx context.Context, q Request) (Result, bool) {
+	k := keyOf(q)
+	for range 2 {
+		r.mu.Lock()
+		if r.closed {
+			r.mu.Unlock()
+			return Result{}, false
+		}
+		if e, ok := r.cache[k]; ok {
+			en := e.Value.(*entry)
+			if en.expires.IsZero() || time.Now().Before(en.expires) {
+				r.lru.MoveToFront(e)
+				en.used = time.Now()
+				r.mu.Unlock()
+				return en.res, true
+			}
+			r.drop(e)
+		}
+		ch := make(chan struct{})
+		r.waiters[k] = append(r.waiters[k], ch)
+		r.enqueue(job{k: k, req: q})
+		if !r.queued[k] { // 后端刚建不起来，没排上
+			r.waiters[k] = r.waiters[k][:len(r.waiters[k])-1]
+			r.mu.Unlock()
+			return Result{Err: r.openErrText()}, r.openErrText() != ""
+		}
+		r.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return Result{}, false
+		case <-ch:
+		}
+	}
+	return Result{}, false
+}
+
+// openErrText 是后端建不起来的错。r.mu 锁着。
+func (r *Renderer) openErrText() string { return r.openErr }
+
 // Pending 是 q 还在排队 / 正在渲染（Get 没给或给的是顶着的）。
 func (r *Renderer) Pending(q Request) bool {
 	r.mu.Lock()
@@ -182,7 +225,12 @@ func (r *Renderer) enqueue(j job) {
 		return // 后端刚建不起来：别每帧都试
 	}
 	if len(r.queue) >= maxQueue {
-		delete(r.queued, r.queue[0].k)
+		k := r.queue[0].k
+		delete(r.queued, k)
+		for _, ch := range r.waiters[k] { // 等它的别干等：Wait 醒来再排一次
+			close(ch)
+		}
+		delete(r.waiters, k)
 		r.queue = r.queue[1:]
 	}
 	r.queue = append(r.queue, j)
@@ -223,6 +271,8 @@ func (r *Renderer) run() {
 		r.mu.Lock()
 		delete(r.queued, j.k)
 		closed := r.closed
+		waiting := r.waiters[j.k] // 结果放进缓存、解了锁之后再叫醒
+		delete(r.waiters, j.k)
 		if !closed {
 			r.store(j.k, res, retry)
 			if j.bump {
@@ -235,6 +285,9 @@ func (r *Renderer) run() {
 			r.be = nil
 		}
 		r.mu.Unlock()
+		for _, ch := range waiting {
+			close(ch)
+		}
 		if !closed { // 关了的窗口不叫
 			r.wake()
 		}
@@ -426,4 +479,10 @@ func (r *Renderer) Close() {
 	clear(r.near)
 	r.bytes, r.queue = 0, nil
 	clear(r.queued)
+	for _, chs := range r.waiters {
+		for _, ch := range chs {
+			close(ch)
+		}
+	}
+	clear(r.waiters)
 }

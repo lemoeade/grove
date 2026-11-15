@@ -17,7 +17,8 @@ type Settings struct {
 	SolidSelection bool   `json:"solidSelection,omitempty"` // 列表的选中行用强调色的实心块；默认（关着）是淡底：强调色淡淡的一层、左边一道竖条
 	Zoom           int    `json:"zoom,omitempty"`           // 界面缩放，百分数（⌘= / ⌘- / ⌘0，所有窗口一起）；0 为 100
 	// 默认开，存反面
-	NoDiagrams bool `json:"noDiagrams,omitempty"` // Markdown 预览里不渲染 Mermaid 图和公式（默认渲染：看不见的 WebView 画成位图，internal/render）
+	NoDiagrams     bool `json:"noDiagrams,omitempty"`     // Markdown 预览里不渲染 Mermaid 图和公式（默认渲染：看不见的 WebView 画成位图，internal/render）
+	NoRemoteImages bool `json:"noRemoteImages,omitempty"` // Markdown 预览里不读网上的图片（https 的徽章、截图；默认读）
 
 	// 编辑器
 	EditorFont   string  `json:"editorFont,omitempty"`   // "" 为内置的等宽字体
@@ -60,8 +61,8 @@ type Settings struct {
 	TermDaemon       bool          `json:"termDaemon,omitempty"`       // 关掉窗口后终端继续在后台运行（shell 跑在 termd 里），默认关
 	TermOptionAsAlt  bool          `json:"termOptionAsAlt,omitempty"`  // ⌥ 作为 Meta 键（新开的终端生效）
 	TermCopyOnSelect bool          `json:"termCopyOnSelect,omitempty"` // 终端里选中即复制到剪贴板（开着的终端马上生效）
-	TermProfiles     []TermProfile `json:"termProfiles,omitempty"`
-	AgentNames       string        `json:"agentNames,omitempty"` // 另外认作 agent 的前台命令，逗号分开（默认的 claude、codex… 不用写）     // "其他配置"表：底栏「+」右键、"用配置新建终端…"里挑（上面的 Shell 是默认）
+	TermProfiles     []TermProfile `json:"termProfiles,omitempty"`     // "其他配置"表：底栏「+」右键、"用配置新建终端…"里挑（上面的 Shell 是默认）
+	AgentNames       string        `json:"agentNames,omitempty"`       // 另外认作 agent 的前台命令，逗号分开（默认的 claude、codex… 不用写）
 
 	// Git
 	PullMode string `json:"pullMode,omitempty"` // 拉取方式："" 只快进（--ff-only）、"rebase"、"merge"
@@ -228,7 +229,7 @@ func (s *Settings) Clamp() {
 		{&s.Theme, Themes}, {&s.Backdrop, Backdrops}, {&s.Material, Materials}, {&s.Accent, Accents}, {&s.Indent, Indents}, {&s.Wrap, Wraps}, {&s.Whitespace, Whitespaces}, {&s.AutoSave, AutoSaves},
 		{&s.TermDock, TermDocks}, {&s.PullMode, PullModes}, {&s.Lang, Langs},
 	} {
-		if !contains(f.ok, *f.v) {
+		if !slices.Contains(f.ok, *f.v) {
 			*f.v = ""
 		}
 	}
@@ -251,14 +252,5 @@ func (s *Settings) Clamp() {
 		s.HistoryDays = 0
 	}
 	s.TermProfiles = s.Profiles()
-	s.WebHosts = slices.DeleteFunc(s.WebHosts, func(h WebHost) bool { return !contains(WebKinds, h.Kind) || len(h.Host) > 255 })
-}
-
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	s.WebHosts = slices.DeleteFunc(s.WebHosts, func(h WebHost) bool { return !slices.Contains(WebKinds, h.Kind) || len(h.Host) > 255 })
 }

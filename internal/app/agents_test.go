@@ -155,18 +155,54 @@ func TestWtAgent(t *testing.T) {
 // 前台命令的名字：路径去掉、登录 shell 的 - 去掉；node / bun / python 跑的脚本按脚本名。
 func TestJobName(t *testing.T) {
 	for _, c := range []struct {
+		comm string
 		args []string
 		want string
 	}{
-		{[]string{"/opt/homebrew/bin/claude"}, "claude"},
-		{[]string{"-zsh"}, "zsh"},
-		{[]string{"node", "/usr/local/bin/gemini"}, "gemini"},
-		{[]string{"node", "--no-warnings", "/x/opencode.js", "run"}, "opencode"},
-		{[]string{"python3", "-m"}, "python3"},
-		{nil, "?"},
+		{"", []string{"/opt/homebrew/bin/claude"}, "claude"},
+		{"", []string{"-zsh"}, "zsh"},
+		{"", []string{"node", "/usr/local/bin/gemini"}, "gemini"},
+		{"", []string{"node", "--no-warnings", "/x/opencode.js", "run"}, "opencode"},
+		{"", []string{"python3", "-m"}, "python3"},
+		{"", nil, "?"},
+		{"zsh", []string{"-zsh"}, "zsh"},
+		{"node", []string{"/usr/local/bin/node", "/usr/local/bin/gemini"}, "gemini"},
+		{"node", []string{"claude"}, "claude"},                                       // 改了进程名（process.title）
+		{"Python", []string{"/usr/bin/python3", "/x/bin/aider"}, "aider"},            // 框架里的 Python 跑的脚本
+		{"Electron", []string{"/Applications/Visual", "Studio", "Code"}, "Electron"}, // 路径带空格
+		{"averyveryverylon", []string{"/x/averyveryverylongname"}, "averyveryverylongname"},
+		{"sleep", []string{"sleep", "30"}, "sleep"},
 	} {
-		if got := jobName(c.args); got != c.want {
-			t.Errorf("%q → %q，要 %q", c.args, got, c.want)
+		if got := jobName(c.comm, c.args); got != c.want {
+			t.Errorf("%q %q → %q，要 %q", c.comm, c.args, got, c.want)
 		}
+	}
+}
+
+func TestParseProcs(t *testing.T) {
+	out := "  PID  PGID TPGID UCOMM            ARGS\n" +
+		"  577   577     0 Claude Helper (R /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/x --type=renderer\n" +
+		"  900   900   950 zsh              -zsh\n" +
+		"  950   950   950 node             node /x/claude.js\n" +
+		"  951   950   950 中文名字 /x/中文名字 a\n" + // 补齐对不上：退回按空白切
+		"\n"
+	rows := parseProcs(out)
+	if r := rows[577]; r.comm != "Claude Helper (R" || r.args[0] != "/Applications/Claude.app/Contents/Frameworks/Claude" || r.pgid != 577 {
+		t.Errorf("577: %+v", r)
+	}
+	if r := rows[951]; r.comm != "中文名字" || len(r.args) != 2 || r.pgid != 950 || r.tpgid != 950 {
+		t.Errorf("951: %+v", r)
+	}
+	if got := fgJob(rows, rows[900]); got != "claude" {
+		t.Errorf("900 前台 %q，要 claude", got)
+	}
+	if got := fgJob(rows, rows[950]); got != "" {
+		t.Errorf("950 自己就是前台，要空：%q", got)
+	}
+	if got := fgJob(rows, proc{pgid: 1, tpgid: 2}); got != "?" {
+		t.Errorf("组长没了要 ?：%q", got)
+	}
+	if parseProcs("") != nil {
+		t.Error("没有表头要 nil")
 	}
 }

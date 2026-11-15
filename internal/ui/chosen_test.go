@@ -34,9 +34,9 @@ func TestTreeMultiSelect(t *testing.T) {
 	}
 	a.InFinder = func(p string) { revealed = append(revealed, p) }
 	var copied string
-	keep := copyText
-	copyText = func(s string) { copied = s }
-	t.Cleanup(func() { copyText = keep })
+	keep := app.CopyText
+	app.CopyText = func(s string) { copied = s }
+	t.Cleanup(func() { app.CopyText = keep })
 
 	a.ShowSidebar(workspace.ModeFiles)
 	for _, r := range a.Repos {

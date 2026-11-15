@@ -84,9 +84,9 @@ func (a *App) SearchToEditor() {
 	switch {
 	case s.Query.Text == "":
 		return
-	case s.Running && s.timer == nil: // 正在搜的就是框里的
+	case s.Running && !s.typing.pending(): // 正在搜的就是框里的
 		s.toEditor = s.gen
-	case s.timer != nil || !s.Done || EntryOf(s.Query) != EntryOf(s.resQ):
+	case s.typing.pending() || !s.Done || EntryOf(s.Query) != EntryOf(s.resQ):
 		a.SearchSubmitted()
 		s.toEditor = s.gen
 	default:
@@ -449,14 +449,8 @@ func clipLine(line string, col int) (text string, from int) {
 	if len(line) <= searchLineMax {
 		return line, 0
 	}
-	lo := max(0, min(col, len(line))-60)
-	for lo > 0 && !utf8.RuneStart(line[lo]) {
-		lo--
-	}
-	hi := min(len(line), lo+searchLineMax)
-	for hi < len(line) && !utf8.RuneStart(line[hi]) {
-		hi++
-	}
+	lo := search.RuneFloor(line, max(0, min(col, len(line))-60))
+	hi := search.RuneCeil(line, min(len(line), lo+searchLineMax))
 	text, from = line[lo:hi], lo
 	if lo > 0 {
 		text, from = "…"+text, lo-len("…")

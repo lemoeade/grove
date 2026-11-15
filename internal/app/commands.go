@@ -344,7 +344,7 @@ func buildCommands() []*Command {
 			Enabled: func(a *App) bool { r := a.Current(); return r != nil && r.Extra.Web.OK() },
 			Run:     withRepo(func(a *App, r *Repo) { a.OpenWeb(a.WebOf(r).Base) })},
 		{ID: "git.newBranch", Title: "新建分支…", Group: "Git", Sep: true, Mods: alt | shift | cmd, Key: ui.KeyB, // 不用 ⇧⌘B（给了运行任务）
-			Enabled: hasRepo, Run: func(a *App) { a.Branch = BranchDialog{Open: true} }},
+			Enabled: hasRepo, Run: func(a *App) { a.OpenNewBranch(nil, "") }},
 		{ID: "git.newWorktree", Title: "新建工作树…", Group: "Git", Sep: true,
 			Enabled: func(a *App) bool { r := a.Current(); return r != nil && r.Loaded && r.Err == nil },
 			Run:     withRepo((*App).NewWorktree)},
@@ -559,7 +559,7 @@ var editorTable = []struct {
 	{editor.ScrollCursorCenter, "把光标滚到中间", "其他", 0},
 	{editor.NextHunk, "下一处改动", "其他", hunk},
 	{editor.PreviousHunk, "上一处改动", "其他", hunk},
-	{editor.RevertHunk, "还原这处改动", "其他", edits | hunk},
+	{editor.RevertHunk, "丢弃这一块", "其他", edits | hunk},
 }
 
 // editorCommands 把 editorTable 注册成命令，ID 是 "editor." 加 mygo 的英文名（命令面板也按英文名搜）。
@@ -763,10 +763,7 @@ func Tip(text, id string) string {
 		panic("没有命令 " + id)
 	}
 	if k := c.Keys(); k != "" {
-		if i18n.Lang() == "en" {
-			return text + " (" + k + ")"
-		}
-		return text + "（" + k + "）"
+		return text + i18n.Paren(k)
 	}
 	return text
 }

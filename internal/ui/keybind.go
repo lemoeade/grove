@@ -140,7 +140,7 @@ func keyErrorsBox(a *app.App, c *wui.Context, errs []string, toMain func()) {
 	wui.Row(c).Padding(8, 10).Gap(8).Radius(8).Background(quietFill(t)).AlignItems(wui.Start).Shrink(0).Children(func() {
 		wui.Icon(c, iconAlert).FontSize(iconRow).TextColor(t.Danger).Shrink(0)
 		wui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
-			wui.Text(c, i18n.Tn("keybindings.json 里有 %d 条没用上，其余的照常生效", len(errs))).FontSize(12).FontWeight(600)
+			wui.Text(c, i18n.Tn("keybindings.json 里有 %d 条没用上，其余的照常生效", len(errs))).FontSize(noteFont).FontWeight(600)
 			for i, e := range errs {
 				wui.Text(c.Key(i), e).FontSize(11.5).TextColor(t.TextMuted).MinWidth(0)
 			}
@@ -177,7 +177,7 @@ func keyRow(a *app.App, c *wui.Context, cmd *app.Command, sel, inList bool, rec 
 	}
 	hover := el.Hovered() || sel
 	el.Children(func() {
-		wui.Text(c, cmd.Label()).FontSize(12.5).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1).Tooltip(cmd.ID)
+		wui.Text(c, cmd.Label()).FontSize(bodyFont).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1).Tooltip(cmd.ID)
 		if !inList && cmd.Context != app.Global {
 			pill(c, i18n.T(cmd.Context.String()), t.TextMuted, on)
 		}
@@ -205,7 +205,7 @@ func keyRow(a *app.App, c *wui.Context, cmd *app.Command, sel, inList bool, rec 
 		if keys == "" {
 			keys, col = "—", muted
 		}
-		wui.Text(c, keys).FontSize(12.5).TextColor(col).SingleLine().Shrink(0).MinWidth(64)
+		wui.Text(c, keys).FontSize(bodyFont).TextColor(col).SingleLine().Shrink(0).MinWidth(64)
 	})
 }
 

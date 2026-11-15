@@ -165,7 +165,7 @@ func run(ctx context.Context, roots []Root, q Query) Result {
 	for i := range roots {
 		r := &roots[i]
 		fail := func(err error) Result {
-			res.Err = errors.New(r.Name + "：" + err.Error())
+			res.Err = errors.New(r.Name + i18n.Colon() + err.Error())
 			if ctx.Err() != nil {
 				res.Err = ctx.Err()
 			}
@@ -488,10 +488,7 @@ func matchPreview(data []byte, lineStart, s, e int) (p string, pc, n int) {
 	head = head[:pc] // 第一行匹配后面的都是匹配
 	hit := strings.NewReplacer("\r\n", "⏎", "\n", "⏎", "\t", " ").Replace(string(data[s:e]))
 	if len(hit) > previewAfter {
-		cut := previewAfter
-		for cut > 0 && !utf8.RuneStart(hit[cut]) {
-			cut--
-		}
+		cut := RuneFloor(hit, previewAfter)
 		return head + hit[:cut] + "…", pc, cut
 	}
 	lastEnd := len(data)
@@ -501,11 +498,7 @@ func matchPreview(data []byte, lineStart, s, e int) (p string, pc, n int) {
 	after := data[e:lastEnd]
 	cut := len(after) > previewAfter
 	if cut {
-		to := previewAfter
-		for to > 0 && !utf8.RuneStart(after[to]) {
-			to--
-		}
-		after = after[:to]
+		after = after[:RuneFloor(after, previewAfter)]
 	}
 	tail := strings.TrimRight(strings.ReplaceAll(string(after), "\t", " "), " \r")
 	if cut {
@@ -520,13 +513,7 @@ func preview(line []byte, s, e int) (string, int) {
 	if n := len(line); n > 0 && line[n-1] == '\r' && e < n {
 		line = line[:n-1] // \r\n 换行的 \r：编辑器里没有它，预览不该因为它多个"…"
 	}
-	from, to := max(0, s-previewBefore), min(len(line), e+previewAfter)
-	for from > 0 && !utf8.RuneStart(line[from]) {
-		from--
-	}
-	for to < len(line) && !utf8.RuneStart(line[to]) {
-		to++
-	}
+	from, to := RuneFloor(line, max(0, s-previewBefore)), RuneCeil(line, min(len(line), e+previewAfter))
 	cut := from > 0
 	for from < s && (line[from] == ' ' || line[from] == '\t') {
 		from++

@@ -51,7 +51,7 @@ func cloneDialog(a *app.App, c *wui.Context) {
 				submit()
 			}
 		})
-		wui.Checkbox(c, &d.Sub, i18n.T("含子模块")).FontSize(12).Tooltip("--recurse-submodules")
+		wui.Checkbox(c, &d.Sub, i18n.T("含子模块")).FontSize(noteFont).Tooltip("--recurse-submodules")
 		if ok {
 			dlgCommand(c, d.Command())
 		}
@@ -78,7 +78,7 @@ func cloneRows(a *app.App, c *wui.Context) {
 	wui.Column(c).Shrink(0).Padding(0, 4, 2, 4).Children(func() {
 		for _, cl := range a.Clones {
 			kc := c.Key(cl)
-			box := wui.Column(kc).Radius(5).Clip().Background(t.Text.Alpha(0.04)).Tooltip(cl.URL)
+			box := wui.Column(kc).Radius(ctlRadius).Clip().Background(t.Text.Alpha(0.04)).Tooltip(cl.URL)
 			ctxMenu(a, kc, box, menuOwner{"clone", fmt.Sprintf("%p", cl)}, func(m menu) {
 				if !slices.Contains(a.Clones, cl) { // 菜单开着时克隆完了 / 取消了：关掉
 					return

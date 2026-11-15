@@ -18,6 +18,7 @@ const (
 
 	cardRadius = 8 // 卡片（编辑器组、底栏、右栏）的圆角
 	rowRadius  = 5 // 侧栏、右栏列表里选中行的圆角
+	ctlRadius  = 5 // 小控件的圆角：标签上关掉的 ×、面包屑、筛选开关、分段的一段、行里的小按钮和下拉、对话框里的小列表
 	cardGap    = 6 // 卡片之间、卡片和侧栏 / 标题栏 / 状态栏 / 窗口右边之间露出材质的缝，也是拖着改大小的地方
 	splitGap   = 4 // 同一张卡片里分出来的格（终端分屏）之间的缝
 
@@ -35,12 +36,82 @@ const (
 	iconEmpty  = 26 // 空着的区域中央那个大图标（message），不算一档
 )
 
-// 图标按钮的热区：标题栏、卡片头、侧栏头的一律 toolSize 见方（图标 iconTool 居中），列表行里的 rowToolSize。
+// 图标按钮的热区（见方的边长）。squareButton / iconActionSize 的大小、ButtonBase / ToggleBase 的 Size 只取这几个，
+// 不写数字（TestButtonSizes 扫源码）。常用的是两档：标题栏、卡片头、侧栏头的 toolSize（图标 iconTool），
+// 列表行里的 rowToolSize（图标 iconRow）。别的几档是排得紧、或者要和旁边的东西一样高的那几处专用的，新按钮先用这两档。
 const (
-	toolSize    = 28
-	rowToolSize = 20
-	segIconW    = 30 // segIconTabs 每段的宽（侧栏顶上的四个图标靠左一组）
+	toolSize      = 28 // 标题栏、卡片头、侧栏头的图标按钮（toolButton / iconButton / toggleButton），图标 iconTool
+	headToolSize  = 26 // 右栏历史头部的图标按钮和开关（头部一行 histHeadH 46）
+	midToolSize   = 24 // Git 栏仓库段头的拉取 / 推送（syncButton 的高）；展开的提交卡片上的按钮；工作树行上的审查 / 合并
+	smallToolSize = 22 // 工作树一行、摘要行上的按钮（跳到终端、审查、移除、上一个 / 下一个）；筛选开关 filterToggle
+	rowToolSize   = 20 // 列表行里的小按钮（rowButton、iconAction）
+	closeSize     = 18 // 标签上关掉的 ×（编辑器标签、终端标签）
+	tinyToolSize  = 16 // 跟着一行小字的按钮：状态栏批量进度后面的停止（图标 iconInline）
+	segIconW      = 30 // segIconTabs 每段的宽（侧栏顶上的四个图标靠左一组）
 )
+
+// 字号（侧栏的 sideFont / sideSub / sideMono / repoFont 在 sidebar.go）。12、12.5 不写数字（TestVisualConsts 扫源码），按用途取：
+const (
+	barFont  = 12   // 标题栏（面包屑、快速打开）、卡片头标签、分段标签里的字，标签上的计数、终端标签的改名框
+	noteFont = 12   // 面板、对话框、设置、关于、起始页里小一号的字：说明、提示、复选框、小标题、问题列表的一行
+	bodyFont = 12.5 // 对话框、设置、关于、起始页、面板里列表行的标题和正文、输入框、下拉、按钮；标题栏上的工作区名
+)
+
+// 阴影配方：返回 Shadow 的五个参数，直接 el.Shadow(shadowXxx())。
+// 卡片和分段（贴着底的一层）最轻，浮条、提示、菜单、对话框一层比一层重。
+func shadowCard() (x, y, blur, spread float32, c wui.Color) { // 卡片（浅色才加）
+	return 0, 1, 2, 0, wui.RGBA(0, 0, 0, 0.06)
+}
+
+func shadowRaised() (x, y, blur, spread float32, c wui.Color) { // 分段标签里选中的那段
+	return 0, 1, 2, 0, wui.RGBA(0, 0, 0, 0.10)
+}
+
+func shadowLow() (x, y, blur, spread float32, c wui.Color) { // 贴着内容的一层：编辑器的粘性滚动、文件树吸顶栈（浅色）、分屏格的 ×
+	return 0, 2, 6, 0, wui.RGBA(0, 0, 0, 0.12)
+}
+
+func shadowTip() (x, y, blur, spread float32, c wui.Color) { // 提示框（tipStyle）
+	return 0, 2, 8, 0, wui.RGBA(0, 0, 0, 0.2)
+}
+
+func shadowFloat() (x, y, blur, spread float32, c wui.Color) { // 浮在面板上的条：终端的查找条、退出条
+	return 0, 4, 12, 0, wui.RGBA(0, 0, 0, 0.18)
+}
+
+func shadowDialog() (x, y, blur, spread float32, c wui.Color) { // 对话框、命令面板
+	return 0, 12, 32, 0, wui.RGBA(0, 0, 0, 0.22)
+}
+
+// shadowMenu 是 Grove 画的菜单面板的阴影：深色底本来就暗，加深到 45%。
+func shadowMenu(t *wui.Theme) (x, y, blur, spread float32, c wui.Color) {
+	if t.Dark {
+		return 0, 6, 18, 0, wui.RGBA(0, 0, 0, 0.45)
+	}
+	return 0, 6, 18, 0, wui.RGBA(0, 0, 0, 0.18)
+}
+
+// tipStyle 给提示框 tip 上统一的样子（同 mygo 的 Tooltip）：反色的底和字、圆角、内边距、小一号的字、阴影。
+// tooltip、文件树的行提示、菜单里灰着的项的原因都用它；宽度上限、位置由调用的人定。
+func tipStyle(t *wui.Theme, tip wui.Element) wui.Element {
+	fill, text := t.Inverse, t.InverseText // 同 mygo 的 Theme.inverse
+	if fill == wui.Transparent {
+		fill = t.Text
+	}
+	if text == wui.Transparent {
+		text = t.Background
+	}
+	return tip.Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).Background(fill).TextColor(text).
+		FontSize(t.FontSize - 1).Shadow(shadowTip())
+}
+
+// raisedBg 是浮起来的一层的不透明底：浅色白，深色 #2C2C30（比卡片亮一档）。展开的提交那张卡片、Grove 画的菜单面板（gmenuBg）。
+func raisedBg(t *wui.Theme) wui.Color {
+	if t.Dark {
+		return wui.RGBA(44, 44, 48, 1)
+	}
+	return wui.RGBA(255, 255, 255, 1)
+}
 
 // textNudge 是标题栏、标签条上的字底下多留的边距：字在行里居中时墨迹的中心比图标低 0.5–0.75 pt
 // （TestTitleBarAlign 4 倍渲染量的），底下多留 1，整个往上挪 0.5，和图标、红绿灯一条中线。
@@ -65,17 +136,9 @@ func tooltip(c *wui.Context, el wui.Element, s string) wui.Element {
 		return el.Tooltip(s)
 	}
 	t := c.Theme()
-	fill, text := t.Inverse, t.InverseText // 同 mygo 的 Theme.inverse
-	if fill == wui.Transparent {
-		fill = t.Text
-	}
-	if text == wui.Transparent {
-		text = t.Background
-	}
 	el.Description(s)
 	wui.TooltipBase(c, el, func(tip wui.Element) {
-		tip.MaxWidth(t.Space(80)).Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).
-			Background(fill).TextColor(text).FontSize(t.FontSize-1).Shadow(0, 2, 8, 0, wui.RGBA(0, 0, 0, 0.2))
+		tipStyle(t, tip).MaxWidth(t.Space(80))
 		tip.Children(func() { wui.Text(c, s) })
 		tip.AttachTo(el, wui.AnchorBottom, wui.AnchorTop).Margin(t.Space(1.5), 0, 0, 0)
 	})
@@ -135,7 +198,7 @@ func iconAction(c *wui.Context, ic *wui.SVG, label, tip, why string, fg wui.Colo
 	return iconActionSize(c, rowToolSize, ic, label, tip, why, fg)
 }
 
-// iconActionSize 是 iconAction，热区 size 见方（工作树行上的和旁边的按钮一样 wtBtnSize+2）。
+// iconActionSize 是 iconAction，热区 size 见方（工作树行上的合并和旁边的审查一样 midToolSize）。
 func iconActionSize(c *wui.Context, size float32, ic *wui.SVG, label, tip, why string, fg wui.Color) bool {
 	full := label
 	if why != "" {
@@ -156,12 +219,12 @@ func iconActionSize(c *wui.Context, size float32, ic *wui.SVG, label, tip, why s
 	return b.Clicked() && why == ""
 }
 
-// filterToggle 是筛选开关（历史的 所有分支 / 提交图，搜索的 Aa ab .* 和包含 / 排除）：22 见方、没有边，
+// filterToggle 是筛选开关（历史的 所有分支 / 提交图，搜索的 Aa ab .* 和包含 / 排除）：smallToolSize 见方、没有边，
 // 开着是强调色的浅底和强调色（面板开关 toggleButton 是浅底 + 字色，不动），关着是次级色、悬停一层淡底。
 // 还是切换按钮（读屏念"开 / 关"）；fn 用给它的颜色画里面（图标，或几个等宽字）。返回开关，Changed() 报点了。
 func filterToggle(c *wui.Context, key string, on *bool, label, tip string, fn func(fg wui.Color)) wui.Element {
 	t := c.Theme()
-	b := wui.ToggleBase(c.Key(key), on).Size(22, 22).Label(label).AlignItems(wui.Center).Justify(wui.Center).Radius(5).Shrink(0).
+	b := wui.ToggleBase(c.Key(key), on).Size(smallToolSize, smallToolSize).Label(label).AlignItems(wui.Center).Justify(wui.Center).Radius(ctlRadius).Shrink(0).
 		Cursor(wui.CursorPointer)
 	tooltip(c, b, tip)
 	fg := t.TextMuted
@@ -255,7 +318,7 @@ func segTabsOf(c *wui.Context, sel *int, iconOnly bool, segs []seg) wui.Element 
 	p.Track.Height(26).Padding(2).Gap(2).Radius(7).Background(t.Text.Alpha(0.055)).AlignItems(wui.Stretch).MinWidth(0)
 	p.Track.Children(func() {
 		for i, sg := range segs {
-			s := p.Segment(i).MinWidth(0).Radius(5)
+			s := p.Segment(i).MinWidth(0).Radius(ctlRadius)
 			if iconOnly { // 只有图标的一组靠左、每段固定宽，不铺满（#56）
 				s.Width(segIconW).Shrink(0)
 			} else {
@@ -269,10 +332,10 @@ func segTabsOf(c *wui.Context, sel *int, iconOnly bool, segs []seg) wui.Element 
 			fg := t.TextMuted
 			switch {
 			case i == *sel:
-				s.Background(t.Background).Shadow(0, 1, 2, 0, wui.RGBA(0, 0, 0, 0.10))
+				s.Background(t.Background).Shadow(shadowRaised())
 				fg = t.Text
 			case s.Hovered():
-				s.Background(t.Text.Alpha(0.05))
+				s.Background(toolFill(t, 0.06))
 				fg = t.Text
 			}
 			s.Children(func() {
@@ -284,7 +347,7 @@ func segTabsOf(c *wui.Context, sel *int, iconOnly bool, segs []seg) wui.Element 
 					if sg.icon != nil {
 						wui.Icon(c, sg.icon).FontSize(iconRow).TextColor(fg)
 					}
-					wui.Text(c, sg.label).FontSize(12).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0)
+					wui.Text(c, sg.label).FontSize(barFont).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0)
 				})
 			})
 		}
@@ -304,7 +367,7 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 	case active:
 		b.Background(t.Background)
 	case b.Hovered():
-		b.Background(t.Text.Alpha(0.05))
+		b.Background(toolFill(t, 0.06))
 	}
 	return b
 }
@@ -315,9 +378,9 @@ func focusBar(c *wui.Context) {
 		Background(c.Theme().Accent.Alpha(0.8))
 }
 
-// panelTabText 是卡片头标签里的标题：12 / 500、单行，长了省略（最多 panelTabMaxW 宽）。
+// panelTabText 是卡片头标签里的标题：barFont / 500、单行，长了省略（最多 panelTabMaxW 宽）。
 func panelTabText(c *wui.Context, s string, fg wui.Color) wui.Element {
-	return wui.Text(c, s).FontSize(12).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).MaxWidth(panelTabMaxW).Margin(0, 0, textNudge, 0)
+	return wui.Text(c, s).FontSize(barFont).FontWeight(500).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).MaxWidth(panelTabMaxW).Margin(0, 0, textNudge, 0)
 }
 
 // panelTabMaxW 是标签标题最宽多少，长名字省略。
@@ -516,7 +579,7 @@ func card(c *wui.Context, e wui.Element, fn func()) wui.Element {
 	t := c.Theme()
 	e.Background(cardBg(t)).Radius(cardRadius).Border(1, cardLine(t)).Clip()
 	if !t.Dark {
-		e.Shadow(0, 1, 2, 0, wui.RGBA(0, 0, 0, 0.06))
+		e.Shadow(shadowCard())
 	}
 	ct := *t
 	ct.Background = cardBg(t)

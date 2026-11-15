@@ -228,9 +228,9 @@ func TestGitMultiSelect(t *testing.T) {
 	_, _, _, ws := testutil.ThreeRepos(t)
 	a, tt, wait := newUI(t, ws, "")
 	var copied string
-	keep := copyText
-	copyText = func(s string) { copied = s }
-	t.Cleanup(func() { copyText = keep })
+	keep := app.CopyText
+	app.CopyText = func(s string) { copied = s }
+	t.Cleanup(func() { app.CopyText = keep })
 	a.Exec("view.git")
 	for _, r := range a.Repos {
 		a.RefreshRepo(r, app.WhyManual)
@@ -384,9 +384,9 @@ func TestRemotesMenu(t *testing.T) {
 	repo.Commit("本地的提交")
 	repo.Git("remote", "add", "origin", up.Root)
 	var copied string
-	keep := copyText
-	copyText = func(s string) { copied = s }
-	t.Cleanup(func() { copyText = keep })
+	keep := app.CopyText
+	app.CopyText = func(s string) { copied = s }
+	t.Cleanup(func() { app.CopyText = keep })
 	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")
 	r := a.Repos[0]
 	a.RefreshRepo(r, app.WhyManual)

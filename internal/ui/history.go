@@ -16,7 +16,6 @@ import (
 // 右栏历史的几何，单位 DIP。
 const (
 	histHeadH = 46 // 头部一行
-	histBtn   = 26 // 头部的图标按钮见方
 	histRowH  = 30 // 一个提交一行
 	histDayH  = 26 // 日期段头
 	histFileH = 24 // 卡片里的一个文件
@@ -82,7 +81,7 @@ func histHeader(a *app.App, c *wui.Context, r *app.Repo) {
 			if find {
 				closeHistSearch(a)
 			} else {
-				a.HistFind, a.HistFocus = true, true
+				a.HistFind, a.FocusHist = true, true
 			}
 		}
 		if histToggle(c, "branches", iconBranch, i18n.T("所有分支"), i18n.T("所有分支：也列出其他本地分支、远程分支和标签上的提交（否则只当前分支）"), a.St.HistBranches) {
@@ -96,22 +95,22 @@ func histHeader(a *app.App, c *wui.Context, r *app.Repo) {
 		}
 		wui.Box(c).Size(1, 16).Margin(0, 4).Background(line).Shrink(0)
 		closeTip := app.Tip(i18n.T("关闭右栏"), "view.right")
-		squareButton(c, iconClose, closeTip, closeTip, histBtn, iconRow, false, func() { a.Exec("view.right") })
+		squareButton(c, iconClose, closeTip, closeTip, headToolSize, iconRow, false, func() { a.Exec("view.right") })
 	})
 }
 
-// histTitle 是头部左边：仓库名（14.5 半粗）加灰色的分支图标和分支名；看工作树 / 标签时是它们；"所有仓库"是层叠图标和"全部仓库"。
+// histTitle 是头部左边：仓库名（repoFont 半粗）加灰色的分支图标和分支名；看工作树 / 标签时是它们；"所有仓库"是层叠图标和"全部仓库"。
 func histTitle(a *app.App, c *wui.Context, r *app.Repo) {
 	t := c.Theme()
 	name := func(s string) {
-		wui.Text(c, s).FontSize(14.5).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+		wui.Text(c, s).FontSize(repoFont).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 	}
 	sub := func(ic *wui.SVG, s, tip string) {
 		if a.St.RightW < histNarrow { // 看工作树 / 标签时下面的胶囊里还写着
 			return
 		}
 		wui.Icon(c, ic).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
-		wui.Text(c, s).FontSize(12).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(2).Tooltip(tip)
+		wui.Text(c, s).FontSize(sideSub).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(2).Tooltip(tip)
 	}
 	switch {
 	case a.St.HistAll && a.LocalHistPath == "":
@@ -132,10 +131,10 @@ func histTitle(a *app.App, c *wui.Context, r *app.Repo) {
 	}
 }
 
-// histToggle 是头部的一个图标开关（histBtn 见方，开着灰底、图标字色）；读屏念"开 / 关"。返回点了。
+// histToggle 是头部的一个图标开关（headToolSize 见方，开着灰底、图标字色）；读屏念"开 / 关"。返回点了。
 func histToggle(c *wui.Context, key string, ic *wui.SVG, label, tip string, on bool) bool {
 	v := on
-	b := wui.ToggleBase(c.Key(key), &v).Size(histBtn, histBtn).Label(label)
+	b := wui.ToggleBase(c.Key(key), &v).Size(headToolSize, headToolSize).Label(label)
 	tooltip(c, b, tip)
 	fg := toolStyle(c, b, on, false)
 	b.Children(func() { wui.Icon(c, ic).FontSize(iconRow).TextColor(fg) })
@@ -158,7 +157,7 @@ func histSearch(a *app.App, c *wui.Context) {
 	}
 	wui.Row(c).Padding(6, 8, 2, 8).Gap(6).AlignItems(wui.Center).Shrink(0).Children(func() {
 		f := wui.SearchField(c.Key("histq"), &a.HistQuery).Label(i18n.T("搜索提交")).Placeholder(i18n.T("提交信息、作者或哈希")).
-			Tooltip(i18n.T("在历史里找提交信息或作者里有这些字的提交，或哈希以它开头的提交")).FontSize(12).Grow(1).MinWidth(0).Bind(&a.HistField)
+			Tooltip(i18n.T("在历史里找提交信息或作者里有这些字的提交，或哈希以它开头的提交")).FontSize(sideSub).Grow(1).MinWidth(0).Bind(&a.HistField)
 		if f.Changed() {
 			a.HistQueryChanged()
 		}
@@ -168,8 +167,8 @@ func histSearch(a *app.App, c *wui.Context) {
 		wui.Icon(c, iconQuestion).FontSize(iconRow).TextColor(c.Theme().TextMuted).Shrink(0).Tooltip(histSyntaxTip())
 	})
 	a.HistField.OnShortcut(c, 0, wui.KeyEscape, func() { closeHistSearch(a) })
-	if a.HistFocus {
-		a.HistFocus = false
+	if a.FocusHist {
+		a.FocusHist = false
 		a.HistField.Focus(c)
 	}
 	if msg := a.HistQueryErr(); msg != "" {
@@ -531,7 +530,7 @@ func commitRowBox(c *wui.Context, open bool) wui.Element {
 // commitTitle 是展开的提交的标题：卡片的第一行，读全。在选中的行里建，字色要写明（实心的选中默认是强调色上的字）。
 func commitTitle(c *wui.Context, l *listLook, cm git.Commit, left float32) {
 	t := l.real
-	wui.Column(c).Margin(0, 8, 0, left).Padding(7, 10, 5, 10).Grow(1).MinWidth(0).Background(histCardBg(t)).
+	wui.Column(c).Margin(0, 8, 0, left).Padding(7, 10, 5, 10).Grow(1).MinWidth(0).Background(raisedBg(t)).
 		BorderColor(cardLine(t)).BorderWidth(1, 1, 0, 1).Radius(10, 10, 0, 0).Children(func() {
 		wui.Text(c, cm.Subject).FontSize(13).FontWeight(600).TextColor(t.Text).MinWidth(0)
 	})
@@ -681,14 +680,6 @@ func refChip(c *wui.Context, r *app.Repo, ref commitRef, lane int, onAccent bool
 	})
 }
 
-// histCardBg 是展开的提交那张卡片的底：浅色白，深色 #2C2C30。
-func histCardBg(t *wui.Theme) wui.Color {
-	if t.Dark {
-		return wui.Hex("#2c2c30")
-	}
-	return wui.Hex("#ffffff")
-}
-
 // commitCard 是展开的提交的卡片（commitTitle 是它的第一行；left 同 commitTitle，lane 同 commitLook）：一行作者 / agent / 时间
 // 和分支、正文、一行短哈希（点了复制完整哈希）/ 文件数 / 增删行和按钮，文件读到了就一条细线，
 // 下面的文件行（histFileRow）接着画卡片的两边和底。all 是"所有仓库"视图：信息行开头写仓库名。
@@ -697,7 +688,7 @@ func commitCard(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, left flo
 	h := &r.Hist
 	muted := t.TextMuted
 	files := h.FilesFor == cm.Hash && len(h.Files) > 0
-	el := wui.Column(c).Grow(1).MinWidth(0).Gap(6).Background(histCardBg(t)).BorderColor(cardLine(t))
+	el := wui.Column(c).Grow(1).MinWidth(0).Gap(6).Background(raisedBg(t)).BorderColor(cardLine(t))
 	if files {
 		el.Margin(0, 8, 0, left).Padding(0, 10, 0, 10).BorderWidth(0, 1, 0, 1)
 	} else {
@@ -711,7 +702,7 @@ func commitCard(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, left flo
 				Cursor(wui.CursorPointer).Label(i18n.T("复制提交哈希")).Tooltip(i18n.T("复制提交哈希") + "\n" + cm.Hash)
 			hash.Children(func() { wui.Text(c, cm.Short).Font(mono()).FontSize(11).TextColor(muted).SingleLine() })
 			if hash.Clicked() {
-				copyText(cm.Hash)
+				app.CopyText(cm.Hash)
 				a.Toast = i18n.T("已复制提交哈希")
 			}
 			if files {
@@ -730,15 +721,15 @@ func commitCard(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit, left flo
 					headCm, ok := histHeadCommit(r)
 					same := ok && headCm.Hash == cm.Hash
 					squareButton(c, iconDiff, i18n.T("和 HEAD 比较"), i18n.T("和 HEAD 比较：在历史上面一段列出这个提交到 HEAD 改了的文件"),
-						24, iconRow, !ok || same, func() { a.CompareCommits(r, cm, headCm) })
+						midToolSize, iconRow, !ok || same, func() { a.CompareCommits(r, cm, headCm) })
 					w := a.WebOf(r)
 					web := i18n.T("在网页打开")
 					if w.OK() {
 						web = i18n.Tf("在 %s 打开", w.Site())
 					}
-					squareButton(c, iconExternal, web, web, 24, iconRow, !w.OK() || !r.Extra.Pushed(cm.Hash), func() { a.OpenWeb(w.Commit(cm.Hash)) })
+					squareButton(c, iconExternal, web, web, midToolSize, iconRow, !w.OK() || !r.Extra.Pushed(cm.Hash), func() { a.OpenWeb(w.Commit(cm.Hash)) })
 				}
-				more := squareButton(c, iconMore, i18n.T("更多"), i18n.T("更多：完整哈希、邮箱、时间、父提交和提交的操作"), 24, iconRow, false, func() {})
+				more := squareButton(c, iconMore, i18n.T("更多"), i18n.T("更多：完整哈希、邮箱、时间、父提交和提交的操作"), midToolSize, iconRow, false, func() {})
 				menuButton(a, c, more, menuOwner{"commitMore", r.Root + "\x00" + cm.Hash}, func(m menu) { commitMoreMenu(a, m, r, cm) })
 			})
 		})
@@ -865,7 +856,7 @@ func commitBody(a *app.App, c *wui.Context, r *app.Repo, cm git.Commit) {
 					text = it[2:]
 					wui.Box(c).Width(3).Height(3).Margin(7, 0, 0, 1).Radius(2).Background(muted.Alpha(0.7)).Shrink(0)
 				}
-				b := wui.Text(c, text).FontSize(12.5).TextColor(muted).Grow(1).MinWidth(0)
+				b := wui.Text(c, text).FontSize(bodyFont).TextColor(muted).Grow(1).MinWidth(0)
 				if !open {
 					b.MaxLines(lines).Ellipsis("…")
 				}
@@ -899,7 +890,7 @@ func histHeadCommit(r *app.Repo) (git.Commit, bool) {
 func commitMoreMenu(a *app.App, m menu, r *app.Repo, cm git.Commit) {
 	copyItem := func(label, text string) {
 		if m.Item(label).Chosen() {
-			copyText(text)
+			app.CopyText(text)
 			a.Toast = i18n.T("已复制")
 		}
 	}
@@ -943,7 +934,7 @@ func histFileRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ch git.C
 		ctxMenuRow(a, c, row, chRow, menuOwner{"change", r.Root + "\x00" + ch.Path}, func(m menu) { changeMenu(a, m, r, ch) })
 		chRow.Children(func() {
 			graph()
-			slice := wui.Column(c).Grow(1).MinWidth(0).Background(histCardBg(t)).BorderColor(cardLine(t))
+			slice := wui.Column(c).Grow(1).MinWidth(0).Background(raisedBg(t)).BorderColor(cardLine(t))
 			if last {
 				slice.Margin(0, 8, 8, left).Padding(0, 4, 4, 4).BorderWidth(0, 1, 1, 1).Radius(0, 0, 10, 10)
 			} else {
@@ -1213,7 +1204,7 @@ func compareRow(a *app.App, row wui.ListRow, r *app.Repo, cp *app.Compare, hr ap
 	line(el, [4]float32{6, 8, 6, 8}, func() {
 		chevron(c, iconRow, cp.Open, cp.From.Short+" → "+cp.To.Short, muted, toggle)
 		wui.Icon(c, iconDiff).FontSize(iconRow).TextColor(mark)
-		wui.Text(c, compareTitle(cp)).FontSize(12.5).FontWeight(500).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		wui.Text(c, compareTitle(cp)).FontSize(bodyFont).FontWeight(500).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 	})
 	return el.Hovered()
 }

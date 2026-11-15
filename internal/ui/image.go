@@ -319,7 +319,7 @@ func imageDiff(a *app.App, c *wui.Context, d *docs.Doc) {
 			wui.Column(c.Key(i)).Grow(1).Basis(0).MinWidth(0).Children(func() {
 				switch {
 				case side.Bitmap != nil:
-					imagePane(c, d, i, side.Bitmap, i18n.Tf("%s：%s", which, side.Name))
+					imagePane(c, d, i, side.Bitmap, which+i18n.Colon()+side.Name)
 				case side.Err != "":
 					message(c, iconAlert, side.Err, "", t.TextMuted)
 				default:
