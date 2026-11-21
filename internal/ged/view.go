@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	wui "github.com/egoist/mygo/ui"
@@ -46,6 +47,11 @@ type Style struct {
 	SetLines func(side, start, end int, ok bool)
 	LineSel  wui.Color // 选中的行的底
 	LineMark wui.Color // 选中的行左边的竖条
+	// Buf 是就地编辑时新的一边的缓冲区（nil 只看）：新的一边能放光标、打字、删、粘贴、撤销，改的直接是它（见 edit.go）。
+	// 给了 Buf 时新的一边的内容也要从它来。
+	Buf *editor.Buffer
+	// Paste 接编辑菜单的“粘贴”：剪贴板里的字；nil 不接。
+	Paste func() string
 }
 
 // Context 是改动上下各留几行不折。
@@ -97,6 +103,20 @@ type Diff struct {
 	gutter   bool // 指针在行号上（能选行时）
 	lsel     lineSel
 	textLeft [2]float32 // 两边正文从哪开始（画的坐标，上一帧的），给测试用
+
+	// 就地编辑（edit.go）
+	editable     bool     // 这一帧给了 Style.Buf
+	focused      bool     // 这一帧视图有键盘焦点（没有时不画光标）
+	compose      string   // 输入法正拼着的字（还没进缓冲区，画在光标处）
+	composeCaret int      // 拼着的字里光标在第几个字（rune）
+	goalX        float32  // 上下挪光标时横着想停在哪（正文里的 x），-1 没有
+	reveal       bool     // 下一帧把光标滚进视图
+	caretBox     wui.Rect // 上一帧光标画在哪（本地坐标），输入法的候选框跟着
+	lastKind     editKind // 上一次改字是哪种（连着打字、连着删合成一步撤销）
+	lastEdit     time.Time
+	ver          uint64 // 我们上次改完 / 撤销完缓冲区的版本：不一样就是别处改过
+	undoGroups   []int  // 我们最近的几步撤销各是几次 Buffer.Edit（连着打的字合成一步）
+	redoGroups   []int
 }
 
 // pos 是一边里的一个位置：第 line 行（从 0 起）第 off 个字节前。
@@ -140,32 +160,59 @@ type lineLayout struct {
 
 // NewDiff 建一个空的 Diff。
 func NewDiff() *Diff {
-	return &Diff{open: map[int]bool{}, hover: -1, cur: -1, want: -1, side: 1, anchor: -1}
+	return &Diff{open: map[int]bool{}, hover: -1, cur: -1, want: -1, side: 1, anchor: -1, goalX: -1}
 }
 
-// Set 换上两边的内容：key 和上次一样就什么都不做（调用方拿两边的版本号当 key），不一样才调 load 重新对齐。
-// 返回重新对齐了没有。滚动位置留着，折叠的展开状态清掉。
+// Set 换上两边的内容：key 和上次一样就什么都不做（调用方拿两边的版本号当 key），不一样才调 load，
+// 内容变了才重新对齐，返回重新对齐了没有。滚动位置留着；只有新的一边变了时（就地编辑、文件标签里改了）
+// 折叠的展开、选中的字、光标也留着，不然折叠的展开状态清掉。
 func (d *Diff) Set(key any, load func() (old, new []string), lang *editor.Language) bool {
 	if d.aligned != nil && d.key == key && d.lang == lang {
 		return false
 	}
+	if d.lang != lang {
+		d.aligned = nil // 换了语言：排好的字、分词状态都得重来
+	}
 	d.key, d.lang = key, lang
 	old, new := load()
+	return d.update(old, new)
+}
+
+// update 换上两边的行，变了才重新对齐。旧的一边没变时留着折叠的展开、旧的一边排好的字、选中的字（夹到新的行里）。
+func (d *Diff) update(old, new []string) bool {
+	keep := d.aligned != nil && sameLines(old, d.lines[0])
+	if keep && sameLines(new, d.lines[1]) {
+		return false
+	}
 	d.lines = [2][]string{old, new}
 	d.aligned = Align(old, new)
-	d.open = map[int]bool{}
 	d.words = map[int][2][]Span{}
-	d.states = [2][]uint64{}
-	d.layouts = nil
-	d.widest = [2]float32{}
-	d.hunks, d.cur = Hunks(d.aligned), -1
+	d.hunks = Hunks(d.aligned)
 	d.pairs = [2]map[int]int{{}, {}}
 	for _, r := range d.aligned {
 		if r.Kind == Changed {
 			d.pairs[0][r.Old], d.pairs[1][r.New] = r.New, r.Old
 		}
 	}
-	d.sel, d.selecting = selection{}, false
+	if keep {
+		for k := range d.layouts {
+			if k.side == 1 {
+				delete(d.layouts, k)
+			}
+		}
+		d.states[1] = nil
+		d.cur = min(d.cur, len(d.hunks)-1)
+		if d.sel.side == 1 {
+			d.sel.a, d.sel.b = d.clampPos(d.sel.a), d.clampPos(d.sel.b)
+		}
+	} else {
+		d.open = map[int]bool{}
+		d.states = [2][]uint64{}
+		d.layouts = nil
+		d.widest = [2]float32{}
+		d.cur = -1
+		d.sel, d.selecting = selection{}, false
+	}
 	d.refold()
 	return true
 }
@@ -403,10 +450,15 @@ func (d *Diff) layout(side, line int, s *Style) *lineLayout {
 		d.layouts = map[lineKey]*lineLayout{}
 	}
 	k := lineKey{side, line}
-	if l := d.layouts[k]; l != nil {
+	composing := side == 1 && d.compose != "" && d.sel.side == 1 && line == d.sel.b.line // 输入法拼着的字排进去，不留
+	if l := d.layouts[k]; l != nil && !composing {
 		return l
 	}
 	src := clean(d.lines[side][line])
+	if composing {
+		o := min(d.sel.b.off, len(src))
+		src = src[:o] + d.compose + src[o:]
+	}
 	ct := s.Code
 	type seg struct {
 		end  int
@@ -473,7 +525,9 @@ func (d *Diff) layout(side, line int, s *Style) *lineLayout {
 	tl := wui.ShapeRichText(spans, f, 0)
 	w, _ := tl.Size()
 	l := &lineLayout{l: tl, u16: u16, w: w}
-	d.layouts[k] = l
+	if !composing {
+		d.layouts[k] = l
+	}
 	d.widest[side] = max(d.widest[side], w)
 	return l
 }
@@ -587,9 +641,14 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	if d.cur >= len(d.hunks) {
 		d.cur = -1
 	}
+	d.editable = s.Buf != nil
+	if !d.editable {
+		d.compose = ""
+	}
 	if d.w > 0 { // 跳到哪处在建视图时就滚过去：改动上那排按钮按滚好的位置摆（还没画过的等画的时候）
 		g := d.geomNow(&s)
 		d.applyWant(g)
+		d.revealCaret(g, &s)
 		d.clamp(g)
 	}
 	el := wui.Box(c.Key(key)).Grow(1).MinHeight(0).MinWidth(0).Clip().Background(s.Code.Background).Label(s.Label).
@@ -597,6 +656,10 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	if d.focus {
 		d.focus = false
 		el.Focus(wui.FocusOptions{PreventScroll: true})
+	}
+	d.focused = el.Focused()
+	if _, ok := d.caret(&s); ok { // 就地编辑、有光标：收字和输入法（候选框在光标处）
+		el.TextCaret(d.caretBox)
 	}
 	if !el.Hovered() && !d.drag { // 指针走了（没有“离开”事件，问 Hovered）
 		d.hover, d.onBar = -1, false
@@ -614,6 +677,7 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 		d.w, d.h, d.lh, d.box = r.W, r.H, g.lh, r
 		d.textLeft = [2]float32{r.X + g.paneX[0] + g.textX, r.X + g.paneX[1] + g.textX}
 		d.applyWant(g)
+		d.revealCaret(g, &s)
 		d.clamp(g)
 		d.paint(p, r, g, &s)
 	})
@@ -696,8 +760,19 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 	if ev.Kind != wui.InputScroll && !d.drag && d.barBox.W > 0 && d.barBox.Contains(ev.X, ev.Y) {
 		return false // 在改动上那排按钮上：归按钮，指针下的那处改动不变
 	}
+	if took, handled := d.editInput(ev, g, s); handled {
+		return took
+	}
 	switch ev.Kind {
 	case wui.InputKeyDown:
+		if _, ok := d.caret(s); ok { // 就地编辑：方向键挪光标、退格删字……打字的键不接，字跟着来
+			if d.editKey(ev, g, s) {
+				return true
+			}
+			if ev.Mods&(wui.Super|wui.Ctrl) == 0 && ev.Key != wui.KeyEscape {
+				return false
+			}
+		}
 		if s.Keys != nil && s.Keys(ev) {
 			return true
 		}
@@ -746,6 +821,8 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 			return true
 		}
 		d.focus = true
+		d.goalX = -1
+		d.endGroup()
 		i := d.rowAt(ev.Y, g)
 		if i >= 0 && d.Expand(i) {
 			return true
@@ -1097,7 +1174,34 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 			}
 		}
 		p.TextLayout(l.l, sx, ty, s.Code.Text)
+		if side == 1 && d.editable && d.focused && d.sel.side == 1 && line == d.sel.b.line {
+			d.paintCaret(p, r, l, sx, y, ty, th, g, s)
+		}
 	})
+}
+
+// paintCaret 画光标（2 pt 宽、一行高）；输入法拼着字时字下面画一道线，光标在拼着的字里。
+func (d *Diff) paintCaret(p *wui.Painter, r wui.Rect, l *lineLayout, sx, y, ty, th float32, g geom, s *Style) {
+	n := len(l.u16) - 1
+	off := min(d.sel.b.off, n)
+	if d.compose != "" {
+		e := min(off+len(d.compose), n)
+		x0, x1 := l.l.Caret(l.u16[off]).X, l.l.Caret(l.u16[e]).X
+		p.Fill(wui.Rect{X: sx + x0, Y: ty + th - 1, W: x1 - x0, H: 1}, s.Code.Text, 0)
+		cb := 0 // 拼着的字里光标前面的字节数
+		for k := 0; cb < len(d.compose) && k < d.composeCaret; k++ {
+			_, w := utf8.DecodeRuneInString(d.compose[cb:])
+			cb += w
+		}
+		off = min(off+cb, n)
+	}
+	x := sx + l.l.Caret(l.u16[off]).X
+	c := s.Code.Cursor
+	if c.A == 0 {
+		c = s.Code.Text
+	}
+	p.Fill(wui.Rect{X: x - 1, Y: y, W: 2, H: g.lh}, c, 0)
+	d.caretBox = wui.Rect{X: x - 1 - r.X, Y: y - r.Y, W: 2, H: g.lh}
 }
 
 // paintSel 涂这一行里选中的那段；选到下一行的，行尾多涂半个字宽（像编辑器里选中的换行）。

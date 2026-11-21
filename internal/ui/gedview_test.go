@@ -453,3 +453,124 @@ func TestGedUnified(t *testing.T) {
 		t.Error("切回并排还是一栏")
 	}
 }
+
+// ged 的 Diff 上就地编辑（临时仓库）：点新的一边放光标、打字、连着打的一步撤销、⌫、回车照抄缩进、←、
+// J 打进去而不是跳改动、输入法的组字先画着不进缓冲区、⇧End 选了 ⌘X 剪掉（剪贴板换成桩）、⌘V 粘贴，⌘S 存回磁盘。
+func TestGedEdit(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	var copied string
+	keepCopy, keepRead := app.CopyText, app.ReadClipboard
+	app.CopyText = func(s string) { copied = s }
+	app.ReadClipboard = func() string { return "yy" }
+	t.Cleanup(func() { app.CopyText, app.ReadClipboard = keepCopy, keepRead })
+	repo := testutil.NewRepo(t, "gededit")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n\treturn\n}\n")
+	repo.Commit("初始提交")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n\treturn 1\n}\n")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = true, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	d := diffDoc(a, "")
+	a.ToggleDiffEdit(d)
+	wait("文件标签读完、Diff 能编辑", func() bool { tt.Frame(); d := diffDoc(a, ""); return d != nil && d.DiffSt != nil && d.DiffSt.Editable })
+	d = diffDoc(a, "")
+	g := d.Ged
+	if g == nil {
+		t.Fatal("就地编辑时不是 ged 画的")
+	}
+	buf := d.DiffSt.New
+	line := func(i int) string { return strings.Split(buf.String(), "\n")[i] }
+	box, lh := g.Bounds(), g.RowHeight()
+	tt.ClickAt(g.LineX(1)+1, box.Y+0.5*lh-g.ScrollY)
+	tt.Frame()
+	if l, o, ok := g.Caret(); !ok || l != 0 || o != 0 {
+		t.Fatalf("点了新的一边第 1 行行首，光标在 %d:%d（%v）", l, o, ok)
+	}
+	if _, ok := tt.TextCaret(); !ok {
+		t.Error("有光标时输入法没接上（TextCaret）")
+	}
+
+	g.PlaceCaret(3, len("\treturn 1"))
+	tt.Frame()
+	tt.Type("0")
+	tt.Type("0")
+	tt.Frame()
+	if line(3) != "\treturn 100" {
+		t.Fatalf("打了两个 0：%q", line(3))
+	}
+	tt.Command("undo")
+	tt.Frame()
+	if line(3) != "\treturn 1" {
+		t.Fatalf("连着打的没有一步撤销：%q", line(3))
+	}
+	tt.Command("redo")
+	tt.Frame()
+	if line(3) != "\treturn 100" {
+		t.Fatalf("重做：%q", line(3))
+	}
+	tt.Key(0, wui.KeyBackspace)
+	tt.Frame()
+	if line(3) != "\treturn 10" {
+		t.Fatalf("⌫：%q", line(3))
+	}
+	tt.Key(0, wui.KeyEnter)
+	tt.Type("x")
+	tt.Frame()
+	if line(4) != "\tx" || line(5) != "}" {
+		t.Fatalf("回车没照抄缩进：%q %q", line(4), line(5))
+	}
+	if l, o, _ := g.Caret(); l != 4 || o != 2 {
+		t.Fatalf("打了 x 后光标在 %d:%d", l, o)
+	}
+	tt.Key(0, wui.KeyLeft)
+	tt.TypeKey(0, wui.KeyJ, "j")
+	tt.Frame()
+	if line(4) != "\tjx" {
+		t.Fatalf("← 再打 j：%q", line(4))
+	}
+	tt.Compose("ni", 2)
+	tt.Frame()
+	if strings.Contains(buf.String(), "ni") {
+		t.Fatal("组字没确定就进了缓冲区")
+	}
+	tt.Type("你")
+	tt.Frame()
+	if line(4) != "\tj你x" {
+		t.Fatalf("输入法确定后：%q", line(4))
+	}
+	tt.Key(wui.Shift, wui.KeyEnd)
+	tt.Command("cut")
+	tt.Frame()
+	if copied != "x" || line(4) != "\tj你" {
+		t.Fatalf("⇧End 选了剪掉：剪贴板 %q，行 %q", copied, line(4))
+	}
+	tt.Command("paste")
+	tt.Frame()
+	if line(4) != "\tj你yy" {
+		t.Fatalf("粘贴：%q", line(4))
+	}
+	if rows := g.Rows(); len(rows) != 7 || rows[4] != (ged.Row{Kind: ged.Added, Old: -1, New: 4}) {
+		t.Errorf("ged 没跟上缓冲区：%v", rows)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-edit.png")
+		tt.SetScale(1)
+		tt.Frame()
+	}
+	tt.Key(wui.Cmd, wui.KeyS) // 焦点在 ged 上：⌘S 落到窗口快捷键，存的是文件标签
+	want := "package demo\n\nfunc f() int {\n\treturn 10\n\tj你yy\n}\n"
+	wait("存回磁盘", func() bool {
+		b, err := os.ReadFile(repo.Root + "/demo.go")
+		return err == nil && string(b) == want
+	})
+}

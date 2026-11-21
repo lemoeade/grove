@@ -12,13 +12,13 @@ import (
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
-// gedOn：设了 WORKBENCH_GED 时，只看的 Diff（并排、统一）用 Grove 自己画的（internal/ged）；就地编辑
-// 还是 mygo 的 editor.DiffView。试做阶段，默认不开。
+// gedOn：设了 WORKBENCH_GED 时，Diff（并排、统一、就地编辑）用 Grove 自己画的（internal/ged），
+// 不用 mygo 的 editor.DiffView。试做阶段，默认不开。
 var gedOn = os.Getenv("WORKBENCH_GED") != ""
 
-// useGed 是这个 Diff 这一帧用不用 ged：开了、不在就地编辑（和 docs.Doc.UsingGed 一样，只是那个还要建过 Ged）。
+// useGed 是这个 Diff 这一帧用不用 ged：开了、是文字的 Diff（和 docs.Doc.UsingGed 一样，只是那个还要建过 Ged）。
 func useGed(d *docs.Doc) bool {
-	return gedOn && d.DiffSt != nil && !d.DiffSt.Editable
+	return gedOn && d.DiffSt != nil
 }
 
 type gedKey struct{ d *docs.Doc }
@@ -73,6 +73,10 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 		s.LineSel, s.LineMark = c.Theme().Accent.Alpha(0.2), c.Theme().Accent
 	}
 	s.Copy = func(text string) { app.CopyText(text) }
+	if st.Editable { // 就地编辑：新的一边就是文件标签的缓冲区（BindDiffEdit 接的），打字、撤销都在它上面
+		s.Buf = st.New
+		s.Paste = func() string { return app.ReadClipboard() }
+	}
 	s.Keys = func(ev wui.InputEvent) bool { return gedKeys(a, d, ev) }
 	return ged.View(c, gedKey{d}, g, s)
 }

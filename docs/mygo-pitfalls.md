@@ -213,6 +213,11 @@
 
 ## 编辑器
 
+- 自己画的编辑部件（`internal/ged`）要收 `InputText`，得在有焦点时调 `el.TextCaret(rect)`：没有它输入法不接，KeyDown 没被接走也不会再来字。
+  macOS 上先来 KeyDown、没接才来字，所以 `HandleInput` 对 KeyDown 返回 false 才打得进字（J、空格这种 ged 只看时接走的键，编辑时要放过）。
+  `InputCompose` 的 `Caret` 是 rune 下标，`Text` 为空表示组字结束；编辑菜单（`RoleEditMenu`）的剪切、粘贴、撤销、重做到焦点元素时是 `InputCommand`。
+- `editor.Buffer.Edit` 每次都是一步撤销：mygo 把连着打的字合成一步的逻辑（`editTyping`）没导出，只有它自己的编辑器视图用得上。
+  ged 自己记每组合了几次 `Edit`、撤销时连调几次 `Undo`（`ged/edit.go`）；缓冲区被别处改过（版本对不上）就不再按组撤。
 - `editor.State.Label` 会把编辑器登记成文本框标签，Tester 里可以 `tt.Click("编辑 a.txt")` 聚焦。
 - 有焦点的编辑器会持续绘制：mygo 的 `ui/editor` 只要建的那一刻 `Focused()` 为真，就每 500 ms 排一帧闪光标，没有开关；帧内存 2 秒没有新帧才放，
   因此会额外占用一两百 MB 内存，并持续消耗 CPU。新加的编辑器 / Diff 视图要走 `ui/caret.go` 的 `restingEditor` / `restingDiff`（停手 30 s 不闪），别直接用 `editor.View` / `editor.DiffView`。

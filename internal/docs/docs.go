@@ -459,9 +459,9 @@ func (d *Doc) IsDiffView() bool {
 	return d.Kind == Diff || d.Kind == ReplacePreview || d.Kind == Compare
 }
 
-// UsingGed 是这个 Diff 现在画的是 ged 的 Diff（建过 Ged、不在就地编辑；并排、统一都算）：上 / 下一处改动、选行暂存按 ged 的改动走。
+// UsingGed 是这个 Diff 现在画的是 ged 的 Diff（建过 Ged；并排、统一、就地编辑都算）：上 / 下一处改动、选行暂存按 ged 的改动走。
 func (d *Doc) UsingGed() bool {
-	return d.Ged != nil && d.DiffSt != nil && !d.DiffSt.Editable
+	return d.Ged != nil && d.DiffSt != nil
 }
 
 // NewTerm 是仓库 root 里号为 num 的终端标签开在编辑器区的样子，title 是标签名（app.Repo.TermLabel）。
