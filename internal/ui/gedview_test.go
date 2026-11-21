@@ -364,3 +364,92 @@ func TestGedLines(t *testing.T) {
 		t.Error("暂存完还选着")
 	}
 }
+
+// 设置里选了统一时 ged 画成一栏：每处改动先删后加、没有 Changed 行；上 / 下一处照走；点删掉的那行的行号选的是旧的一边，
+// 暂存选中的行只暂存删掉那一行（临时仓库）；切回并排还是并排。
+func TestGedUnified(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	old, new := gedFiles()
+	repo := testutil.NewRepo(t, "gedunified")
+	repo.Write("demo.go", old)
+	repo.Commit("初始提交")
+	repo.Write("demo.go", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = false, true
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.Exec("view.git")
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	d := diffDoc(a, "")
+	g := d.Ged
+	if !g.Unified() {
+		t.Fatal("设置里是统一，ged 还是并排")
+	}
+	for _, row := range g.Rows() {
+		if row.Kind == ged.Changed {
+			t.Fatalf("统一视图里有配成对的行：%v", row)
+		}
+	}
+	n := len(g.Hunks())
+	if _, total, _ := app.HunkPos(d); total != n || n < 3 {
+		t.Fatalf("HunkPos 共 %d 处，ged 有 %d 处", total, n)
+	}
+	a.GoToHunk(d, 1)
+	tt.Frame()
+	if cur, _, inside := app.HunkPos(d); cur != 0 || !inside {
+		t.Fatalf("下一处后该在第 1 处：%d %v", cur, inside)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-unified.png")
+		tt.SetDark(true)
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-unified-dark.png")
+		tt.SetDark(false)
+		tt.SetScale(1)
+		a.St.BottomBar = true
+		tt.Frame()
+	}
+	// 删掉两行注释的那处：点第一行注释的行号
+	h := g.Hunks()[1]
+	if h.NewStart != h.NewEnd || h.OldEnd-h.OldStart != 2 {
+		t.Fatalf("第 2 处该是只删两行：%+v", h)
+	}
+	g.GoToHunk(1)
+	tt.Frame()
+	tt.Frame()
+	box, lh := g.Bounds(), g.RowHeight()
+	ri := -1
+	for i, row := range g.Rows() {
+		if row.Kind == ged.Deleted && row.Old == h.OldStart {
+			ri = i
+		}
+	}
+	if ri < 0 {
+		t.Fatal("统一视图里没有删掉的那行")
+	}
+	tt.ClickAt(g.LineX(0)-24, box.Y+(float32(ri)+0.5)*lh-g.ScrollY)
+	tt.Frame()
+	if sel, ok := d.DiffSt.SelectedLines(); !ok || sel.Side != 0 || sel.Start != h.OldStart || sel.End != h.OldStart {
+		t.Fatalf("点删掉那行的行号：%+v %v", sel, ok)
+	}
+	mustClick(t, tt, "暂存选中的行")
+	wait("暂存删掉的那一行", func() bool { return idle(r)() && r.Status.Staged == 1 })
+	cached := repo.Git("diff", "--cached", "--", "demo.go")
+	if !strings.Contains(cached, "-\t/* 旧的说明\n") || strings.Contains(cached, "跨两行 */\n-") || strings.Count(cached, "\n-") != 2 /* 一行加上 --- 那行 */ {
+		t.Fatalf("暂存区该只删第一行注释：\n%s", cached)
+	}
+	a.St.Unified = false
+	tt.Frame()
+	if g.Unified() {
+		t.Error("切回并排还是一栏")
+	}
+}

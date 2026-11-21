@@ -12,13 +12,13 @@ import (
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
-// gedOn：设了 WORKBENCH_GED 时，只看的并排 Diff 用 Grove 自己画的（internal/ged）；统一视图、就地编辑
+// gedOn：设了 WORKBENCH_GED 时，只看的 Diff（并排、统一）用 Grove 自己画的（internal/ged）；就地编辑
 // 还是 mygo 的 editor.DiffView。试做阶段，默认不开。
 var gedOn = os.Getenv("WORKBENCH_GED") != ""
 
-// useGed 是这个 Diff 这一帧用不用 ged：开了、并排、不在就地编辑（和 docs.Doc.UsingGed 一样，只是那个还要建过 Ged）。
+// useGed 是这个 Diff 这一帧用不用 ged：开了、不在就地编辑（和 docs.Doc.UsingGed 一样，只是那个还要建过 Ged）。
 func useGed(d *docs.Doc) bool {
-	return gedOn && d.DiffSt != nil && d.DiffSt.Layout == editor.DiffSplit && !d.DiffSt.Editable
+	return gedOn && d.DiffSt != nil && !d.DiffSt.Editable
 }
 
 type gedKey struct{ d *docs.Doc }
@@ -44,6 +44,7 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 		return bufLines(st.Old), bufLines(st.New)
 	}, lang)
 	g.SetFull(a.St.FullDiff)
+	g.SetUnified(st.Layout == editor.DiffUnified) // diffLook 定的：设置里的统一，或者一边是空的（新文件、删掉的文件）
 	switch f := d.GedFocus; {
 	case f > 0:
 		g.GoToHunk(g.HunkAtLine(1, f-1))

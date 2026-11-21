@@ -1,8 +1,8 @@
 // Package ged 是 Grove 自己的编辑器部件，只用 mygo 公开的接口（ui.ShapeRichText / Painter / HandleInput），
 // 不走 mygo 的 ui/editor：那个编辑器的底色、行间的块、装订线都改不了（见 docs/mygo-pitfalls.md）。
 //
-// 现在只有只读的并排 Diff（DiffView）；这个文件是它的模型：两边按行对齐、改了的行里改了哪几个字、
-// 没改的长段折起来。不碰界面，单独测。
+// 现在只有只读的 Diff（View，并排和统一）；这个文件是它的模型：两边按行对齐、改了的行里改了哪几个字、
+// 没改的长段折起来、排成统一的一栏。不碰界面，单独测。
 package ged
 
 import (
@@ -328,6 +328,35 @@ func Hunks(aligned []Row) []Hunk {
 		}
 		h.Row1, h.OldEnd, h.NewEnd = i, oi, ni
 		out = append(out, h)
+	}
+	return out
+}
+
+// Unified 把并排的行（Align 或 Folded 的结果）排成统一的一栏：每处改动先列旧的一边的行（Deleted，New 为 -1），
+// 再列新的一边的行（Added，Old 为 -1），和 git diff、VS Code 的内联视图一样；没改的行、折叠照旧。
+func Unified(rows []Row) []Row {
+	out := make([]Row, 0, len(rows))
+	for i := 0; i < len(rows); {
+		if k := rows[i].Kind; k == Same || k == Fold {
+			out = append(out, rows[i])
+			i++
+			continue
+		}
+		e := i
+		for e < len(rows) && rows[e].Kind != Same && rows[e].Kind != Fold {
+			e++
+		}
+		for _, r := range rows[i:e] {
+			if r.Old >= 0 {
+				out = append(out, Row{Kind: Deleted, Old: r.Old, New: -1})
+			}
+		}
+		for _, r := range rows[i:e] {
+			if r.New >= 0 {
+				out = append(out, Row{Kind: Added, Old: -1, New: r.New})
+			}
+		}
+		i = e
 	}
 	return out
 }

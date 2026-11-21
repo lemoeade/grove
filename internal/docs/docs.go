@@ -123,7 +123,7 @@ type Doc struct {
 	ReplaceHunk int
 	// HunkLine 是从编辑器的改动卡“在 Diff 中打开”进来时要滚到的那块：新文件第 HunkLine-1 行所在（或它后面）的那块，0 是不指定
 	HunkLine int
-	// GedFocus 是 ged 的并排 Diff 下一帧滚到哪处改动：新文件第 GedFocus-1 行所在（或它后面）的那处；-1 是刚跳到的那处
+	// GedFocus 是 ged 的 Diff 下一帧滚到哪处改动：新文件第 GedFocus-1 行所在（或它后面）的那处；-1 是刚跳到的那处
 	// （还没有就第一处）；0 不滚。界面在 ToHunk 时定下、画 ged 时用掉
 	GedFocus int
 	// Hits 是搜索编辑器（Kind == SearchDoc）每一行指向的地方，下标是行号；SearchSrc 是 app 记的怎么重新生成
@@ -459,9 +459,9 @@ func (d *Doc) IsDiffView() bool {
 	return d.Kind == Diff || d.Kind == ReplacePreview || d.Kind == Compare
 }
 
-// UsingGed 是这个 Diff 现在画的是 ged 的并排 Diff（建过 Ged、并排、不在就地编辑）：上 / 下一处改动按 ged 的改动走。
+// UsingGed 是这个 Diff 现在画的是 ged 的 Diff（建过 Ged、不在就地编辑；并排、统一都算）：上 / 下一处改动、选行暂存按 ged 的改动走。
 func (d *Doc) UsingGed() bool {
-	return d.Ged != nil && d.DiffSt != nil && d.DiffSt.Layout == editor.DiffSplit && !d.DiffSt.Editable
+	return d.Ged != nil && d.DiffSt != nil && !d.DiffSt.Editable
 }
 
 // NewTerm 是仓库 root 里号为 num 的终端标签开在编辑器区的样子，title 是标签名（app.Repo.TermLabel）。

@@ -149,3 +149,30 @@ func TestHunks(t *testing.T) {
 		t.Errorf("删一行：%v", got)
 	}
 }
+
+func TestUnified(t *testing.T) {
+	old := strings.Split("a b c d e", " ")
+	new := strings.Split("a B c X Y e f", " ")
+	want := []Row{
+		{Kind: Same, Old: 0, New: 0},
+		{Kind: Deleted, Old: 1, New: -1}, {Kind: Added, Old: -1, New: 1}, // b → B
+		{Kind: Same, Old: 2, New: 2},
+		{Kind: Deleted, Old: 3, New: -1}, {Kind: Added, Old: -1, New: 3}, {Kind: Added, Old: -1, New: 4}, // d → X Y：先删后加
+		{Kind: Same, Old: 4, New: 5},
+		{Kind: Added, Old: -1, New: 6},
+	}
+	if got := Unified(Align(old, new)); !reflect.DeepEqual(got, want) {
+		t.Errorf("Unified =\n%v\n应为\n%v", got, want)
+	}
+	// 折叠照旧
+	var a, b []string
+	for i := range 20 {
+		a = append(a, string(rune('a'+i)))
+	}
+	b = append(b, a...)
+	b[10] = "改"
+	got := Unified(Folded(Align(a, b), 3, nil))
+	if len(got) != 10 || got[0].Kind != Fold || got[4] != (Row{Deleted, 10, -1, 0}) || got[5] != (Row{Added, -1, 10, 0}) || got[9].Kind != Fold {
+		t.Errorf("折过的再排成一栏：%v", got)
+	}
+}

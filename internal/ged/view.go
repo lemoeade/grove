@@ -12,7 +12,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 )
 
-// Style 是 DiffView 的样子，由界面那边按主题给（ged 不认 Grove 的主题）。
+// Style 是 View 的样子，由界面那边按主题给（ged 不认 Grove 的主题）。
 type Style struct {
 	Code       *editor.Theme // 代码颜色、行号色、底色
 	Font       wui.Font      // 等宽字体（Family、Size）
@@ -51,7 +51,7 @@ type Style struct {
 // Context 是改动上下各留几行不折。
 const Context = 3
 
-// Diff 是一个并排 Diff 的状态，跨帧留着（调用方按标签存）：两边的行、对齐的结果、折叠、滚动、排好的字。
+// Diff 是一个 Diff 视图的状态，跨帧留着（调用方按标签存）：两边的行、对齐的结果、折叠、滚动、排好的字。
 type Diff struct {
 	key     any
 	lines   [2][]string
@@ -60,8 +60,11 @@ type Diff struct {
 	rows    []Row
 	open    map[int]bool
 	full    bool // 不折
+	unified bool // 统一的一栏（不是并排）
 	hunks   []Hunk
+	pairs   [2]map[int]int    // 配成对（Changed）的行：旧行号 → 新行号、新行号 → 旧行号（统一视图里找行里改了的字）
 	hunkRow []int             // 每处改动的第一行在 rows 里是第几行
+	hunkEnd []int             // 每处改动最后一行的下一行在 rows 里是第几行
 	rowHunk []int             // rows 的每一行是第几处改动的，-1 不是
 	cur     int               // 上次跳到、点过的那处改动，-1 没有
 	want    int               // 下一帧要滚到的那行（rows 的下标），-1 没有
@@ -156,6 +159,12 @@ func (d *Diff) Set(key any, load func() (old, new []string), lang *editor.Langua
 	d.layouts = nil
 	d.widest = [2]float32{}
 	d.hunks, d.cur = Hunks(d.aligned), -1
+	d.pairs = [2]map[int]int{{}, {}}
+	for _, r := range d.aligned {
+		if r.Kind == Changed {
+			d.pairs[0][r.Old], d.pairs[1][r.New] = r.New, r.Old
+		}
+	}
 	d.sel, d.selecting = selection{}, false
 	d.refold()
 	return true
@@ -169,16 +178,32 @@ func (d *Diff) SetFull(on bool) {
 	}
 }
 
-// refold 按 full、open 重排显示的行，跟着重算行和改动的对应。
+// SetUnified 换成统一的一栏（on：每处改动先列删的、再列加的，左边两列行号）或并排。滚动位置留着，选中的字、行照旧。
+func (d *Diff) SetUnified(on bool) {
+	if d.unified != on {
+		d.unified = on
+		d.refold()
+	}
+}
+
+// Unified 是现在是不是统一的一栏。
+func (d *Diff) Unified() bool { return d.unified }
+
+// refold 按 full、open、unified 重排显示的行，跟着重算行和改动的对应。
 func (d *Diff) refold() {
 	if d.full {
 		d.rows = d.aligned
 	} else {
 		d.rows = Folded(d.aligned, Context, d.open)
 	}
-	// 改了的行折不起来，在 rows 里的顺序和 aligned 里一样：第 k 个改了的行属于哪处改动按个数数
+	if d.unified {
+		d.rows = Unified(d.rows)
+	}
+	// 改了的行折不起来，按改动的顺序挨着：第 k 个改了的行属于哪处改动按个数数（并排时一处占 Row1 - Row0 行，
+	// 统一时占两边的行数之和）
 	d.rowHunk = make([]int, len(d.rows))
 	d.hunkRow = make([]int, len(d.hunks))
+	d.hunkEnd = make([]int, len(d.hunks))
 	h, left := -1, 0
 	for i, r := range d.rows {
 		d.rowHunk[i] = -1
@@ -187,12 +212,24 @@ func (d *Diff) refold() {
 		}
 		for left == 0 && h+1 < len(d.hunks) {
 			h++
-			left = d.hunks[h].Row1 - d.hunks[h].Row0
-			d.hunkRow[h] = i
+			hk := d.hunks[h]
+			left = hk.Row1 - hk.Row0
+			if d.unified {
+				left = hk.OldEnd - hk.OldStart + hk.NewEnd - hk.NewStart
+			}
+			d.hunkRow[h], d.hunkEnd[h] = i, i+left
 		}
 		d.rowHunk[i] = h
 		left--
 	}
+}
+
+// rowSide 是统一视图里 row 的字是哪边的：删掉的行是旧的，别的（没改的、加的、折叠）按新的。
+func (d *Diff) rowSide(r Row) int {
+	if r.Kind == Deleted {
+		return 0
+	}
+	return 1
 }
 
 // Rows 是现在显示的行（折过的）。
@@ -294,11 +331,7 @@ func (d *Diff) Current() (cur int, inside bool) {
 	}
 	top := int(d.ScrollY / d.lh)
 	bottom := int((d.ScrollY + d.h) / d.lh)
-	seen := func(i int) bool {
-		r0 := d.hunkRow[i]
-		r1 := r0 + d.hunks[i].Row1 - d.hunks[i].Row0
-		return r1 > top && r0 < bottom
-	}
+	seen := func(i int) bool { return d.hunkEnd[i] > top && d.hunkRow[i] < bottom }
 	if d.cur >= 0 && d.cur < len(d.hunks) && seen(d.cur) {
 		return d.cur, true
 	}
@@ -465,7 +498,8 @@ type geom struct {
 	lh      float32
 	paneX   [2]float32
 	paneW   [2]float32
-	numR    float32 // 行号右边对齐到格子里的哪
+	numR    float32 // 行号右边对齐到格子里的哪（统一视图：旧的行号）
+	numR2   float32 // 统一视图：新的行号右边对齐到哪（并排时和 numR 一样）
 	markX   float32 // + − 的位置
 	textX   float32 // 正文从格子里的哪开始
 	content float32 // 全部行多高
@@ -489,11 +523,19 @@ func (d *Diff) geom(s *Style, w, h, scale float32) geom {
 	cw := charWidth(s.Font)
 	g.cw = cw
 	g.numR = 10 + float32(digits)*cw
-	g.markX = g.numR + 8
+	g.numR2 = g.numR
+	if d.unified { // 两列行号：旧的、新的
+		g.numR2 = g.numR + 8 + float32(digits)*cw
+	}
+	g.markX = g.numR2 + 8
 	g.textX = g.markX + cw + 8
-	g.paneW[0] = float32(math.Floor(float64((w - 1) / 2)))
-	g.paneX[1] = g.paneW[0] + 1
-	g.paneW[1] = w - g.paneX[1]
+	if d.unified { // 一栏：两边的“格子”是同一个
+		g.paneW = [2]float32{w, w}
+	} else {
+		g.paneW[0] = float32(math.Floor(float64((w - 1) / 2)))
+		g.paneX[1] = g.paneW[0] + 1
+		g.paneW[1] = w - g.paneX[1]
+	}
 	g.content = float32(len(d.rows)) * g.lh
 	g.ruler = wui.Rect{X: w - rulerW, Y: 0, W: rulerW, H: h}
 	m := s.Font.Metrics()
@@ -518,6 +560,12 @@ func charWidth(f wui.Font) float32 {
 func (d *Diff) clamp(g geom) {
 	d.ScrollY = min(d.ScrollY, max(0, g.content-g.h+g.lh*3))
 	d.ScrollY = max(d.ScrollY, 0)
+	if d.unified { // 一栏横着一起滚：两边的数一样（按上次动的那边），按宽的那边算能滚多远
+		room := g.paneW[1] - g.textX - rulerW
+		x := max(0, min(d.scrollX[d.side], max(d.widest[0], d.widest[1])-room+g.lh))
+		d.scrollX = [2]float32{x, x}
+		return
+	}
 	for side := range 2 {
 		room := g.paneW[side] - g.textX - rulerW
 		d.scrollX[side] = max(0, min(d.scrollX[side], d.widest[side]-room+g.lh))
@@ -529,7 +577,8 @@ func (d *Diff) bar(g geom) wui.Scrollbar {
 		Style: wui.ScrollbarStyle{TrackWidth: rulerW, ThumbWidth: rulerW, Square: true, Flush: true}}
 }
 
-// View 建并排 Diff 的视图：自己管滚动（一个 ScrollY，两边一起走；横着两边各滚各的），只排、只画看得见的行。
+// View 建 Diff 的视图（并排，或 SetUnified 后统一的一栏）：自己管滚动（一个 ScrollY，两边一起走；并排时横着两边各滚各的），
+// 只排、只画看得见的行。
 // 点折叠条展开那一段。
 func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	if d.hover >= len(d.rows) {
@@ -613,10 +662,8 @@ func (d *Diff) barHunk() int {
 
 // hunkTop 是第 i 处改动的顶在视图里的 y；顶滚出去了就贴着视图顶，直到改动的最后一行（按钮跟着改动走，不悬空）。
 func (d *Diff) hunkTop(i int) float32 {
-	r0 := d.hunkRow[i]
-	r1 := r0 + d.hunks[i].Row1 - d.hunks[i].Row0
-	y0 := float32(r0)*d.lh - d.ScrollY
-	y1 := float32(r1)*d.lh - d.ScrollY
+	y0 := float32(d.hunkRow[i])*d.lh - d.ScrollY
+	y1 := float32(d.hunkEnd[i])*d.lh - d.ScrollY
 	return max(min(0, y1-d.lh), y0)
 }
 
@@ -675,6 +722,9 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 		if ev.X >= g.paneX[1] {
 			side = 1
 		}
+		if d.unified {
+			side = d.side
+		}
 		d.scrollX[side] += ev.DX
 		d.clamp(g)
 		return d.ScrollY != y || d.scrollX != x
@@ -706,6 +756,9 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 		side := 0
 		if ev.X >= g.paneX[1] {
 			side = 1
+		}
+		if d.unified && i >= 0 {
+			side = d.rowSide(d.rows[i])
 		}
 		d.side = side
 		if d.pickLine(ev, i, side, g, s) {
@@ -947,26 +1000,39 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 			d.paintFold(p, r, g, s, row, y, i == d.hover && !d.onBar)
 			continue
 		}
+		if d.unified {
+			side := d.rowSide(row)
+			line := lineOf(row, side)
+			var w []Span
+			if o, ok := d.pairs[side][line]; ok { // 配成对的删 / 加：行里改了的字
+				pr := Row{Old: line, New: o}
+				if side == 1 {
+					pr = Row{Old: o, New: line}
+				}
+				w = d.wordsOf(pr)[side]
+			}
+			d.paintCell(p, r, g, s, side, row, w, y)
+			continue
+		}
 		var w [2][]Span
 		if row.Kind == Changed {
 			w = d.wordsOf(row)
 		}
 		for side := range 2 {
-			line := row.Old
-			if side == 1 {
-				line = row.New
-			}
-			d.paintCell(p, r, g, s, side, line, row.Kind, w[side], y)
+			d.paintCell(p, r, g, s, side, row, w[side], y)
 		}
 	}
-	// 中间的线
-	p.Fill(wui.Rect{X: r.X + g.paneW[0], Y: r.Y, W: 1, H: r.H}, s.Divider, 0)
+	if !d.unified { // 中间的线
+		p.Fill(wui.Rect{X: r.X + g.paneW[0], Y: r.Y, W: 1, H: r.H}, s.Divider, 0)
+	}
 	d.paintRuler(p, r, g, s)
 }
 
-func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side, line int, kind RowKind, words []Span, y float32) {
+// paintCell 画 row 在 side 那边的格子（统一视图里是整行：两列行号，字是 side 那边的）。
+func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int, row Row, words []Span, y float32) {
 	x0, pw := r.X+g.paneX[side], g.paneW[side]
 	cell := wui.Rect{X: x0, Y: y, W: pw, H: g.lh}
+	line, kind := lineOf(row, side), row.Kind
 	if line < 0 {
 		hatch(p, cell, d.ScrollY+y-r.Y, s.Filler)
 		return
@@ -979,18 +1045,29 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side, lin
 	if changed {
 		p.Fill(cell, lineBg, 0)
 	}
-	if d.lsel.has(side, line) { // 叠在红绿底上看不太出来：左边再画一道竖条
+	if d.lsel.has(side, line) || d.unified && kind == Same && d.lsel.has(1-side, lineOf(row, 1-side)) { // 叠在红绿底上看不太出来：左边再画一道竖条
 		p.Fill(cell, s.LineSel, 0)
 		p.Fill(wui.Rect{X: x0, Y: y, W: 3, H: g.lh}, s.LineMark, 0)
 	}
 	base := y + (g.lh-(g.asc+g.desc))/2 + g.asc
-	num := wui.Shape(strconv.Itoa(line+1), s.Font)
 	nc := s.Code.LineNumber
 	if changed {
 		nc = mark
 	}
-	if n := len(num); n > 0 {
-		p.Glyphs(num, x0+g.numR-(num[n-1].X+num[n-1].Advance), base, nc)
+	number := func(l int, right float32) {
+		if l < 0 {
+			return
+		}
+		if num := wui.Shape(strconv.Itoa(l+1), s.Font); len(num) > 0 {
+			last := num[len(num)-1]
+			p.Glyphs(num, x0+right-(last.X+last.Advance), base, nc)
+		}
+	}
+	if d.unified { // 两列：旧的行号、新的行号（删掉的行只有旧的，加的只有新的）
+		number(row.Old, g.numR)
+		number(row.New, g.numR2)
+	} else {
+		number(line, g.numR)
 	}
 	if changed {
 		p.Glyphs(wui.Shape(sign, s.Font), x0+g.markX, base, mark)
@@ -1011,8 +1088,13 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side, lin
 				p.Fill(wui.Rect{X: sx + rc.X, Y: y, W: rc.W, H: g.lh}, wordBg, 2)
 			}
 		}
-		if d.sel.side == side && !d.sel.empty() {
-			d.paintSel(p, l, line, sx, y, g, s)
+		if !d.sel.empty() {
+			switch {
+			case d.sel.side == side:
+				d.paintSel(p, l, line, sx, y, g, s)
+			case d.unified && kind == Same: // 统一视图里没改的行两边一样：选的是旧的一边也涂
+				d.paintSel(p, l, lineOf(row, d.sel.side), sx, y, g, s)
+			}
 		}
 		p.TextLayout(l.l, sx, ty, s.Code.Text)
 	})
@@ -1074,8 +1156,11 @@ func (d *Diff) paintFold(p *wui.Painter, r wui.Rect, g geom, s *Style, row Row, 
 	}
 	m := f.Metrics()
 	base := y + (g.lh-(m.Ascent+m.Descent))/2 + m.Ascent
+	gs := wui.Shape("⋯  "+label, f)
 	for side := range 2 {
-		gs := wui.Shape("⋯  "+label, f)
+		if d.unified && side == 0 { // 一栏只写一次
+			continue
+		}
 		p.Glyphs(gs, r.X+g.paneX[side]+g.textX, base, s.FoldText)
 	}
 }
