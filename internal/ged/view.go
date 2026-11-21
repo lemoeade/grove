@@ -108,6 +108,10 @@ type Diff struct {
 	onBar   bool
 	barBox  wui.Rect // 改动上那排按钮在哪（本地坐标；大小是上一帧量的）：按在上面的归按钮
 
+	split     float32 // 并排时左边占多宽（0 到 1，0 是一半）：拖中间那道线改，双击还原
+	splitting bool    // 正按着拖中间那道线
+	onSplit   bool    // 指针在中间那道线上
+
 	sel       selection
 	selecting bool // 正按着拖选
 	side      int  // 上次按在哪边（⌘A 全选那边，← → 横着滚那边）
@@ -717,6 +721,17 @@ type geom struct {
 
 const rulerW = 14
 
+// splitMin 是拖中间那道线时一边至少占多宽（比例）。
+const splitMin = 0.15
+
+// nearSplit 是 x 在并排时中间那道线上（左右各 3 pt 的热区）。
+func (d *Diff) nearSplit(x float32, g geom) bool {
+	return !d.unified && x >= g.paneW[0]-3 && x <= g.paneX[1]+3
+}
+
+// Split 是并排时左边占多宽（0 是一半）。给测试用。
+func (d *Diff) Split() float32 { return d.split }
+
 func (d *Diff) geom(s *Style, w, h, scale float32) geom {
 	size := s.Font.Size
 	if size <= 0 {
@@ -738,7 +753,11 @@ func (d *Diff) geom(s *Style, w, h, scale float32) geom {
 	if d.unified { // 一栏：两边的“格子”是同一个
 		g.paneW = [2]float32{w, w}
 	} else {
-		g.paneW[0] = float32(math.Floor(float64((w - 1) / 2)))
+		f := float32(0.5)
+		if d.split > 0 {
+			f = min(max(d.split, splitMin), 1-splitMin)
+		}
+		g.paneW[0] = float32(math.Floor(float64((w - 1) * f)))
 		g.paneX[1] = g.paneW[0] + 1
 		g.paneW[1] = w - g.paneX[1]
 	}
@@ -823,10 +842,12 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	if _, ok := d.caret(&s); ok { // 就地编辑、有光标：收字和输入法（候选框在光标处）
 		el.TextCaret(d.caretBox)
 	}
-	if !el.Hovered() && !d.drag { // 指针走了（没有“离开”事件，问 Hovered）
-		d.hover, d.onBar = -1, false
+	if !el.Hovered() && !d.drag && !d.splitting { // 指针走了（没有“离开”事件，问 Hovered）
+		d.hover, d.onBar, d.onSplit = -1, false, false
 	}
 	switch {
+	case d.onSplit || d.splitting:
+		el.Cursor(wui.CursorResizeEW)
 	case d.hover >= 0 && d.rows[d.hover].Kind == Fold && !d.onBar:
 		el.Cursor(wui.CursorPointer)
 	case d.gutter && !d.selecting || d.picking:
@@ -942,6 +963,9 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 	}
 	g := d.geomNow(s)
 	inBar := ev.X >= g.ruler.X && g.content+g.lh*3 > g.h
+	if took, handled := d.splitInput(ev, g, inBar); handled {
+		return took
+	}
 	if ev.Kind != wui.InputScroll && !d.drag && (d.barBox.W > 0 && d.barBox.Contains(ev.X, ev.Y) ||
 		d.findBox.W > 0 && d.findBox.Contains(ev.X, ev.Y)) {
 		return false // 在改动上那排按钮上：归按钮，指针下的那处改动不变
@@ -1093,6 +1117,43 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 		}
 	}
 	return false
+}
+
+// splitInput 管中间那道线：按住拖改两边的宽，双击还原成一半；指针在线上时记 onSplit（换成左右拖的指针）。
+func (d *Diff) splitInput(ev wui.InputEvent, g geom, inBar bool) (took, handled bool) {
+	switch ev.Kind {
+	case wui.InputPointerDown:
+		if ev.Button != 0 || inBar || d.drag || !d.nearSplit(ev.X, g) {
+			return false, false
+		}
+		if ev.Clicks == 2 {
+			d.split, d.splitting = 0, false
+		} else {
+			d.splitting = true
+		}
+		return true, true
+	case wui.InputPointerMove:
+		if d.splitting {
+			if g.w > 1 {
+				d.split = min(max(ev.X/(g.w-1), splitMin), 1-splitMin)
+			}
+			return true, true
+		}
+		on := !inBar && !d.drag && !d.selecting && !d.picking && d.nearSplit(ev.X, g)
+		if on != d.onSplit {
+			d.onSplit = on
+			return true, on
+		}
+		if on {
+			return false, true
+		}
+	case wui.InputPointerUp:
+		if d.splitting {
+			d.splitting = false
+			return true, true
+		}
+	}
+	return false, false
 }
 
 // canPick 是能不能点行号选行。
@@ -1346,14 +1407,21 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 	if changed {
 		p.Fill(cell, lineBg, 0)
 	}
+	caretLine := side == 1 && d.editable && d.focused && d.sel.side == 1 && line == d.sel.b.line && d.sel.empty()
+	if caretLine { // 光标那一行：垫一层（VS Code 的 current line highlight），行号亮一点
+		p.Fill(cell, s.Code.ActiveLine, 0)
+	}
 	if d.lsel.has(side, line) || d.unified && kind == Same && d.lsel.has(1-side, lineOf(row, 1-side)) { // 叠在红绿底上看不太出来：左边再画一道竖条
 		p.Fill(cell, s.LineSel, 0)
 		p.Fill(wui.Rect{X: x0, Y: y, W: 3, H: h}, s.LineMark, 0)
 	}
 	base := y + (g.lh-(g.asc+g.desc))/2 + g.asc
 	nc := s.Code.LineNumber
-	if changed {
+	switch {
+	case changed:
 		nc = mark
+	case caretLine:
+		nc = s.Code.ActiveLineNumber
 	}
 	number := func(l int, right float32) {
 		if l < 0 {

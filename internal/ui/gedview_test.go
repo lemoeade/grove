@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -1142,5 +1143,64 @@ func TestGedOccurrences(t *testing.T) {
 	}
 	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
 		writeShot(t, tt, dir, "ged-occur.png")
+	}
+}
+
+// TestGedSplit：拖并排中间那道线改两边的宽，双击还原；就地编辑时光标那一行垫一层（截图看）。
+func TestGedSplit(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	repo := testutil.NewRepo(t, "gedsplit")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n\tx := 1\n\treturn\n}\n")
+	repo.Commit("初始提交")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n\tx := 1\n\treturn x\n}\n")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = true, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	g := diffDoc(a, "").Ged
+	box := g.Bounds()
+	mid := box.X + float32(math.Floor(float64((box.W-1)/2))) + 0.5
+	y := box.Y + 8*g.RowHeight()
+	left0 := g.LineX(1)
+	tt.Move(mid, y)
+	tt.Frame()
+	tt.Press(mid, y)
+	tt.Move(box.X+box.W*0.3, y)
+	tt.Release(box.X+box.W*0.3, y)
+	tt.Frame()
+	if f := g.Split(); f < 0.28 || f > 0.32 {
+		t.Fatalf("拖到 30%% 处，左边占 %v", f)
+	}
+	if g.LineX(1) >= left0 {
+		t.Errorf("右边的正文该往左挪：%v → %v", left0, g.LineX(1))
+	}
+	if g.Selected() != "" {
+		t.Errorf("拖线不该选字：%q", g.Selected())
+	}
+	at := box.X + float32(math.Floor(float64((box.W-1)*g.Split()))) + 0.5
+	tt.ClickAt(at, y)
+	tt.ClickAt(at, y)
+	tt.Frame()
+	if g.Split() != 0 {
+		t.Errorf("双击那道线该还原成一半：%v", g.Split())
+	}
+
+	d := diffDoc(a, "")
+	a.ToggleDiffEdit(d)
+	wait("Diff 能编辑", func() bool { tt.Frame(); d := diffDoc(a, ""); return d != nil && d.DiffSt != nil && d.DiffSt.Editable })
+	g = diffDoc(a, "").Ged
+	tt.ClickAt(g.LineX(1)+1, g.Bounds().Y+3.5*g.RowHeight()-g.ScrollY)
+	tt.Frame()
+	if l, _, ok := g.Caret(); !ok || l != 3 {
+		t.Fatalf("点第 4 行放光标：%d %v", l, ok)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		writeShot(t, tt, dir, "ged-caretline.png")
 	}
 }
