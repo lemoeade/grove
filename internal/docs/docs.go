@@ -20,6 +20,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"github.com/egoist/mygo/ui/markdown"
 
+	"github.com/lemoeade/grove/internal/ged"
 	"github.com/lemoeade/grove/internal/git"
 	"github.com/lemoeade/grove/internal/highlight"
 	"github.com/lemoeade/grove/internal/i18n"
@@ -122,6 +123,9 @@ type Doc struct {
 	ReplaceHunk int
 	// HunkLine 是从编辑器的改动卡“在 Diff 中打开”进来时要滚到的那块：新文件第 HunkLine-1 行所在（或它后面）的那块，0 是不指定
 	HunkLine int
+	// GedFocus 是 ged 的并排 Diff 下一帧滚到哪处改动：新文件第 GedFocus-1 行所在（或它后面）的那处；-1 是刚跳到的那处
+	// （还没有就第一处）；0 不滚。界面在 ToHunk 时定下、画 ged 时用掉
+	GedFocus int
 	// Hits 是搜索编辑器（Kind == SearchDoc）每一行指向的地方，下标是行号；SearchSrc 是 app 记的怎么重新生成
 	// （查询、范围、结果：docs 不认 search 的类型），SearchLines 是生成时的上下文行数
 	Hits        []SearchHit
@@ -229,8 +233,9 @@ type Doc struct {
 	// 改动、保存、撤销都是它的；nil 为只看。不记进会话
 	EditDoc *Doc
 
-	Rest  Rest  // 编辑器 / Diff 视图的光标停手多久了（ui 的 restingEditor / restingDiff）
-	Occur Occur // 光标下那个词在本文件里的其他出现（ui 的 occurMarks）
+	Rest  Rest      // 编辑器 / Diff 视图的光标停手多久了（ui 的 restingEditor / restingDiff）
+	Ged   *ged.Diff // WORKBENCH_GED 时 Grove 自己的并排 Diff 的状态（滚动、折叠、排好的字），ui 的 gedDiff 建
+	Occur Occur     // 光标下那个词在本文件里的其他出现（ui 的 occurMarks）
 
 	// blame 装订线（⌃⌘B，app/blame.go）：按标签记，不进 state.json
 	ShowBlame    bool
@@ -452,6 +457,11 @@ func ReadCompare(left, right string, clip []byte) (git.DiffContent, error) {
 // IsDiffView 是这个标签显示的是 diff（Diff、替换预览、比较）：J / K、上 / 下一处改动、没有大纲。
 func (d *Doc) IsDiffView() bool {
 	return d.Kind == Diff || d.Kind == ReplacePreview || d.Kind == Compare
+}
+
+// UsingGed 是这个 Diff 现在画的是 ged 的并排 Diff（建过 Ged、并排、不在就地编辑）：上 / 下一处改动按 ged 的改动走。
+func (d *Doc) UsingGed() bool {
+	return d.Ged != nil && d.DiffSt != nil && d.DiffSt.Layout == editor.DiffSplit && !d.DiffSt.Editable
 }
 
 // NewTerm 是仓库 root 里号为 num 的终端标签开在编辑器区的样子，title 是标签名（app.Repo.TermLabel）。

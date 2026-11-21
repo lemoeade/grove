@@ -72,6 +72,18 @@
   - 丢数据、改远程、改历史的确认用 `a.AskDanger`（红的），调用位置由 `app/danger_test.go` 扫描源码检查，新加一处要把函数名加进去；别的确认用 `a.Ask`。
   - 底部那行按钮先建（`Reverse()`）：提示里的"⏎ 删除分支"和按钮同字，按名字找（`Find` / `mustClick`）要先找到按钮。
 
+- 自己画的部件（`internal/ged`）：
+  - `Painter.Line` 只画横线、竖线，两点 x、y 都不同时画的是包着它们的框的上边或左边；斜线（斜纹）用 `StrokePolyline`，一条一段。
+  - `HandleInput` 没有"指针离开"的事件：悬停状态每帧问 `Element.Hovered()`，不在上面了就清掉。
+  - `ShapeRichText` 排出来的 `TextLayout` 里颜色是排的时候定的，留着复用的话换深浅色（主题）、换字体时要整个作废，不然深色里还是浅色的字。
+  - `TextLayout.SelectionRects` / `Caret` 的下标是 UTF-16 单元，不是字节、不是 rune：按字节记的范围先换算（`ged.lineLayout.u16`）。
+  - 测试里按无障碍名找自己的部件（`Tester.Find`）可能先找到别处同名的（侧栏那一行文件名）：让部件记下上一帧的位置（`ged.Diff.Bounds`）给测试用。
+  - `Element.Bounds()` 是上一帧的位置：滚动过的这一帧拿它算子元素在哪会差一截（点“暂存这一块”点到了底下的行）。绝对定位的子元素按这一帧的
+    滚动自己算位置，`Bounds()` 只拿来量大小。同理，要在 `View` 里用滚动位置时先把这一帧要滚到哪（`want`）应用了再算。
+  - 父元素的 `HandleInput` 先于子元素按钮的 `Clicked()` 收到按下：父元素一律接住按下（拖选）的话，子元素的按钮就点不动了。
+    父元素要自己记子元素占的那块（本地坐标），按在里面的不接。
+  - `Tester` 没有双击：紧挨着两次 `ClickAt` 就是双击（按它自己的钟算间隔），三次是三击。
+
 ## 列表、点击和拖动
 
 - 列表上 `TrackScroll` 的 `ScrollState.ScrollTo` 滑动期间，`ListState.ScrollTo` / `ScrollIntoView` / `ScrollToEnd` 不起作用：滑动每帧在

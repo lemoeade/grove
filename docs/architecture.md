@@ -259,6 +259,21 @@ git 请求用户名、密码或 SSH 口令时，由 Grove 显示凭据对话框�
 
 Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`）每帧设：一边是空的（`oneSided`：新文件、删掉的文件）时不管 `unified` 都画成统一的一栏，标签条上的并排 / 统一按钮灰着；底栏 `compareLabel` 对已暂存 / 未暂存写“已暂存的改动”“未暂存的改动”，`HEAD ↔ 索引` 之类放在悬停提示里；`Indicators` 是 `DiffBars`（行首红 / 绿竖条；mygo 只在有竖条时把改了的词涂成红 / 绿，别的是灰的），改了的行的底色 Grove 自己画（`ui/difftint.go`）：mygo 混进背景的比例固定、太淡，`restingDiff` 让它不涂底（`clearDiffBackground`：`NoBackground`，`Theme.Background` 透明），外面包一层编辑器底色的 `Column`，`Draw(diffUnder)` 每帧按 `DiffState.Hunks` / `LineTop` / `ScrollY` 现算位置（`diffTints`，`TestDiffTints` 盯着）涂 VS Code 默认主题的 `#9bb95533` / `#ff000033`，选中的行也在这里画；竖条、行号和改了的词还是 mygo 画在上面，颜色是 `diffTint` 换的 `Theme.Added` / `Deleted`，折起来的未修改行由 `RenderSeparator = diffSep`（`ui/diffsep.go`）画成整行一条淡底，左边“N 行未修改”，点了走 `expandSep`（开头 / 结尾的展开 `Step` 行，中间的或按住 ⇧ 全部展开）；后面的字是 `sepScope`：下面那段改动第一行所在的符号那一行（间隔开头 + 上下文 + 藏着的行数 + 上下文）（`Doc.DiffOutline` 是旧的一边的大纲，按 `Buffer` 和版本缓存；`outline.Tree.Scope` 找包着那一行的最里层符号）。mygo 只给折叠条的行数和在不在头尾，间隔从哪行开始是没导出的 `DiffSeparator.a`，`sepStart` 用 reflect 读，读不到就不写（`TestSepStart` 盯着）。`DiffState.Wrap` 跟 `WrapOf`（⌥Z 的 `canWrap` 也认文字的 Diff）。改动在滚动条槽里的标记是 mygo 自己画的。空出来那边的斜纹和 mygo 自带的折叠条样式在 mygo 里，Grove 不改。
 
+`internal/ged` 是 Grove 自己的编辑器部件，只用 mygo 公开的接口（`ui.ShapeRichText` 排字、`Painter` 画、`Element.HandleInput` 收输入），不碰 mygo 的 `ui/editor` 视图；
+现在只有只读的并排 Diff，设了 `WORKBENCH_GED` 时 `useGed`（`ui/gedview.go`）让 Diff 标签、比较标签、替换预览的并排视图走它（统一视图、就地编辑还是 mygo 的）。
+模型在 `ged/diff.go`，不碰界面：`Align` 用 Myers（先去掉头尾一样的；超过 `diffMax` 步就不再配，整段当删加）把两边的行对齐成 `Row`（`Same` / `Changed` / `Deleted` / `Added`，
+一处删 d 行加 a 行时前 min(d, a) 行配成 `Changed`），`Folded` 把离改动 `Context`（3）行外的没改的段折成一行 `Fold`，`Words` 按词比出改了的行里改了哪几段字节（几乎全不一样时整行，去掉缩进）。
+视图在 `ged/view.go`：一个元素，自己管滚动（`ScrollY` 两边一起走，横着两边各滚各的），`Draw` 里只排、只画看得见的行；一行排好的 `TextLayout` 按（哪边，第几行）留着，换字体 / 颜色时作废；
+语法高亮用语言的 `Tokenizer`，每行开头的分词状态按需往下算；改了的字的底按 `TextLayout.SelectionRects` 量位置、涂满行高；对面留空的行画 45° 斜线（`StrokePolyline`，`Painter.Line` 只画横竖）；
+右边 14 pt 的概览条标改动，按住拖动滚。状态 `ged.Diff` 存在 `Doc.Ged`，`Set` 按两边缓冲区和版本认内容变没变。颜色由 `gedStyle` 按 Grove 的主题给，和 mygo 那个 Diff 一样。
+`SetFull` 跟着 `St.FullDiff`（全文时不折）。一处处改动是 `Hunks`（对齐后连着的非 `Same` 行，两边的行范围和 `editor.DiffHunk` 一样从 0 起、半开），
+`Doc.UsingGed` 时 `app.HunkPos` / `GoToHunk` 问 `Diff.Current` / `GoToHunk`（标签条的上 / 下一处、底栏的“第 i / n 处改动”），J / K 由 `Style.Keys`（`gedKeys`）按命令注册表的键接走；
+跳 Diff 时的 `Doc.GedFocus` 是要落到的新的一边的行（+1），`diffLook` 给。指针下的那块（没有时是跳到的那块）右上角的按钮由 `Style.HunkBar` 画（Grove 的 `hunkActions`，
+和 mygo 那个 Diff 共用），作为绝对定位的子元素，滚动时贴在块顶；位置在 `View` 里按这一帧的滚动现算（`applyWant`），`Bounds()` 只取大小。
+选字是（哪边，行，字节）的一对位置，`HandleInput` 管拖选、双击选词（`tokens`）、三击选行、⇧ 点击，`InputCommand` 的 copy / selectAll 走 `Style.Copy`（`app.CopyText`）；
+元素 `Focusable`，按下时拿焦点，方向键、翻页、空格、Home / End 滚动，Esc 取消选择。
+`TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页。
+
 Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.go`）。`git.HunkPatch` 从那一块生成补丁，暂存是 `git apply --cached -`，取消暂存是 `--cached -R`，丢弃是工作区上 `-R`。
 
 选几行再暂存是行级（`app/lines.go`）：`LinesEdits` 把选中的删除行和新增行配对，`git.LinesPatch` 生成只含这些行的补丁，总是正向套到 index 上（取消暂存时反过来算一份正向的），这样不用处理反向补丁的上下文问题。

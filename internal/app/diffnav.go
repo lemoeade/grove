@@ -8,6 +8,13 @@ func HunkPos(d *docs.Doc) (cur, n int, inside bool) {
 	if d == nil || !d.IsDiffView() || d.DiffSt == nil {
 		return -1, 0, false
 	}
+	if d.UsingGed() { // ged 的改动按它自己的对齐算，和 mygo 的不一定一样多
+		if n = len(d.Ged.Hunks()); n == 0 {
+			return -1, 0, false
+		}
+		cur, inside = d.Ged.Current()
+		return cur, n, inside
+	}
 	if n = len(d.DiffSt.Hunks()); n == 0 {
 		return -1, 0, false
 	}
@@ -37,7 +44,12 @@ func CanGoToHunk(d *docs.Doc, dir int) bool { return hunkTarget(d, dir) >= 0 }
 // GoToHunk 把 Diff 标签的光标挪到上一处（dir < 0）或下一处改动的开头，滚到视图中间（mygo DiffState.GoToHunk）。
 // 和 J / K 一样（那两个是 mygo 编辑器自己接的键，这里给标签条按钮和命令面板）。
 func (a *App) GoToHunk(d *docs.Doc, dir int) {
-	if i := hunkTarget(d, dir); i >= 0 {
+	i := hunkTarget(d, dir)
+	switch {
+	case i < 0:
+	case d.UsingGed():
+		d.Ged.GoToHunk(i)
+	default:
 		d.DiffSt.GoToHunk(i)
 	}
 }

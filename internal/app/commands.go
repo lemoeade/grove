@@ -424,7 +424,7 @@ func buildCommands() []*Command {
 			Enabled: func(a *App) bool { _, u, _ := LinesOps(a.CurrentDoc()); return u }, Run: func(a *App) { a.UnstageLines(a.CurrentDoc()) }},
 		&Command{ID: "diff.discardLines", Title: "丢弃选中的行…", Context: DiffTab,
 			Enabled: func(a *App) bool { _, _, d := LinesOps(a.CurrentDoc()); return d }, Run: func(a *App) { a.DiscardLines(a.CurrentDoc()) }},
-		// J / K 由 mygo 的 Diff 自己接（ui/tabs.go hunkKeys），Run 给命令面板和标签条上的按钮
+		// J / K 由 mygo 的 Diff 自己接（ui/tabs.go hunkKeys；ged 的并排 Diff 是 ui/gedview.go gedKeys），Run 给命令面板和标签条上的按钮
 		&Command{ID: "diff.nextHunk", Title: "下一处改动", Key: ui.KeyJ, Context: DiffTab, Local: true,
 			Enabled: func(a *App) bool { return CanGoToHunk(a.CurrentDoc(), 1) }, Run: func(a *App) { a.GoToHunk(a.CurrentDoc(), 1) }},
 		&Command{ID: "diff.prevHunk", Title: "上一处改动", Key: ui.KeyK, Context: DiffTab, Local: true,

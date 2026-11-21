@@ -754,13 +754,17 @@ func diffContent(a *app.App, c *wui.Context, d *docs.Doc) {
 		stage, unstage, discard := app.HunkOps(d)
 		d.DiffSt.HunkActions = (stage || unstage || discard) && d.EditDoc == nil // 就地编辑时不放块级暂存、丢弃（磁盘上的和缓冲区里的会对不上）
 		d.DiffSt.RenderHunkActions = func(c *wui.Context, bar wui.Element, h *editor.DiffHunkActions) {
-			hunkActions(a, c, bar, d, h, stage, unstage, discard)
+			hunkActions(a, c, bar, d, h.Hunk, stage, unstage, discard)
 		}
 		d.DiffSt.LineSelection = d.DiffSt.HunkActions
 		if !d.DiffSt.LineSelection {
 			app.ClearSelectedLines(d)
 		}
-		restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)
+		if useGed(d) { // 试做：选行暂存还没有
+			gedDiff(a, c, d)
+		} else {
+			restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)
+		}
 		if n := app.SelectedLineCount(d); n > 0 { // 键盘歇着时在 diff 旁边那个空元素上（restingDiff），Esc 登记在外面一层
 			c.OnShortcut(0, wui.KeyEscape, func() { app.ClearSelectedLines(d) })
 			linesBar(a, c, d, n, stage, unstage, discard)
@@ -792,6 +796,13 @@ func diffLook(a *app.App, d *docs.Doc) {
 	d.DiffSt.Wrap = a.WrapOf(d)
 	if d.ToHunk { // 全文 diff 别停在文件顶上、切局部 / 全文别把改动甩出视图（mygo 等视图排过版才滚过去）
 		d.ToHunk = false
+		d.GedFocus = -1 // ged：刚跳到的那处（还没有就第一处）
+		if hs := d.DiffSt.Hunks(); d.ReplaceHunk > 0 && d.ReplaceHunk <= len(hs) {
+			d.GedFocus = hs[d.ReplaceHunk-1].NewStart + 1
+		}
+		if d.HunkLine > 0 {
+			d.GedFocus = d.HunkLine
+		}
 		i, _ := d.DiffSt.CurrentHunk()
 		if d.ReplaceHunk > 0 {
 			i, d.ReplaceHunk = d.ReplaceHunk-1, 0
@@ -813,7 +824,11 @@ func replaceContent(a *app.App, c *wui.Context, d *docs.Doc) {
 		diffLook(a, d)
 		d.DiffSt.Bindings = app.DiffBindings()
 		d.DiffSt.HunkActions, d.DiffSt.LineSelection = false, false
-		restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)
+		if useGed(d) {
+			gedDiff(a, c, d)
+		} else {
+			restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)
+		}
 	default:
 		wui.Spacer(c).Grow(1)
 	}
@@ -829,7 +844,11 @@ func compareContent(a *app.App, c *wui.Context, d *docs.Doc) {
 		diffLook(a, d)
 		d.DiffSt.Bindings = app.DiffBindings()
 		d.DiffSt.HunkActions, d.DiffSt.LineSelection = false, false
-		restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)
+		if useGed(d) {
+			gedDiff(a, c, d)
+		} else {
+			restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)
+		}
 	default:
 		wui.Spacer(c).Grow(1)
 	}
@@ -869,7 +888,7 @@ func replaceBar(a *app.App, c *wui.Context, d *docs.Doc) {
 
 // hunkActions 是 Diff 里指针下（或光标所在）那一块改动右上角的按钮：未暂存的能暂存、丢弃这一块，
 // 已暂存的能取消暂存这一块。写操作走 git apply，丢弃先问。
-func hunkActions(a *app.App, c *wui.Context, bar wui.Element, d *docs.Doc, h *editor.DiffHunkActions, stage, unstage, discard bool) {
+func hunkActions(a *app.App, c *wui.Context, bar wui.Element, d *docs.Doc, h editor.DiffHunk, stage, unstage, discard bool) {
 	t := c.Theme()
 	// 浮在 diff 上：外层一块 Surface 底和描边，里面是图标（iconAction），不再各自是按钮的样子
 	bar.Row().Gap(0).Padding(1).Radius(6).Background(t.Surface).Border(1, t.Border)
@@ -878,13 +897,13 @@ func hunkActions(a *app.App, c *wui.Context, bar wui.Element, d *docs.Doc, h *ed
 			return iconAction(c.Key(key), ic, label, tip, "", fg)
 		}
 		if stage && button("stage", iconPlus, i18n.T("暂存这一块"), i18n.T("只把这一块改动加进暂存区（git apply --cached）"), wui.Transparent) {
-			a.StageHunk(d, h.Hunk)
+			a.StageHunk(d, h)
 		}
 		if unstage && button("unstage", iconMinus, i18n.T("取消暂存这一块"), i18n.T("把这一块改动移出暂存区，工作区不动（git apply --cached -R）"), wui.Transparent) {
-			a.UnstageHunk(d, h.Hunk)
+			a.UnstageHunk(d, h)
 		}
 		if discard && button("discard", iconUndo, i18n.T("丢弃这一块"), i18n.T("把工作区里这一块恢复成暂存区的样子（会先问）"), t.Danger) {
-			a.DiscardHunk(d, h.Hunk)
+			a.DiscardHunk(d, h)
 		}
 	})
 }
