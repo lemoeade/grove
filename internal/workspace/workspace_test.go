@@ -194,7 +194,7 @@ func TestStateSessions(t *testing.T) {
 			Added: []string{"/x"}, Hidden: []string{"/b"},
 			WtOpen: []string{"/a"},
 			Layout: &Layout{Row: true, Ratio: 0.5, A: &Layout{Tabs: []int{0}}, B: &Layout{Tabs: []int{1, 2}, Sel: 1, Focus: true}},
-			Panels: &Panels{Sidebar: true, BottomBar: true, SidebarMode: ModeGit, SidebarW: 300, TermW: 420, Unified: true, HistAll: true, HistNoGraph: true, OpenEditorsFolded: true},
+			Panels: &Panels{Sidebar: true, BottomBar: true, SidebarMode: ModeGit, SidebarW: 300, TermW: 420, Unified: true, DiffTrim: true, HistAll: true, HistNoGraph: true, OpenEditorsFolded: true},
 		},
 	}
 	st.Sessions["/w/one.code-workspace"].Tabs = append(st.Sessions["/w/one.code-workspace"].Tabs,
@@ -205,7 +205,7 @@ func TestStateSessions(t *testing.T) {
 	st.AppVersion, st.OpenEditorsFolded, st.TermW, st.CloneDir = "0.2.0", true, 420, "/src"
 	st.TaskHistory = []TaskRun{{Repo: "/a", Cmd: "make test"}}
 	st.RecentWs = []string{"/w/one.code-workspace", "/w/dir"}
-	st.HistNoGraph = true
+	st.HistNoGraph, st.DiffTrim = true, true
 	st.HistBranches, st.CommitMsgs, st.Settings.TermBlink, st.Settings.TermTheme = true, []string{"修复登录", "初始提交"}, true, "Dracula"
 	st.Settings.Material, st.Settings.Backdrop = "glass", "vibrancy"
 	st.Settings.Accent, st.Settings.SolidSelection = "teal", true

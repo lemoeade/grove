@@ -60,6 +60,7 @@ type State struct {
 
 	Unified  bool `json:"unified,omitempty"`  // diff 统一视图
 	FullDiff bool `json:"fullDiff,omitempty"` // diff 显示全文
+	DiffTrim bool `json:"diffTrim,omitempty"` // diff 忽略行首行尾空白（只有 Grove 自己画的 Diff 认）
 
 	Recent []string `json:"recent,omitempty"` // 最近打开的文件（磁盘路径，最近的在前），快速打开里靠前
 
@@ -111,6 +112,7 @@ type Panels struct {
 	TermW             float32 `json:"termW,omitempty"`
 	Unified           bool    `json:"unified,omitempty"`
 	FullDiff          bool    `json:"fullDiff,omitempty"`
+	DiffTrim          bool    `json:"diffTrim,omitempty"`
 	HistAll           bool    `json:"histAll,omitempty"`
 	HistBranches      bool    `json:"histBranches,omitempty"`
 	HistNoGraph       bool    `json:"histNoGraph,omitempty"`
@@ -120,7 +122,7 @@ type Panels struct {
 // Panels 是 st 现在的布局（新的一份）。
 func (st *State) Panels() *Panels {
 	return &Panels{Sidebar: st.Sidebar, RightBar: st.RightBar, BottomBar: st.BottomBar, SidebarMode: st.SidebarMode,
-		SidebarW: st.SidebarW, RightW: st.RightW, BottomH: st.BottomH, TermW: st.TermW, Unified: st.Unified, FullDiff: st.FullDiff,
+		SidebarW: st.SidebarW, RightW: st.RightW, BottomH: st.BottomH, TermW: st.TermW, Unified: st.Unified, FullDiff: st.FullDiff, DiffTrim: st.DiffTrim,
 		HistAll: st.HistAll, HistBranches: st.HistBranches, HistNoGraph: st.HistNoGraph, OpenEditorsFolded: st.OpenEditorsFolded}
 }
 
@@ -129,7 +131,7 @@ func (st *State) SetPanels(p *Panels) {
 	st.Sidebar, st.RightBar, st.BottomBar, st.SidebarMode = p.Sidebar, p.RightBar, p.BottomBar, p.SidebarMode
 	st.SidebarW, st.RightW, st.BottomH, st.TermW = p.SidebarW, p.RightW, p.BottomH, p.TermW
 	st.Unified, st.FullDiff, st.HistAll, st.HistBranches, st.HistNoGraph = p.Unified, p.FullDiff, p.HistAll, p.HistBranches, p.HistNoGraph
-	st.OpenEditorsFolded = p.OpenEditorsFolded
+	st.OpenEditorsFolded, st.DiffTrim = p.OpenEditorsFolded, p.DiffTrim
 	st.clampPanels()
 }
 

@@ -38,7 +38,14 @@ const diffMax = 1000
 
 // Align 把两边的行对齐成并排的行：一样的一行对一行；一处改动删 d 行、加 a 行时，前 min(d, a) 行配成对（Changed），
 // 多出来的那几行对面留空（Deleted / Added），和 VS Code、GitHub 的并排视图一样。
-func Align(old, new []string) []Row {
+func Align(old, new []string) []Row { return AlignTrim(old, new, false) }
+
+// AlignTrim 和 Align 一样，trim 时比的是去掉行首行尾空白的行（VS Code 的“忽略行首行尾空白”）：只改了缩进、
+// 行尾空格的行算没改。这样的行两边的字还是各自的（画的时候各画各的）。
+func AlignTrim(old, new []string, trim bool) []Row {
+	if trim {
+		old, new = trimmed(old), trimmed(new)
+	}
 	a, b := intern(old, new)
 	pairs := matches(a, b)
 	rows := make([]Row, 0, max(len(old), len(new)))
@@ -67,9 +74,35 @@ func Align(old, new []string) []Row {
 	return rows
 }
 
-// Folded 把 rows 里离改动超过 context 行的没改的段折成一行 Fold（段要比折起来那一行多才折）；
-// open 里的 Fold（按折起来的第一行的 Old 认）不折。没有改动时整个文件不折。
+// Folded 把长段没改的行折成一行 Fold：改动前后各留 context 行，开头、结尾那段只在挨着改动的一头留。
+// open 里的段（按那段没改的行在旧的一边的第一行算）整段不折。没有改动时不折；只多一行的也不折。
 func Folded(rows []Row, context int, open map[int]bool) []Row {
+	rv := make(map[int]Reveal, len(open))
+	for k, v := range open {
+		if v {
+			rv[k] = Reveal{All: true}
+		}
+	}
+	out, _ := foldRows(rows, context, rv)
+	return out
+}
+
+// Reveal 是一段折叠展开了多少（VS Code 折叠条上的“往下 / 往上再露 20 行”）：Top 是接着上面那处改动往下露几行，
+// Bottom 是接着下面那处改动往上露几行，All 整段展开。
+type Reveal struct {
+	Top, Bottom int
+	All         bool
+}
+
+// foldInfo 是一个 Fold 行的来历：key 是那段没改的行在旧的一边的第一行（open 按它记），up / down 是上面、下面挨着改动
+// （开头那段只能往上露、结尾那段只能往下露）。
+type foldInfo struct {
+	key      int
+	up, down bool
+}
+
+// foldRows 按 open 折；infos 按 Fold 行的 Old（折起来的第一行，唯一）记来历。
+func foldRows(rows []Row, context int, open map[int]Reveal) (out []Row, infos map[int]foldInfo) {
 	context = max(context, 0)
 	changed := false
 	for _, r := range rows {
@@ -79,9 +112,10 @@ func Folded(rows []Row, context int, open map[int]bool) []Row {
 		}
 	}
 	if !changed {
-		return rows
+		return rows, nil
 	}
-	out := make([]Row, 0, len(rows))
+	out = make([]Row, 0, len(rows))
+	infos = map[int]foldInfo{}
 	for i := 0; i < len(rows); {
 		if rows[i].Kind != Same {
 			out = append(out, rows[i])
@@ -92,23 +126,25 @@ func Folded(rows []Row, context int, open map[int]bool) []Row {
 		for e < len(rows) && rows[e].Kind == Same {
 			e++
 		}
+		rv := open[rows[i].Old]
 		lo, hi := i, e // 折 [lo, hi)
 		if i > 0 {
-			lo += context
+			lo += context + max(rv.Top, 0)
 		}
 		if e < len(rows) {
-			hi -= context
+			hi -= context + max(rv.Bottom, 0)
 		}
-		if hi-lo > 1 && !open[rows[lo].Old] {
+		if hi-lo > 1 && !rv.All {
 			out = append(out, rows[i:lo]...)
 			out = append(out, Row{Kind: Fold, Old: rows[lo].Old, New: rows[lo].New, N: hi - lo})
+			infos[rows[lo].Old] = foldInfo{key: rows[i].Old, up: i > 0, down: e < len(rows)}
 			out = append(out, rows[hi:e]...)
 		} else {
 			out = append(out, rows[i:e]...)
 		}
 		i = e
 	}
-	return out
+	return out, infos
 }
 
 // Words 是改了的一对行里两边各自改了的字（按词比：字母数字下划线连成一个词，空白连成一段，别的一个字符一个），
@@ -192,6 +228,15 @@ func tokens(s string) []Span {
 }
 
 // intern 把两边的字符串换成整数（一样的一个数），比起来快。
+// trimmed 是每行去掉首尾空白（含行尾的 \r）的一份。
+func trimmed(ls []string) []string {
+	out := make([]string, len(ls))
+	for i, l := range ls {
+		out[i] = strings.TrimSpace(l)
+	}
+	return out
+}
+
 func intern(a, b []string) ([]int, []int) {
 	ids := make(map[string]int, len(a)+len(b))
 	conv := func(ss []string) []int {

@@ -109,6 +109,40 @@ func hasEditor(a *App) bool {
 	return d != nil && d.Kind != docs.Diff && d.Buf != nil
 }
 
+// gedFind 是当前标签是 ged 画的 Diff（查找条是 ged 的）。
+func gedFind(a *App) bool {
+	d := a.CurrentDoc()
+	return d != nil && d.Kind == docs.Diff && d.UsingGed()
+}
+
+func canFind(a *App) bool { return hasEditor(a) || gedFind(a) }
+
+// findIn 是查找、查找下一个的 Run：ged 的 Diff 上开它的查找条（dir 0）或跳到下一处（查找条没开、没字时先开），
+// 别的在编辑器里执行 cmd。
+func findIn(cmd editor.Command, dir int) func(a *App) {
+	return func(a *App) {
+		if !gedFind(a) {
+			a.CurrentDoc().St.Run(cmd)
+			return
+		}
+		g := a.CurrentDoc().Ged
+		if dir == 0 || !g.Find.Open || g.Find.Text == "" {
+			g.OpenFind()
+			return
+		}
+		g.FindStep(dir)
+	}
+}
+
+// goToLine 是跳到行的 Run：ged 的 Diff 上开命令面板的 ":"（跳的是新的一边的行），别的在编辑器里开它的跳行条。
+func goToLine(a *App) {
+	if gedFind(a) {
+		a.OpenPalette(":")
+		return
+	}
+	a.CurrentDoc().St.Run(editor.GoToLine)
+}
+
 // inEditor 把编辑器的命令包成命令的 Run：在当前标签的编辑器里执行（查找条、跳行条由编辑器自己画）。
 func inEditor(cmd editor.Command) func(a *App) {
 	return func(a *App) { a.CurrentDoc().St.Run(cmd) }
@@ -243,6 +277,9 @@ func buildCommands() []*Command {
 			Checked: func(a *App) bool { return a.St.Unified }, Run: (*App).ToggleLayout},
 		{ID: "diff.full", Title: "全文 diff", Group: "视图", Mods: alt | cmd, Key: ui.KeyF, Context: DiffTab,
 			Checked: func(a *App) bool { return a.St.FullDiff }, Run: (*App).ToggleScope},
+		{ID: "diff.ignoreTrim", Title: "忽略行首行尾空白", Group: "视图", Context: DiffTab,
+			Enabled: func(a *App) bool { d := a.CurrentDoc(); return d != nil && d.UsingGed() },
+			Checked: func(a *App) bool { return a.St.DiffTrim }, Run: (*App).ToggleDiffTrim},
 		{ID: "diff.editInPlace", Title: "在 Diff 里就地编辑", Group: "视图", Context: DiffTab,
 			Enabled: func(a *App) bool { d := a.CurrentDoc(); return DiffEditing(d) || a.CanEditDiff(d) },
 			Checked: func(a *App) bool { return DiffEditing(a.CurrentDoc()) },
@@ -387,10 +424,11 @@ func buildCommands() []*Command {
 
 		// 编辑器：编辑器有焦点时它自己接这些键；没焦点（焦点在文件树、终端）或从命令面板来时走这里。
 		// 不进菜单栏：⌥⌘F 在菜单里是 Diff 的全文 diff，同一个键按当前标签分派（RunKey）
-		&Command{ID: "edit.find", Title: "查找…", Mods: cmd, Key: ui.KeyF, Context: Editor, Enabled: hasEditor, Run: inEditor(editor.Find), ed: editor.Find},
+		// ged 画的 Diff 标签（WORKBENCH_GED）也走这两条：开它自己的查找条、跳下一处（mygo 那个 Diff 有焦点时自己接）
+		&Command{ID: "edit.find", Title: "查找…", Mods: cmd, Key: ui.KeyF, Context: Editor, Enabled: canFind, Run: findIn(editor.Find, 0), ed: editor.Find},
 		&Command{ID: "edit.replace", Title: "替换…", Mods: alt | cmd, Key: ui.KeyF, Context: Editor, Enabled: hasEditor, Run: inEditor(editor.FindReplace), ed: editor.FindReplace},
-		&Command{ID: "edit.findNext", Title: "查找下一个", Mods: cmd, Key: ui.KeyG, Context: Editor, Enabled: hasEditor, Run: inEditor(editor.FindNext), ed: editor.FindNext},
-		&Command{ID: "edit.goToLine", Title: "跳到行…", Mods: ctrl, Key: ui.KeyG, Context: Editor, Enabled: hasEditor, Run: inEditor(editor.GoToLine), ed: editor.GoToLine},
+		&Command{ID: "edit.findNext", Title: "查找下一个", Mods: cmd, Key: ui.KeyG, Context: Editor, Enabled: canFind, Run: findIn(editor.FindNext, 1), ed: editor.FindNext},
+		&Command{ID: "edit.goToLine", Title: "跳到行…", Mods: ctrl, Key: ui.KeyG, Context: Editor, Enabled: canFind, Run: goToLine, ed: editor.GoToLine},
 		// ⇧⌘O 是添加仓库，跳到符号换成 ⌃⇧O
 		&Command{ID: "editor.symbol", Title: "跳到符号…", Mods: ctrl | shift, Key: ui.KeyO, Context: Editor, Enabled: hasEditor,
 			Run: func(a *App) { a.OpenPalette("@") }},

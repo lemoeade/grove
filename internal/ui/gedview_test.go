@@ -2,6 +2,7 @@ package ui
 
 import (
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -625,5 +626,521 @@ func TestGedFoldScope(t *testing.T) {
 		a.St.BottomBar = false
 		tt.Frame()
 		writeShot(t, tt, dir, "ged-scope.png")
+	}
+}
+
+// ⌥Z 软换行：长行按那边的宽折成几行，那一行跟着变高、下面的行往下挪；点在折出来的第二行上光标落在那一段，
+// ↑ ↓ 先在折出来的几行里走。再按 ⌥Z 回到一行一条。
+func TestGedWrap(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	long := "\t// " + strings.Repeat("wrap these words onto the next row ", 12)
+	repo := testutil.NewRepo(t, "gedwrap")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n\t// short\n\treturn 1\n}\n")
+	repo.Commit("初始提交")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n"+long+"\n\treturn 1\n}\n")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = true, false
+	a.St.Settings.Wrap = "off"
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	d := diffDoc(a, "")
+	a.ToggleDiffEdit(d)
+	wait("Diff 能编辑", func() bool { tt.Frame(); d := diffDoc(a, ""); return d != nil && d.DiffSt != nil && d.DiffSt.Editable })
+	d = diffDoc(a, "")
+	g := d.Ged
+	tt.Frame()
+	ci := -1
+	for i, row := range g.Rows() {
+		if row.Kind == ged.Changed {
+			ci = i
+		}
+	}
+	lh := g.RowHeight()
+	if ci < 0 || g.RowTop(ci+1)-g.RowTop(ci) != lh {
+		t.Fatalf("没换行时改了的那行（第 %d 行）高 %v，行高 %v", ci, g.RowTop(ci+1)-g.RowTop(ci), lh)
+	}
+	a.Exec("view.softWrap")
+	tt.Frame()
+	tt.Frame()
+	h := g.RowTop(ci+1) - g.RowTop(ci)
+	if h < 3*lh {
+		t.Fatalf("换行后那行只有 %v 高（行高 %v）", h, lh)
+	}
+	if g.RowTop(ci+2)-g.RowTop(ci+1) != lh {
+		t.Errorf("短的那行也变高了：%v", g.RowTop(ci+2)-g.RowTop(ci+1))
+	}
+	box := g.Bounds()
+	tt.ClickAt(g.LineX(1)+1, box.Y+g.RowTop(ci)+1.5*lh-g.ScrollY) // 折出来的第二行行首
+	tt.Frame()
+	l, o, ok := g.Caret()
+	if !ok || l != 3 || o <= 4 || o >= len(long)-4 {
+		t.Fatalf("点在折出来的第二行，光标在 %d:%d（%v）", l, o, ok)
+	}
+	tt.Key(0, wui.KeyDown)
+	tt.Frame()
+	if l2, o2, _ := g.Caret(); l2 != 3 || o2 <= o {
+		t.Errorf("↓ 应在同一行里往下一段：%d:%d", l2, o2)
+	}
+	tt.Key(0, wui.KeyUp)
+	tt.Key(0, wui.KeyUp)
+	tt.Frame()
+	if l2, o2, _ := g.Caret(); l2 != 3 || o2 >= o {
+		t.Errorf("↑ 两下应在这一行折出来的第一行：%d:%d", l2, o2)
+	}
+	tt.Key(0, wui.KeyUp)
+	tt.Frame()
+	if l2, _, _ := g.Caret(); l2 != 2 {
+		t.Errorf("再 ↑ 应到上一行：第 %d 行", l2)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-wrap.png")
+	}
+	a.Exec("view.softWrap")
+	tt.Frame()
+	if g.RowTop(ci+1)-g.RowTop(ci) != lh {
+		t.Errorf("关了换行那行还是 %v 高", g.RowTop(ci+1)-g.RowTop(ci))
+	}
+}
+
+// ⌘F（edit.find）在 ged 的 Diff 上开它自己的查找条：敲字就找（不分大小写），两边都找、没改的行只算一遍；
+// ↩ 跳下一处，跳到折起来的段里时展开那段；Esc 关掉。
+func TestGedFind(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	old, new := gedFiles()
+	repo := testutil.NewRepo(t, "gedfind")
+	repo.Write("demo.go", old)
+	repo.Commit("初始提交")
+	repo.Write("demo.go", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = false, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	d := diffDoc(a, "")
+	g := d.Ged
+	if g.Rows()[0].Kind != ged.Fold {
+		t.Fatalf("开头没折：%v", g.Rows()[0])
+	}
+	a.Exec("edit.find")
+	tt.Frame()
+	if !g.Find.Open {
+		t.Fatal("⌘F 没开 ged 的查找条")
+	}
+	tt.Type("FMT")
+	tt.Frame()
+	tt.Frame()
+	// import "fmt"（没改，只算新的一边）、fmt.Errorf（加的）、fmt.Println（改的，旧的一边那行没有）
+	if _, total, _ := g.FindStatus(); total != 3 {
+		t.Fatalf("找 FMT 有 %d 处，应为 3", total)
+	}
+	for range 3 { // 绕一圈：总会跳到开头折起来的 import 那行
+		tt.Key(0, wui.KeyEnter)
+		tt.Frame()
+	}
+	if g.Rows()[0].Kind == ged.Fold && g.Rows()[0].N > 2 {
+		t.Errorf("跳到折起来的 import 那行没展开：%v", g.Rows()[0])
+	}
+	cur, _, _ := g.FindStatus()
+	if cur < 1 {
+		t.Errorf("↩ 后没有当前那处：%d", cur)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-find.png")
+	}
+	tt.Key(0, wui.KeyEscape)
+	tt.Frame()
+	if g.Find.Open {
+		t.Error("Esc 没关查找条")
+	}
+}
+
+// ged 的 Diff 右键开 Grove 的菜单（照 VS Code 的 Diff 编辑器）：对着按下的那一行、那处改动，复制这一行、暂存这一块，
+// 旧的一边是“复制旧版本的这一行”；只看时没有剪切、粘贴；⇧F10 用键盘开同一份。
+func TestGedMenu(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	var copied string
+	keep := app.CopyText
+	app.CopyText = func(s string) { copied = s }
+	t.Cleanup(func() { app.CopyText = keep })
+	old, new := gedFiles()
+	repo := testutil.NewRepo(t, "gedmenu")
+	repo.Write("demo.go", old)
+	repo.Commit("初始提交")
+	repo.Write("demo.go", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = true, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	d := diffDoc(a, "")
+	g := d.Ged
+	h := g.Hunks()[0] // 第 8 步：n += 8 → n *= 8，翻倍
+	row := -1
+	for i, rw := range g.Rows() {
+		if rw.New == h.NewStart {
+			row = i
+			break
+		}
+	}
+	if row < 0 {
+		t.Fatalf("找不到第一处改动的行：%+v", h)
+	}
+	g.ScrollY = 0
+	tt.Frame()
+	box, lh := g.Bounds(), g.RowHeight()
+	y := box.Y + g.RowTop(row) + lh/2 - g.ScrollY
+	newLine := strings.Split(new, "\n")[h.NewStart]
+	oldLine := strings.Split(old, "\n")[h.OldStart]
+
+	tt.RightClickAt(g.LineX(1)+30, y)
+	tt.Frame()
+	if o, ok := a.Menu.Owner.(menuOwner); !a.Menu.IsOpen() || !ok || o.Kind != "ged" {
+		t.Fatalf("右键 ged 的 Diff 该开它的菜单：open=%v owner=%+v", a.Menu.IsOpen(), a.Menu.Owner)
+	}
+	if sp := g.MenuSpot(); sp.Side != 1 || sp.Line != h.NewStart || sp.Hunk != 0 || sp.New != h.NewStart {
+		t.Fatalf("右键记下的位置 %+v，该是新的一边第 %d 行、第 0 处", sp, h.NewStart)
+	}
+	items := shownMenu(t, tt)
+	for _, want := range []string{"复制", "暂存这一块", "丢弃这一块…", "复制这一行", "查找…", "下一处改动", "在编辑器中打开这一行", "统一 diff", "软换行", "全选"} {
+		if !slices.Contains(items, want) {
+			t.Errorf("菜单里没有 %q：%q", want, items)
+		}
+	}
+	for _, no := range []string{"剪切", "粘贴", "取消暂存这一块"} {
+		if slices.Contains(items, no) {
+			t.Errorf("只看的未暂存 Diff 不该有 %q", no)
+		}
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-menu.png")
+		tt.SetScale(1)
+		tt.Frame()
+	}
+	if err := chooseMenu(t, tt, "复制这一行"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if copied != newLine {
+		t.Fatalf("复制这一行复制的是 %q，要 %q", copied, newLine)
+	}
+
+	// 旧的一边：复制旧版本的这一行
+	box = g.Bounds()
+	y = box.Y + g.RowTop(row) + lh/2 - g.ScrollY
+	tt.RightClickAt(g.LineX(0)+30, y)
+	tt.Frame()
+	if err := chooseMenu(t, tt, "复制旧版本的这一行"); err != nil {
+		t.Fatalf("%v：%q", err, shownMenu(t, tt))
+	}
+	tt.Frame()
+	if copied != oldLine {
+		t.Fatalf("复制旧版本的这一行复制的是 %q，要 %q", copied, oldLine)
+	}
+
+	// 菜单里暂存这一块：只暂存右键的那一块
+	tt.RightClickAt(g.LineX(1)+30, y)
+	tt.Frame()
+	if err := chooseMenu(t, tt, "暂存这一块"); err != nil {
+		t.Fatal(err)
+	}
+	wait("暂存第 1 处", func() bool { return idle(r)() && r.Status.Staged == 1 })
+	cached := repo.Git("diff", "--cached", "--", "demo.go")
+	if !strings.Contains(cached, "翻倍") || strings.Contains(cached, "Println") || strings.Contains(cached, "太大") {
+		t.Fatalf("暂存区该只有翻倍那一块：\n%s", cached)
+	}
+
+	// ⇧F10：键盘开同一份菜单
+	tt.Frame()
+	tt.ClickAt(g.LineX(1)+30, box.Y+lh/2)
+	tt.Frame()
+	tt.Key(wui.Shift, wui.KeyF10)
+	tt.Frame()
+	if o, ok := a.Menu.Owner.(menuOwner); !a.Menu.IsOpen() || !ok || o.Kind != "ged" {
+		t.Fatalf("⇧F10 该开 ged 的菜单：open=%v owner=%+v", a.Menu.IsOpen(), a.Menu.Owner)
+	}
+	if err := chooseMenu(t, tt, "查找…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !g.Find.Open {
+		t.Error("菜单里的查找…没开查找条")
+	}
+}
+
+// 折叠条：行号那格里的箭头点一下往上 / 往下再露 20 行（开头那段只有往上的），点条上别处整段展开；右键折叠条的菜单也能露。
+func TestGedFoldExpand(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	var o strings.Builder
+	for i := range 130 {
+		o.WriteString("line " + strconv.Itoa(i) + "\n")
+	}
+	old := o.String()
+	new := strings.Replace(strings.Replace(old, "line 50\n", "line 50 改\n", 1), "line 100\n", "line 100 改\n", 1)
+	repo := testutil.NewRepo(t, "gedfold")
+	repo.Write("a.txt", old)
+	repo.Commit("初始提交")
+	repo.Write("a.txt", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = false, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "a.txt"}, true)
+	wait("a.txt 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	g := diffDoc(a, "").Ged
+	rowY := func(i int) float32 { return g.Bounds().Y + g.RowTop(i) + g.RowHeight()/2 - g.ScrollY }
+	foldAfter := func(old int) int { // 第一条从 old 往后的折叠
+		for i, rw := range g.Rows() {
+			if rw.Kind == ged.Fold && rw.Old >= old {
+				return i
+			}
+		}
+		return -1
+	}
+	// 开头那段 0..46：只有往上露的箭头
+	if rw := g.Rows()[0]; rw.Kind != ged.Fold || rw.N != 47 {
+		t.Fatalf("开头：%+v", rw)
+	}
+	if _, ok := g.FoldArrowX(0, -1); ok {
+		t.Error("开头那段不该有往下露的箭头")
+	}
+	x, ok := g.FoldArrowX(0, 1)
+	if !ok {
+		t.Fatal("开头那段没有往上露的箭头")
+	}
+	tt.ClickAt(x, rowY(0))
+	tt.Frame()
+	if rw := g.Rows()[0]; rw.Kind != ged.Fold || rw.N != 27 || g.Rows()[1].Old != 27 {
+		t.Fatalf("点往上露后：%+v %+v", rw, g.Rows()[1])
+	}
+	// 中间那段 54..96：两个箭头；悬停在往下露的上面截个图
+	mid := foldAfter(54)
+	if rw := g.Rows()[mid]; rw.Old != 54 || rw.N != 43 {
+		t.Fatalf("中间那段：%+v", rw)
+	}
+	xd, ok1 := g.FoldArrowX(mid, -1)
+	_, ok2 := g.FoldArrowX(mid, 1)
+	if !ok1 || !ok2 {
+		t.Fatalf("中间那段该有两个箭头：%v %v", ok1, ok2)
+	}
+	g.ScrollY = max(0, g.RowTop(mid)-4*g.RowHeight())
+	tt.Frame()
+	tt.Move(xd, rowY(mid))
+	tt.Frame()
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-fold.png")
+		tt.SetScale(1)
+		tt.Frame()
+	}
+	tt.ClickAt(xd, rowY(mid))
+	tt.Frame()
+	if rw := g.Rows()[foldAfter(54)]; rw.Old != 74 || rw.N != 23 {
+		t.Fatalf("点往下露后：%+v", rw)
+	}
+	// 右键折叠条：往上展开 20 行，剩 3 行 → 再点条中间整段展开
+	mid = foldAfter(54)
+	g.ScrollY = max(0, g.RowTop(mid)-4*g.RowHeight())
+	tt.Frame()
+	tt.RightClickAt(g.LineX(1)+40, rowY(mid))
+	tt.Frame()
+	items := shownMenu(t, tt)
+	for _, want := range []string{"展开这 23 行", "往下展开 20 行", "往上展开 20 行"} {
+		if !slices.Contains(items, want) {
+			t.Errorf("折叠条的菜单里没有 %q：%q", want, items)
+		}
+	}
+	if err := chooseMenu(t, tt, "往上展开 20 行"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	mid = foldAfter(54)
+	if rw := g.Rows()[mid]; rw.Kind != ged.Fold || rw.Old != 74 || rw.N != 3 {
+		t.Fatalf("菜单往上露后：%+v", rw)
+	}
+	if _, ok := g.FoldArrowX(mid, 1); ok {
+		t.Error("剩 3 行时不该画箭头")
+	}
+	tt.ClickAt(g.LineX(1)+40, rowY(mid))
+	tt.Frame()
+	if i := foldAfter(54); i >= 0 && g.Rows()[i].Old < 100 {
+		t.Fatalf("点条中间该整段展开：%+v", g.Rows()[i])
+	}
+}
+
+// 忽略行首行尾空白：菜单里勾上后只改了缩进的行不算改动，处数跟着变；暂存这一块只暂存看得见的那处。
+func TestGedTrim(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	old := "package demo\n\nfunc f(x bool) int {\nif x {\nreturn 1\n}\nreturn 0\n}\n"
+	new := "package demo\n\nfunc f(x bool) int {\n\tif x {\n\t\treturn 2\n\t}\n\treturn 0\n}\n"
+	repo := testutil.NewRepo(t, "gedtrim")
+	repo.Write("demo.go", old)
+	repo.Commit("初始提交")
+	repo.Write("demo.go", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified, a.St.DiffTrim = true, false, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	g := diffDoc(a, "").Ged
+	if h := g.Hunks(); len(h) != 1 || h[0].NewEnd-h[0].NewStart != 4 {
+		t.Fatalf("不忽略空白时一处改 4 行：%+v", h)
+	}
+	y := g.Bounds().Y + g.RowHeight()/2
+	tt.RightClickAt(g.LineX(1)+30, y)
+	tt.Frame()
+	if err := chooseMenu(t, tt, "忽略行首行尾空白"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.St.DiffTrim || !g.IgnoreTrim() {
+		t.Fatal("菜单没打开忽略空白")
+	}
+	h := g.Hunks()
+	if len(h) != 1 || h[0].NewStart != 4 || h[0].NewEnd != 5 {
+		t.Fatalf("忽略空白后只剩 return 那一行：%+v", h)
+	}
+	g.GoToHunk(0)
+	tt.Frame()
+	tt.RightClickAt(g.LineX(1)+30, g.Bounds().Y+g.RowTop(4)+g.RowHeight()/2-g.ScrollY)
+	tt.Frame()
+	if err := chooseMenu(t, tt, "暂存这一块"); err != nil {
+		t.Fatalf("%v：%q", err, shownMenu(t, tt))
+	}
+	wait("暂存", func() bool { return idle(r)() && r.Status.Staged == 1 })
+	cached := repo.Git("diff", "--cached", "--", "demo.go")
+	if !strings.Contains(cached, "+\t\treturn 2") || strings.Contains(cached, "+\tif x {") {
+		t.Fatalf("暂存区该只有 return 那一行：\n%s", cached)
+	}
+	a.ToggleDiffTrim()
+	tt.Frame()
+	if g.IgnoreTrim() {
+		t.Fatal("关掉忽略空白后 ged 还忽略着")
+	}
+}
+
+// ⌃G 在 ged 的 Diff 上开命令面板的 ":"，回车跳到新的一边那一行：在折起来的段里时展开、滚进视图。
+func TestGedGoToLine(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	var o strings.Builder
+	for i := range 200 {
+		o.WriteString("line " + strconv.Itoa(i) + "\n")
+	}
+	old := o.String()
+	new := strings.Replace(old, "line 10\n", "line 10 改\n", 1)
+	repo := testutil.NewRepo(t, "gedgoto")
+	repo.Write("a.txt", old)
+	repo.Commit("初始提交")
+	repo.Write("a.txt", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = false, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "a.txt"}, true)
+	wait("a.txt 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	g := diffDoc(a, "").Ged
+	a.Exec("edit.goToLine")
+	if !a.Palette.Open || a.Palette.Text != ":" {
+		t.Fatalf("⌃G 该开 \":\" 面板：open=%v text=%q", a.Palette.Open, a.Palette.Text)
+	}
+	a.Palette.Text = ":150"
+	a.UpdatePalette()
+	if len(a.Palette.Items) != 1 || !strings.Contains(a.Palette.Items[0].Detail, "共 201 行") {
+		t.Fatalf("跳行的那一项：%+v %q", a.Palette.Items, a.Palette.Note)
+	}
+	a.AcceptPalette(0)
+	tt.Frame()
+	tt.Frame()
+	row := -1
+	for i, rw := range g.Rows() {
+		if rw.Kind != ged.Fold && rw.New == 149 {
+			row = i
+		}
+	}
+	if row < 0 {
+		t.Fatal("第 150 行还折着")
+	}
+	top := g.RowTop(row) - g.ScrollY
+	if top < 0 || top > g.Bounds().H-g.RowHeight() {
+		t.Fatalf("第 150 行不在视图里：top=%v h=%v", top, g.Bounds().H)
+	}
+	if t2 := g.Selected(); t2 != "" {
+		t.Errorf("跳行后不该有选中的字：%q", t2)
+	}
+}
+
+// TestGedOccurrences：选中一个词，两边别处一样的词都涂一层（VS Code 的 selection highlight）。
+func TestGedOccurrences(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	repo := testutil.NewRepo(t, "gedoccur")
+	repo.Write("a.go", "package a\n\nfunc total(xs []int) int {\n\tsum := 0\n\tfor _, x := range xs {\n\t\tsum += x\n\t}\n\treturn sum\n}\n")
+	repo.Commit("初始提交")
+	repo.Write("a.go", "package a\n\nfunc total(xs []int) int {\n\tsum := 0\n\tfor _, x := range xs {\n\t\tsum += x * 2\n\t}\n\treturn sum\n}\n")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = true, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "a.go"}, true)
+	wait("a.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	g := diffDoc(a, "").Ged
+	g.Select(1, 3, 1, 3, 4) // 新的一边第 4 行的 sum
+	tt.Frame()
+	if got := g.Occurrences(1, 5); len(got) != 1 {
+		t.Errorf("第 6 行的 sum 该涂：%v", got)
+	}
+	if got := g.Occurrences(0, 7); len(got) != 1 {
+		t.Errorf("旧的一边第 8 行的 sum 该涂：%v", got)
+	}
+	if got := g.Occurrences(1, 3); len(got) != 0 {
+		t.Errorf("选中的那处自己不算：%v", got)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		writeShot(t, tt, dir, "ged-occur.png")
 	}
 }

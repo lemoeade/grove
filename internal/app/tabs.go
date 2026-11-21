@@ -149,6 +149,10 @@ func (a *App) OpenAt(r *Repo, rel string, j docs.Jump, pin bool) *docs.Doc {
 // JumpHere 在当前标签里跳到 j（快速打开里的 :行号、跳到行）。
 func (a *App) JumpHere(j docs.Jump) {
 	d := a.CurrentDoc()
+	if d != nil && d.Kind == docs.Diff && d.UsingGed() {
+		d.Ged.GoToLine(j.Line)
+		return
+	}
 	if d == nil || d.IsDiffView() {
 		return
 	}
@@ -755,6 +759,13 @@ func (a *App) ChooseFiles() {
 // ToggleLayout 在并排和统一 diff 之间切换（⌥⌘L），所有 Diff 标签都跟着。
 func (a *App) ToggleLayout() {
 	a.St.Unified = !a.St.Unified
+	a.SaveState()
+}
+
+// ToggleDiffTrim 开、关 diff 的“忽略行首行尾空白”（只改了缩进、行尾空格的行不算改动），所有 Diff 标签都跟着。
+// 只有 Grove 自己画的 Diff（ged）认；暂存、丢弃按看到的改动走，藏起来的空白改动留在工作区里。
+func (a *App) ToggleDiffTrim() {
+	a.St.DiffTrim = !a.St.DiffTrim
 	a.SaveState()
 }
 

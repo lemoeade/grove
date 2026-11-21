@@ -9,6 +9,7 @@ import (
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/docs"
 	"github.com/lemoeade/grove/internal/ged"
+	"github.com/lemoeade/grove/internal/git"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/outline"
 )
@@ -45,6 +46,7 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 		return bufLines(st.Old), bufLines(st.New)
 	}, lang)
 	g.SetFull(a.St.FullDiff)
+	g.SetIgnoreTrim(a.St.DiffTrim)
 	g.SetUnified(st.Layout == editor.DiffUnified) // diffLook 定的：设置里的统一，或者一边是空的（新文件、删掉的文件）
 	switch f := d.GedFocus; {
 	case f > 0:
@@ -85,13 +87,155 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 		s.Buf = st.New
 		s.Paste = func() string { return app.ReadClipboard() }
 	}
+	s.Wrap = a.WrapOf(d) // ⌥Z：diffLook 给 mygo 那个 Diff 的也是它
+	s.FindBar = func(c *wui.Context, bar wui.Element) { gedFindBar(c, bar, g) }
 	s.Keys = func(ev wui.InputEvent) bool { return gedKeys(a, d, ev) }
-	return ged.View(c, gedKey{d}, g, s)
+	owner := menuOwner{"ged", d.Where()}
+	s.Menu = menuPointer(a, c, g.Bounds(), owner, func(m menu) { gedMenu(a, m, d) })
+	el := ged.View(c, gedKey{d}, g, s)
+	if el.FocusWithin() { // ⇧F10 / 菜单键：在光标（或当前那处改动）那一行下面开
+		sp, x, y := g.KeySpot()
+		b := g.Bounds()
+		a.MenuKeyAt = &app.MenuKeyTarget{Owner: owner, X: b.X + x, Y: b.Y + y,
+			Build: func(m app.MenuSink) { g.SetSpot(sp); gedMenu(a, m, d) }}
+	}
+	return el
 }
 
-// gedKeys 是 ged 的 Diff 有焦点时界面这边接的键：下一处 / 上一处改动（默认 J / K，按命令注册表里现在的键）。
+// gedMenu 是 ged 的 Diff 的右键菜单，照 VS Code 的 Diff 编辑器：剪切 / 复制 / 粘贴；指针下那处改动的暂存 / 取消暂存 / 丢弃，
+// 选中的行的；复制这一行；查找、上 / 下一处；在编辑器中打开这一行；统一、全文、软换行、就地编辑；全选；路径。
+// 对着的是右键按下的那一处（ged.Diff.MenuSpot），不一定是当前标签，所以动作都按 d 做。
+func gedMenu(a *app.App, m menu, d *docs.Doc) {
+	g, st := d.Ged, d.DiffSt
+	if g == nil || st == nil {
+		return
+	}
+	sp := g.MenuSpot()
+	cur := a.CurrentDoc() == d
+	key := func(it menuItem, id string) menuItem {
+		if cur {
+			shortcut(it, id)
+		}
+		return it
+	}
+	_, _, caret := g.Caret()
+	if g.CanEdit() { // 就地编辑：撤销、重做走编辑菜单那条路（ged 按连着打的一组撤）
+		if m.Item(i18n.T("撤销")).Shortcut(wui.Super, wui.KeyZ).Chosen() {
+			g.Run("undo")
+		}
+		if m.Item(i18n.T("重做")).Shortcut(wui.Super|wui.Shift, wui.KeyZ).Chosen() {
+			g.Run("redo")
+		}
+		m.Separator()
+	}
+	if g.CanEdit() && m.Item(i18n.T("剪切")).Shortcut(wui.Super, wui.KeyX).Disabled(!g.HasSelection() || sp.Side != 1).Chosen() {
+		g.Run("cut")
+	}
+	if m.Item(i18n.T("复制")).Shortcut(wui.Super, wui.KeyC).Disabled(!g.HasSelection()).Chosen() {
+		g.Run("copy")
+	}
+	if g.CanEdit() && m.Item(i18n.T("粘贴")).Shortcut(wui.Super, wui.KeyV).Disabled(!caret && !(g.HasSelection() && sp.Side == 1)).Chosen() {
+		g.Run("paste")
+	}
+	if n := g.FoldSize(sp.Fold); n > 0 { // 按在折叠条上：VS Code 那样整段展开，或往下 / 往上再露 20 行
+		up, down := g.FoldDirs(sp.Fold)
+		m.Separator()
+		if m.Item(i18n.Tn("展开这 %d 行", n)).Chosen() {
+			g.ExpandMore(sp.Fold, 0)
+		}
+		if n > ged.FoldStep+1 {
+			if up && m.Item(i18n.Tf("往下展开 %d 行", ged.FoldStep)).Chosen() {
+				g.ExpandMore(sp.Fold, -1)
+			}
+			if down && m.Item(i18n.Tf("往上展开 %d 行", ged.FoldStep)).Chosen() {
+				g.ExpandMore(sp.Fold, 1)
+			}
+		}
+	}
+	if hs := g.Hunks(); st.HunkActions && sp.Hunk >= 0 && sp.Hunk < len(hs) {
+		h := hs[sp.Hunk]
+		eh := editor.DiffHunk{OldStart: h.OldStart, OldEnd: h.OldEnd, NewStart: h.NewStart, NewEnd: h.NewEnd}
+		stage, unstage, discard := app.HunkOps(d)
+		m.Separator()
+		if stage && m.Item(i18n.T("暂存这一块")).Chosen() {
+			a.StageHunk(d, eh)
+		}
+		if unstage && m.Item(i18n.T("取消暂存这一块")).Chosen() {
+			a.UnstageHunk(d, eh)
+		}
+		if discard && m.Item(i18n.T("丢弃这一块…")).Danger().Chosen() {
+			a.DiscardHunk(d, eh)
+		}
+	}
+	if stage, unstage, discard := app.LinesOps(d); stage || unstage || discard {
+		m.Separator()
+		if stage && key(m.Item(i18n.T("暂存选中的行")), "diff.stageLines").Chosen() {
+			a.StageLines(d)
+		}
+		if unstage && key(m.Item(i18n.T("取消暂存选中的行")), "diff.unstageLines").Chosen() {
+			a.UnstageLines(d)
+		}
+		if discard && key(m.Item(i18n.T("丢弃选中的行…")), "diff.discardLines").Danger().Chosen() {
+			a.DiscardLines(d)
+		}
+	}
+	m.Separator()
+	if t, ok := g.SpotLine(); ok {
+		label := i18n.T("复制这一行")
+		if sp.Side == 0 {
+			label = i18n.T("复制旧版本的这一行")
+		}
+		if m.Item(label).Chosen() {
+			app.CopyText(t)
+		}
+	}
+	if key(m.Item(i18n.T("查找…")), "edit.find").Chosen() {
+		g.OpenFind()
+	}
+	if key(m.Item(i18n.T("下一处改动")), "diff.nextHunk").Disabled(!app.CanGoToHunk(d, 1)).Chosen() {
+		a.GoToHunk(d, 1)
+	}
+	if key(m.Item(i18n.T("上一处改动")), "diff.prevHunk").Disabled(!app.CanGoToHunk(d, -1)).Chosen() {
+		a.GoToHunk(d, -1)
+	}
+	if r := a.RepoOf(d); r != nil && (d.Kind == docs.Diff && d.Change.Code != 'D' && d.Change.Kind != git.InCommit || d.Kind == docs.ReplacePreview) {
+		if m.Item(i18n.T("在编辑器中打开这一行")).Chosen() {
+			a.OpenAt(r, d.Rel, docs.Jump{Line: sp.New}, true)
+		}
+	}
+	m.Separator()
+	if key(m.Item(i18n.T("统一 diff")), "diff.unified").Checked(a.St.Unified).Disabled(oneSided(st)).Chosen() {
+		a.ToggleLayout()
+	}
+	if key(m.Item(i18n.T("全文 diff")), "diff.full").Checked(a.St.FullDiff).Chosen() {
+		a.ToggleScope()
+	}
+	if key(m.Item(i18n.T("忽略行首行尾空白")), "diff.ignoreTrim").Checked(a.St.DiffTrim).Chosen() {
+		a.ToggleDiffTrim()
+	}
+	if key(m.Item(i18n.T("软换行")), "view.softWrap").Checked(a.WrapOf(d)).Chosen() {
+		a.ToggleWrapOf(d)
+	}
+	if editing := app.DiffEditing(d); editing || a.CanEditDiff(d) {
+		if key(m.Item(i18n.T("在 Diff 里就地编辑")), "diff.editInPlace").Checked(editing).Chosen() {
+			a.ToggleDiffEdit(d)
+		}
+	}
+	m.Separator()
+	if m.Item(i18n.T("全选")).Shortcut(wui.Super, wui.KeyA).Chosen() {
+		g.Run("selectAll")
+	}
+	pathItems(a, m, d)
+}
+
+// gedKeys 是 ged 的 Diff 有焦点时界面这边接的键：下一处 / 上一处改动（默认 J / K，按命令注册表里现在的键）；
+// 查找条开着时 Esc 关掉它。⌘F / ⌘G 视图不接，走窗口上登记的 edit.find / edit.findNext。
 func gedKeys(a *app.App, d *docs.Doc, ev wui.InputEvent) bool {
 	mods := ev.Mods & (wui.Shift | wui.Ctrl | wui.Alt | wui.Super)
+	if ev.Key == wui.KeyEscape && mods == 0 && d.Ged.Find.Open {
+		d.Ged.CloseFind()
+		return true
+	}
 	for _, k := range []struct {
 		id  string
 		dir int
@@ -139,4 +283,52 @@ func gedStyle(a *app.App, t *wui.Theme) ged.Style {
 		UIFont:      wui.Font{Size: 11},
 		FoldLabel:   func(n int) string { return i18n.Tn("%d 行未修改", n) },
 	}
+}
+
+// gedFindBar 是 ged 的 Diff 右上角的查找条（样子同终端的查找条）：敲字就找（不分大小写），↩ / ⌘G 下一处，
+// ⇧↩ 上一处，Esc 关掉、键盘回到 Diff。
+func gedFindBar(c *wui.Context, bar wui.Element, g *ged.Diff) {
+	t := c.Theme()
+	f := &g.Find
+	bar.Height(32).Padding(0, 4, 0, 10).Gap(4).AlignItems(wui.Center).Radius(8).
+		Background(t.Background).Border(1, t.Border).Shadow(shadowFloat()).Children(func() {
+		wui.Icon(c, iconSearch).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
+		in := wui.TextInputBase(c.Key("q"), &f.Text).Label(i18n.T("在 Diff 里查找")).Placeholder(i18n.T("查找")).FontSize(bodyFont).Width(170).
+			OnTextKey(func(k wui.TextKey) bool {
+				switch {
+				case k.Key == wui.KeyEscape && k.Mods == 0:
+					g.CloseFind()
+				case k.Key == wui.KeyEnter && k.Mods == wui.Shift, k.Key == wui.KeyG && k.Mods == wui.Shift|wui.Super:
+					g.FindStep(-1)
+				case k.Key == wui.KeyG && k.Mods == wui.Super:
+					g.FindStep(1)
+				default:
+					return false
+				}
+				return true
+			})
+		if f.Focus {
+			f.Focus = false
+			in.Focus().SetTextSelection(0, len([]rune(f.Text)))
+		}
+		g.SetFind(f.Text)
+		if in.Submitted() {
+			g.FindStep(1)
+		}
+		cur, total, more := g.FindStatus()
+		count, col := "", t.TextMuted
+		switch {
+		case f.Text == "":
+		case total == 0:
+			count, col = i18n.T("没有结果"), t.Danger
+		case more:
+			count = i18n.Tf("%d / %d+", cur, total)
+		default:
+			count = i18n.Tf("%d / %d", cur, total)
+		}
+		wui.Text(c, count).FontSize(11).TextColor(col).SingleLine().MinWidth(52).TextAlign(wui.End).Margin(0, 4, 0, 0)
+		iconButton(c, iconChevronUp, i18n.T("查找上一个（⇧↩）"), func() { g.FindStep(-1) })
+		iconButton(c, iconChevron, app.Tip(i18n.T("查找下一个"), "edit.findNext"), func() { g.FindStep(1) })
+		iconButton(c, iconClose, i18n.T("关闭查找"), g.CloseFind)
+	})
 }

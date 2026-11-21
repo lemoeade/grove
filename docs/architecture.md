@@ -137,7 +137,7 @@ cmd/workbench ─► internal/ui ─► internal/app ─► 逻辑包 internal/{
 ```json
 {"version":4,"appVersion":"0.2.0",
  "sidebar":true,"rightBar":true,"bottomBar":true,"sidebarMode":"files",
- "sidebarW":280,"rightW":320,"bottomH":240,"termW":420,"unified":false,"fullDiff":false,
+ "sidebarW":280,"rightW":320,"bottomH":240,"termW":420,"unified":false,"fullDiff":false,"diffTrim":false,
  "histAll":true,"histBranches":false,"histNoGraph":false,"openEditorsFolded":false,
  "recentWs":["/abs/x.code-workspace","/abs/dir"],"windows":["/abs/x.code-workspace",""],"cloneDir":"/abs/src",
  "recent":["/abs/repo/a.go"],"commitMsgs":["修好登录","…"],
@@ -162,7 +162,7 @@ cmd/workbench ─► internal/ui ─► internal/app ─► 逻辑包 internal/{
                                  {"inEditor":true,"num":4}],"active":1}},
    "layout":{"row":true,"ratio":0.5,"a":{"tabs":[0]},"b":{"tabs":[1,2],"sel":1,"focus":true}},
    "panels":{"sidebar":true,"rightBar":false,"bottomBar":true,"sidebarMode":"git","sidebarW":300,"rightW":320,"bottomH":240,"termW":420,
-             "unified":true,"fullDiff":false,"histAll":true,"histBranches":false,"histNoGraph":false,"openEditorsFolded":false}}}}
+             "unified":true,"fullDiff":false,"diffTrim":false,"histAll":true,"histBranches":false,"histNoGraph":false,"openEditorsFolded":false}}}}
 ```
 
 示例为了把键写全，零值也写了；实际文件里带 `omitempty` 的零值不写。几个键的意思：
@@ -284,7 +284,25 @@ Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`�
 编辑菜单的 cut / paste / delete / undo / redo。改用 `replace`：`Buf.Edit` 一次一步撤销，mygo 合并打字的没导出，所以 ged 自己记每一组合了几次（`undoGroups`，1 s 内同类的连着打 / 连着删合一组，
 缓冲区版本对不上——别处改过——就清掉），`undo` 按组连调几次 `Buf.Undo` / `Redo`，光标放到 `changedEnd`。改完马上 `reload` → `update`：旧的一边没变时留着折叠展开、旧的一边的排版、选择，只扔新的一边的排版和分词状态。
 光标不闪（静止时不多画帧，见 mygo-pitfalls 编辑器一节），`paintCaret` 记下 `caretBox`，`View` 里 `el.TextCaret` 交给输入法；`revealCaret` 在 `View` 和 `Draw` 里把光标滚进视图（在折叠里就展开）。
-`TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页；`TestGedLines` 看拖着选行、Esc、点一行 ⇧ 点一行、暂存选中的行只暂存那两行；`TestGedUnified` 看切到统一后一栏、上 / 下一处、点删掉的行的行号选旧的一边、暂存选中的行，再切回并排；`TestGedEdit` 看就地编辑的光标、打字、一步撤销、回车缩进、J 打进去、组字、剪切粘贴、⌘S 存盘。`ged` 包里 `TestUnified` 看排成一栏的顺序和折叠，`TestChangedEnd` / `TestWordMoves` 看撤销后的光标和按词移动，`TestChangeAfter` 看折叠条找的那处改动；`TestGedFoldScope` 看折叠条写的函数。
+软换行（`ged/wrap.go`）：`Style.Wrap`（`a.WrapOf(d)`，⌥Z）开着时 `layout` 按那一格正文的宽（`setWrapWidth`，右边那格让出概览条）排，`lineLayout.n` 是折成几行。
+一个 `Row` 占几个“屏幕行”（`lh` 高）按两边折得多的那边算（统一视图按它那一边），`tops` 是前缀和：没排过的行按格数估（宽字两格），排出来和估的不一样就标 `topsDirty` 下一次重算，
+所以看得见的那段是准的、上面没看过的按估的。`top(i)` / `rowIndex(v)` 在不换行时就是 i / v，滚动、点、画、概览条、上 / 下一处都改问它们；折出来的第 k 行画在 `top(i)+k`（`rowY`），
+`posAt` 按折出来的行问 `IndexAt`，↑ ↓ 先在一行折出来的几行里走（`vertical`）。开关时滚动位置留在顶上那一行（`wrapAt`）。
+查找（`ged/find.go`）：`Diff.Find` 是查找条的状态（开没开、输入框的字），条本身由 `Style.FindBar`（`gedFindBar`）画、`View` 摆在右上角（贴着的“暂存这一块”往下让）。
+`SetFind` 每帧拿输入框的字来比，变了才重找（`search`：只折 ASCII 的大小写，按对齐的顺序记新的一边每一行、旧的一边改了的行，最多 `findMax` 处），当前那处挑视口往下的第一处；
+`FindStep` 前后跳、绕回，`revealMatch` 展开折叠、把底栏的那处改动跟过去，`revealFind` 在 `View` 里滚过去。`edit.find` / `edit.findNext`（`findIn`）在 `UsingGed` 时开查找条、跳下一处，不然照旧给 mygo 的编辑器。
+右键菜单（`ged/menu.go`）：`Style.Menu` 先拿到右键（⌃点）的按下、按着拖、松开，按下前 `menuAt` 记好 `Spot`（哪边、哪行、哪处改动、跳到文件时去新的一边哪行），
+按在选中的字外面时选择挪过去（就地编辑是放光标）。界面那边 `Style.Menu` 是 `menuPointer`（`gmenu.go`，`menuPress` 收事件的那一半，不登记 `AddTarget`：
+菜单开着时在 Diff 别处右键只关掉，因为接收层盖着、ged 记不了新按在哪），菜单是 `gedMenu`（`gedview.go`）；⇧F10 / 菜单键由 `KeySpot` 按光标 / 当前那处改动定位置，
+`MenuKeyAt` 的 Build 先 `SetSpot`。剪切、复制、粘贴、全选经 `Diff.Run` 走和编辑菜单一样的 `InputCommand`；软换行按 d 切（`ToggleWrapOf`，菜单对着的不一定是当前标签）。
+折叠条分步展开：`Diff.open` 按那段没改的行在旧的一边的第一行记 `Reveal`（`Top` 接着上面的改动往下露几行、`Bottom` 接着下面的往上露、`All` 整段），`foldRows` 折的时候让出这些行，
+顺便按 `Fold` 行的 `Old` 记 `foldInfo`（这段的键、上 / 下挨不挨着改动）。`ExpandMore(i, dir)` 一次露 `FoldStep`（20）行，剩的不比它多就整段；箭头（`foldArrows`）画在行号那格里，
+`foldZone` 认点在哪个上，悬停的那个垫一层底（`hoverZ`）。右键记 `Spot.Fold`，菜单按 `FoldDirs` 给“往下 / 往上展开 20 行”。
+忽略行首行尾空白：`State.DiffTrim`（`diff.ignoreTrim` / `ToggleDiffTrim`）每帧经 `SetIgnoreTrim` 给 ged，`AlignTrim` 拿去掉首尾空白的行去配；只改了空白的行是 `Same` 但两边的字不一样，
+画的时候各画各的，查找按 `sameText` 决定旧的一边借不借新的一边的结果。改动、补丁都按看到的 `Hunks` 走，补丁的上下文取自要套的那一份，所以藏起来的空白改动不碍事。mygo 那个 Diff 不认这个开关（命令在没用 ged 时灰着）。
+跳到行：`edit.goToLine` 在 `gedFind` 时开命令面板的 ":"（`goToLine`），`lineItems` 按 `Ged.LineCount` 写共几行，`JumpHere` 交给 `Diff.GoToLine`（新的一边，空的时旧的一边；`rowOfLine` 展开折叠，`want` 滚过去）。
+选中的字（一行之内、不全是空白、200 字节以内）每帧记成 `occ`（`occurText`），画每一行时 `occurrences` 找出一样的几处、涂 `Code.Occurrence`（分大小写，选的那处自己不涂）。
+`TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页；`TestGedLines` 看拖着选行、Esc、点一行 ⇧ 点一行、暂存选中的行只暂存那两行；`TestGedUnified` 看切到统一后一栏、上 / 下一处、点删掉的行的行号选旧的一边、暂存选中的行，再切回并排；`TestGedEdit` 看就地编辑的光标、打字、一步撤销、回车缩进、J 打进去、组字、剪切粘贴、⌘S 存盘。`ged` 包里 `TestUnified` 看排成一栏的顺序和折叠，`TestChangedEnd` / `TestWordMoves` 看撤销后的光标和按词移动，`TestChangeAfter` 看折叠条找的那处改动；`TestGedFoldScope` 看折叠条写的函数；`TestGedWrap` 看软换行后长行变高、短行不变、点第二截放光标、↑ ↓ 在折出来的行里走、关了还原；`TestGedFind` 看 ⌘F 开条、数处数、回车跳到折叠里那处会展开、Esc 关；`TestGedMenu` 看右键开 ged 的菜单、记的位置、只看时没有剪切粘贴、复制这一行（两边）、菜单里暂存这一块只暂存那一块、⇧F10 开菜单再选查找。`TestGedFoldExpand` 看开头那段只有往上的箭头、点箭头露 20 行、中间那段两个箭头、右键折叠条的菜单、剩的不多时不画箭头、点条中间整段展开；`ged` 包里 `TestFoldReveal` / `TestExpandMore` 看折的时候让出露的行、剩的不多整段展开。`TestGedTrim` 看菜单里勾上忽略空白后只剩真改了的那处、暂存这一块只暂存那一行；`ged` 包里 `TestAlignTrim`。`TestGedGoToLine` 看 ⌃G 开 ":"、跳到折着的第 150 行会展开并滚进视图。`TestGedOccurrences` 看选中一个词后两边别处一样的词都涂、选的那处自己不算；`ged` 包里 `TestOccurrences` 看全是空白、跨行的不涂。
 
 Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.go`）。`git.HunkPatch` 从那一块生成补丁，暂存是 `git apply --cached -`，取消暂存是 `--cached -R`，丢弃是工作区上 `-R`。
 

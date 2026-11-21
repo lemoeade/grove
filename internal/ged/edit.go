@@ -167,6 +167,14 @@ func (d *Diff) vertical(c pos, n int, extend bool, s *Style) {
 		d.goalX = l.l.Caret(l.u16[min(c.off, len(l.u16)-1)]).X
 	}
 	goal := d.goalX
+	if n == 1 || n == -1 { // 折行了：先在这一行折出来的几行里上下走
+		l := d.layout(1, c.line, s)
+		if k := l.caretRow(c.off) + n; k >= 0 && k < l.n {
+			d.moveTo(pos{c.line, l.indexOnRow(k, goal)}, extend)
+			d.goalX = goal
+			return
+		}
+	}
 	t := c.line + n
 	switch {
 	case t < 0:
@@ -175,8 +183,11 @@ func (d *Diff) vertical(c pos, n int, extend bool, s *Style) {
 		d.moveTo(pos{len(lines) - 1, len(lines[len(lines)-1])}, extend)
 	default:
 		l := d.layout(1, t, s)
-		_, th := l.l.Size()
-		d.moveTo(pos{t, byteAt(l.u16, l.l.IndexAt(wui.Point{X: goal, Y: th / 2}))}, extend)
+		k := 0
+		if n < 0 { // 往上走到上一行折出来的最后一行
+			k = l.n - 1
+		}
+		d.moveTo(pos{t, l.indexOnRow(k, goal)}, extend)
 	}
 	d.goalX = goal
 }
@@ -482,23 +493,26 @@ func (d *Diff) revealCaret(g geom, s *Style) {
 	if i < 0 {
 		return
 	}
-	g.content = float32(len(d.rows)) * g.lh
-	y := float32(i) * g.lh
+	l := d.layout(1, c.line, s)
+	g.content = float32(d.top(len(d.rows))) * g.lh
+	y := float32(d.top(i)+l.caretRow(c.off)) * g.lh
 	if y < d.ScrollY {
 		d.ScrollY = y
 	} else if y+g.lh > d.ScrollY+g.h {
 		d.ScrollY = y + g.lh - g.h
 	}
-	l := d.layout(1, c.line, s)
+	if d.unified {
+		d.side = 1
+	}
+	if d.wrap {
+		return
+	}
 	x := l.l.Caret(l.u16[min(c.off, len(l.u16)-1)]).X
 	room := g.paneW[1] - g.textX - rulerW
 	if x < d.scrollX[1] {
 		d.scrollX[1] = max(0, x-4*g.cw)
 	} else if x > d.scrollX[1]+room-g.cw {
 		d.scrollX[1] = x - room + 4*g.cw
-	}
-	if d.unified {
-		d.side = 1
 	}
 }
 

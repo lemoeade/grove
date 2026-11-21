@@ -240,10 +240,15 @@ func (a *App) lineItems(j docs.Jump) ([]PaletteItem, string) {
 	if d == nil {
 		return nil, i18n.T("先打开一个文件再跳行")
 	}
-	if _, ok := d.Cursor(); !ok {
+	n := 0
+	if d.Kind == docs.Diff && d.UsingGed() { // Grove 自己画的 Diff：跳新的一边的行
+		n = d.Ged.LineCount()
+	} else if _, ok := d.Cursor(); ok {
+		n = d.Buf.LineCount()
+	} else {
 		return nil, i18n.T("先打开一个文件再跳行")
 	}
-	it := PaletteItem{Kind: ItemLine, Text: i18n.Tf("跳到%s", lineText(j)), Detail: i18n.Tn("%s · 共 %d 行", d.Title, d.Buf.LineCount()),
+	it := PaletteItem{Kind: ItemLine, Text: i18n.Tf("跳到%s", lineText(j)), Detail: i18n.Tn("%s · 共 %d 行", d.Title, n),
 		jump: j, at: true}
 	return []PaletteItem{it}, ""
 }

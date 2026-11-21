@@ -104,8 +104,10 @@ func anchorName(s string) string {
 }
 
 // ToggleSoftWrap 开关当前标签的软换行（⌥Z）：只这一个标签，设置里的默认不动；切回和设置一样就又跟着设置。
-func (a *App) ToggleSoftWrap() {
-	d := a.CurrentDoc()
+func (a *App) ToggleSoftWrap() { a.ToggleWrapOf(a.CurrentDoc()) }
+
+// ToggleWrapOf 开关 d 的软换行（标签、Diff 的右键菜单对着的不一定是当前标签）。
+func (a *App) ToggleWrapOf(d *docs.Doc) {
 	if !canWrap(d) {
 		return
 	}

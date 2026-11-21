@@ -90,12 +90,28 @@ const (
 // 按着时的移动和松开转给菜单。el 是装它的元素（建的时候取它上一帧的位置，事件里换算成窗口坐标）；other 是这个元素原来的 HandleInput（可以为空），
 // 不是右键的事件照旧交给它。
 func menuPress(a *app.App, c *wui.Context, el wui.Element, owner any, build func(menu), other func(wui.InputEvent) bool) {
-	held := false             // 这次右键按下是这个元素接的
-	b := el.Bounds()          // 上一帧的位置（事件里不能再用元素）
-	root := c.Root().Bounds() // 上一帧的窗口大小：事件里再取是 0×0，菜单会按空窗口排成一小块（docs/mygo-pitfalls.md）
+	b := el.Bounds() // 上一帧的位置（事件里不能再用元素）
 	// 登记成能开菜单的地方：菜单开着时右键这里，关掉那份、在这里开新的（接收层盖着，事件到不了这个元素）
 	a.Menu.AddTarget(app.MenuRect{X: b.X, Y: b.Y, W: b.W, H: b.H}, menuZ(owner), owner, build)
+	h := menuPointer(a, c, b, owner, build)
 	el.HandleInput(func(ev wui.InputEvent) bool {
+		if h(ev) {
+			return true
+		}
+		if other != nil {
+			return other(ev)
+		}
+		return false
+	})
+}
+
+// menuPointer 是 menuPress 收事件的那一半：b 是收事件的元素在窗口里的位置（事件的坐标相对它）。
+// 自己收事件的部件（ged 的 Diff）把右键的按下、拖、松开交给它。不登记 AddTarget：菜单对着按下的那一处的，
+// 菜单开着时在部件别处右键只关掉（接收层盖着，部件记不了新按在哪）。
+func menuPointer(a *app.App, c *wui.Context, b wui.Rect, owner any, build func(menu)) func(wui.InputEvent) bool {
+	held := false             // 这次右键按下是这个元素接的
+	root := c.Root().Bounds() // 上一帧的窗口大小：事件里再取是 0×0，菜单会按空窗口排成一小块（docs/mygo-pitfalls.md）
+	return func(ev wui.InputEvent) bool {
 		m := &a.Menu
 		x, y := b.X+ev.X, b.Y+ev.Y
 		switch ev.Kind {
@@ -119,11 +135,8 @@ func menuPress(a *app.App, c *wui.Context, el wui.Element, owner any, build func
 				return true
 			}
 		}
-		if other != nil {
-			return other(ev)
-		}
 		return false
-	})
+	}
 }
 
 // menuOwner 是文件树以外的菜单对着的东西（比较用，要可比较）：哪一类 + 哪个仓库 / 哪一项。
