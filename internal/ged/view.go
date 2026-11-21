@@ -64,6 +64,12 @@ type Style struct {
 	// Menu 接右键（或 ⌃点）：按下、按着拖、松开都先给它（调用方开自己的菜单，按住拖到项上松开选它）。按下时视图先记好
 	// 按在哪（MenuSpot），按在选中的字外面时选择挪到那里（就地编辑时是放光标），指针下那处改动成了当前那处。nil 不接。
 	Menu func(ev wui.InputEvent) bool
+	// Bindings 是就地编辑时改过的键（叠在 editor.DefaultBindings 上，先查它；绑到 NoCommand 的键算拿走）。
+	Bindings []editor.Binding
+	// Indent 是缩进一级打什么："tab"、空格数（"2"、"4"…），空为看文件里用的（见 keys.go 的 indentUnit）。
+	Indent string
+	// Whitespace 是画不画空白（空格画点、Tab 画箭头）：""（选中的字里）、"all"、"trailing"（行尾的）、"none"。
+	Whitespace string
 }
 
 // Context 是改动上下各留几行不折。
@@ -124,8 +130,11 @@ type Diff struct {
 	textLeft [2]float32 // 两边正文从哪开始（画的坐标，上一帧的），给测试用
 
 	// 就地编辑（edit.go）
-	editable     bool     // 这一帧给了 Style.Buf
-	focused      bool     // 这一帧视图有键盘焦点（没有时不画光标）
+	editable     bool           // 这一帧给了 Style.Buf
+	buf          *editor.Buffer // 就是那个 Style.Buf（查找条上的替换用）
+	focused      bool           // 这一帧视图有键盘焦点（没有时不画光标）
+	brk          [2]pos         // 光标挨着的括号和配对的那个（新的一边），brkOK 时画框
+	brkOK        bool
 	compose      string   // 输入法正拼着的字（还没进缓冲区，画在光标处）
 	composeCaret int      // 拼着的字里光标在第几个字（rune）
 	goalX        float32  // 上下挪光标时横着想停在哪（正文里的 x），-1 没有
@@ -821,7 +830,7 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	}
 	d.style = &s
 	d.setWrap(s.Wrap)
-	d.editable = s.Buf != nil
+	d.editable, d.buf = s.Buf != nil, s.Buf
 	if !d.editable {
 		d.compose = ""
 	}
@@ -1337,6 +1346,11 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 		d.topsDirty = true
 	}
 	d.occ = d.occurText()
+	d.brkOK = false
+	if d.editable && d.focused && d.sel.side == 1 && d.sel.empty() && len(d.lines[1]) > 0 {
+		at, m, ok := d.matchBracket(1, d.sel.b)
+		d.brk, d.brkOK = [2]pos{at, m}, ok
+	}
 	d.lsel = lineSel{}
 	if d.canPick(s) {
 		side, a, b, ok := s.Lines()
@@ -1482,11 +1496,77 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 				d.paintSel(p, l, lineOf(row, d.sel.side), sx, vy, g, s)
 			}
 		}
+		d.paintSpaces(p, l, side, line, sx, vy, g, s)
+		if side == 1 && d.brkOK { // 配对的括号：各画一个框（VS Code 的 bracket match）
+			for _, b := range d.brk {
+				if b.line != line || b.off >= len(l.u16)-1 {
+					continue
+				}
+				for _, rc := range l.l.SelectionRects(wui.TextInputRange{Start: l.u16[b.off], End: l.u16[b.off+1]}) {
+					p.Stroke(wui.Rect{X: sx + rc.X, Y: vy(rc.Y) + 1, W: rc.W, H: g.lh - 2}, s.Code.MatchingBracket, 2, 1)
+				}
+			}
+		}
 		p.TextLayout(l.l, sx, ty, s.Code.Text)
 		if side == 1 && d.editable && d.focused && d.sel.side == 1 && line == d.sel.b.line {
 			d.paintCaret(p, r, l, sx, vy, g, s)
 		}
 	})
+}
+
+// paintSpaces 按 Style.Whitespace 画空白：空格一个小点，Tab 一道横线。默认只画选中的字里的（和 VS Code 的
+// renderWhitespace: selection 一样），"all" 都画，"trailing" 只画行尾的，"none" 不画。
+func (d *Diff) paintSpaces(p *wui.Painter, l *lineLayout, side, line int, sx float32, vy func(float32) float32, g geom, s *Style) {
+	mode := s.Whitespace
+	if mode == "none" || s.Code.Whitespace.A == 0 {
+		return
+	}
+	lo, hi := 0, 0 // 要画的那段（字节）
+	t := clean(d.lines[side][line])
+	switch mode {
+	case "all":
+		hi = len(t)
+	case "trailing":
+		lo, hi = len(strings.TrimRight(t, " \t")), len(t)
+	default:
+		if d.sel.empty() || d.sel.side != side {
+			return
+		}
+		a, b := d.sel.span()
+		if line < a.line || line > b.line {
+			return
+		}
+		hi = len(t)
+		if line == a.line {
+			lo = a.off
+		}
+		if line == b.line {
+			hi = min(hi, b.off)
+		}
+	}
+	if lo >= hi || side == 1 && d.compose != "" && line == d.sel.b.line || len(l.u16) <= hi {
+		return
+	}
+	c := s.Code.Whitespace
+	for i := lo; i < hi; i++ {
+		ch := t[i]
+		if ch != ' ' && ch != '\t' {
+			continue
+		}
+		c0, c1 := l.l.Caret(l.u16[i]), l.l.Caret(l.u16[i+1])
+		y := vy(c0.Y) + g.lh/2
+		if c1.Y != c0.Y || c1.X <= c0.X { // 折行处
+			continue
+		}
+		x0, x1 := sx+c0.X, sx+c1.X
+		if ch == ' ' {
+			p.Fill(wui.Rect{X: (x0+x1)/2 - 1, Y: y - 1, W: 2, H: 2}, c, 1)
+		} else {
+			p.Line(x0+2, y, x1-2, y, 1, c)
+			p.Line(x1-5, y-3, x1-2, y, 1, c)
+			p.Line(x1-5, y+3, x1-2, y, 1, c)
+		}
+	}
 }
 
 // paintCaret 画光标（2 pt 宽、一行高）；输入法拼着字时字下面画一道线，光标在拼着的字里。

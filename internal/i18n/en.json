@@ -2314,5 +2314,10 @@
   "详情": "Details",
   "读不出图片：%v": "Couldn't read image: %v",
   "跟着源文件": "Following source",
-  "跟着源文件 · %s 关掉": "Following source · %s to close"
+  "跟着源文件 · %s 关掉": "Following source · %s to close",
+  "全部替换（⌥⌘↩）": "Replace All (⌥⌘↩)",
+  "展开替换": "Show Replace",
+  "收起替换": "Hide Replace",
+  "替换": "Replace",
+  "替换（↩）": "Replace (↩)"
 }

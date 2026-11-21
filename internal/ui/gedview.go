@@ -86,7 +86,10 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 	if st.Editable { // 就地编辑：新的一边就是文件标签的缓冲区（BindDiffEdit 接的），打字、撤销都在它上面
 		s.Buf = st.New
 		s.Paste = func() string { return app.ReadClipboard() }
+		s.Bindings = app.DiffEditBindings() // 和文件标签的编辑器一张键位表（改过的键一起变）
+		s.Indent = a.DocIndent(d)
 	}
+	s.Whitespace = a.St.Settings.Whitespace
 	s.Wrap = a.WrapOf(d) // ⌥Z：diffLook 给 mygo 那个 Diff 的也是它
 	s.FindBar = func(c *wui.Context, bar wui.Element) { gedFindBar(c, bar, g) }
 	s.Keys = func(ev wui.InputEvent) bool { return gedKeys(a, d, ev) }
@@ -290,45 +293,87 @@ func gedStyle(a *app.App, t *wui.Theme) ged.Style {
 func gedFindBar(c *wui.Context, bar wui.Element, g *ged.Diff) {
 	t := c.Theme()
 	f := &g.Find
-	bar.Height(32).Padding(0, 4, 0, 10).Gap(4).AlignItems(wui.Center).Radius(8).
+	edit := g.CanEdit()
+	if !edit {
+		f.Replace = false
+	}
+	bar.Padding(2, 4, 2, 4).Gap(2).AlignItems(wui.Start).Radius(8).
 		Background(t.Background).Border(1, t.Border).Shadow(shadowFloat()).Children(func() {
-		wui.Icon(c, iconSearch).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
-		in := wui.TextInputBase(c.Key("q"), &f.Text).Label(i18n.T("在 Diff 里查找")).Placeholder(i18n.T("查找")).FontSize(bodyFont).Width(170).
-			OnTextKey(func(k wui.TextKey) bool {
-				switch {
-				case k.Key == wui.KeyEscape && k.Mods == 0:
-					g.CloseFind()
-				case k.Key == wui.KeyEnter && k.Mods == wui.Shift, k.Key == wui.KeyG && k.Mods == wui.Shift|wui.Super:
-					g.FindStep(-1)
-				case k.Key == wui.KeyG && k.Mods == wui.Super:
-					g.FindStep(1)
-				default:
-					return false
+		if edit { // 就地编辑：左边的箭头展开 / 收起替换（VS Code 的查找条那样）
+			ic, tip := iconChevronRight, i18n.T("展开替换")
+			if f.Replace {
+				ic, tip = iconChevron, i18n.T("收起替换")
+			}
+			iconButton(c, ic, app.Tip(tip, "edit.replace"), func() { f.Replace = !f.Replace; f.FocusWith = f.Replace })
+		}
+		wui.Column(c).Gap(2).Children(func() {
+			wui.Row(c).Height(28).Gap(4).AlignItems(wui.Center).Padding(0, 0, 0, 6).Children(func() {
+				wui.Icon(c, iconSearch).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
+				in := wui.TextInputBase(c.Key("q"), &f.Text).Label(i18n.T("在 Diff 里查找")).Placeholder(i18n.T("查找")).FontSize(bodyFont).Width(170).
+					OnTextKey(func(k wui.TextKey) bool {
+						switch {
+						case k.Key == wui.KeyEscape && k.Mods == 0:
+							g.CloseFind()
+						case k.Key == wui.KeyEnter && k.Mods == wui.Shift, k.Key == wui.KeyG && k.Mods == wui.Shift|wui.Super:
+							g.FindStep(-1)
+						case k.Key == wui.KeyG && k.Mods == wui.Super:
+							g.FindStep(1)
+						default:
+							return false
+						}
+						return true
+					})
+				if f.Focus {
+					f.Focus = false
+					in.Focus().SetTextSelection(0, len([]rune(f.Text)))
 				}
-				return true
+				g.SetFind(f.Text)
+				if in.Submitted() {
+					g.FindStep(1)
+				}
+				cur, total, more := g.FindStatus()
+				count, col := "", t.TextMuted
+				switch {
+				case f.Text == "":
+				case total == 0:
+					count, col = i18n.T("没有结果"), t.Danger
+				case more:
+					count = i18n.Tf("%d / %d+", cur, total)
+				default:
+					count = i18n.Tf("%d / %d", cur, total)
+				}
+				wui.Text(c, count).FontSize(11).TextColor(col).SingleLine().MinWidth(52).TextAlign(wui.End).Margin(0, 4, 0, 0)
+				iconButton(c, iconChevronUp, i18n.T("查找上一个（⇧↩）"), func() { g.FindStep(-1) })
+				iconButton(c, iconChevron, app.Tip(i18n.T("查找下一个"), "edit.findNext"), func() { g.FindStep(1) })
+				iconButton(c, iconClose, i18n.T("关闭查找"), g.CloseFind)
 			})
-		if f.Focus {
-			f.Focus = false
-			in.Focus().SetTextSelection(0, len([]rune(f.Text)))
-		}
-		g.SetFind(f.Text)
-		if in.Submitted() {
-			g.FindStep(1)
-		}
-		cur, total, more := g.FindStatus()
-		count, col := "", t.TextMuted
-		switch {
-		case f.Text == "":
-		case total == 0:
-			count, col = i18n.T("没有结果"), t.Danger
-		case more:
-			count = i18n.Tf("%d / %d+", cur, total)
-		default:
-			count = i18n.Tf("%d / %d", cur, total)
-		}
-		wui.Text(c, count).FontSize(11).TextColor(col).SingleLine().MinWidth(52).TextAlign(wui.End).Margin(0, 4, 0, 0)
-		iconButton(c, iconChevronUp, i18n.T("查找上一个（⇧↩）"), func() { g.FindStep(-1) })
-		iconButton(c, iconChevron, app.Tip(i18n.T("查找下一个"), "edit.findNext"), func() { g.FindStep(1) })
-		iconButton(c, iconClose, i18n.T("关闭查找"), g.CloseFind)
+			if !f.Replace {
+				return
+			}
+			wui.Row(c).Height(28).Gap(4).AlignItems(wui.Center).Padding(0, 0, 0, 6).Children(func() {
+				wui.Icon(c, iconReplace).FontSize(iconRow).TextColor(t.TextMuted).Shrink(0)
+				in := wui.TextInputBase(c.Key("with"), &f.With).Label(i18n.T("替换为")).Placeholder(i18n.T("替换")).FontSize(bodyFont).Width(170).
+					OnTextKey(func(k wui.TextKey) bool {
+						switch {
+						case k.Key == wui.KeyEscape && k.Mods == 0:
+							g.CloseFind()
+						case k.Key == wui.KeyEnter && k.Mods == wui.Super|wui.Alt:
+							g.ReplaceAll()
+						default:
+							return false
+						}
+						return true
+					})
+				if f.FocusWith {
+					f.FocusWith = false
+					in.Focus().SetTextSelection(0, len([]rune(f.With)))
+				}
+				if in.Submitted() { // ↩ 替换当前那处、跳到下一处
+					g.ReplaceOne()
+				}
+				iconButton(c, iconReplace, i18n.T("替换（↩）"), func() { g.ReplaceOne() })
+				iconButton(c, iconCheck, i18n.T("全部替换（⌥⌘↩）"), func() { g.ReplaceAll() })
+			})
+		})
 	})
 }

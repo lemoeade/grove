@@ -117,6 +117,17 @@ func gedFind(a *App) bool {
 
 func canFind(a *App) bool { return hasEditor(a) || gedFind(a) }
 
+// canReplace 是替换能按：文件编辑器，或就地编辑着的 ged 的 Diff（查找条下面开替换）。
+func canReplace(a *App) bool { return hasEditor(a) || gedFind(a) && a.CurrentDoc().Ged.CanEdit() }
+
+func replaceIn(a *App) {
+	if gedFind(a) {
+		a.CurrentDoc().Ged.OpenReplace()
+		return
+	}
+	a.CurrentDoc().St.Run(editor.FindReplace)
+}
+
 // findIn 是查找、查找下一个的 Run：ged 的 Diff 上开它的查找条（dir 0）或跳到下一处（查找条没开、没字时先开），
 // 别的在编辑器里执行 cmd。
 func findIn(cmd editor.Command, dir int) func(a *App) {
@@ -426,7 +437,7 @@ func buildCommands() []*Command {
 		// 不进菜单栏：⌥⌘F 在菜单里是 Diff 的全文 diff，同一个键按当前标签分派（RunKey）
 		// ged 画的 Diff 标签（WORKBENCH_GED）也走这两条：开它自己的查找条、跳下一处（mygo 那个 Diff 有焦点时自己接）
 		&Command{ID: "edit.find", Title: "查找…", Mods: cmd, Key: ui.KeyF, Context: Editor, Enabled: canFind, Run: findIn(editor.Find, 0), ed: editor.Find},
-		&Command{ID: "edit.replace", Title: "替换…", Mods: alt | cmd, Key: ui.KeyF, Context: Editor, Enabled: hasEditor, Run: inEditor(editor.FindReplace), ed: editor.FindReplace},
+		&Command{ID: "edit.replace", Title: "替换…", Mods: alt | cmd, Key: ui.KeyF, Context: Editor, Enabled: canReplace, Run: replaceIn, ed: editor.FindReplace},
 		&Command{ID: "edit.findNext", Title: "查找下一个", Mods: cmd, Key: ui.KeyG, Context: Editor, Enabled: canFind, Run: findIn(editor.FindNext, 1), ed: editor.FindNext},
 		&Command{ID: "edit.goToLine", Title: "跳到行…", Mods: ctrl, Key: ui.KeyG, Context: Editor, Enabled: canFind, Run: goToLine, ed: editor.GoToLine},
 		// ⇧⌘O 是添加仓库，跳到符号换成 ⌃⇧O

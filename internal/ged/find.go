@@ -11,6 +11,10 @@ type Find struct {
 	Open  bool   // 查找条开着
 	Text  string // 输入框里的字
 	Focus bool   // 下一帧把键盘给输入框、全选里面的字（调用方画输入框时用掉）
+	// Replace 是查找条下面多一行替换（就地编辑时才有），With 是替换框里的字；FocusWith 下一帧把键盘给替换框。
+	Replace   bool
+	With      string
+	FocusWith bool
 }
 
 type match struct {
@@ -27,8 +31,113 @@ func (d *Diff) OpenFind() {
 	if t := d.Selected(); t != "" && !strings.Contains(t, "\n") {
 		d.Find.Text = t
 	}
-	d.Find.Open, d.Find.Focus = true, true
+	d.Find.Open, d.Find.Focus, d.Find.Replace = true, true, false
 	d.findQ = "\x00" // 下一次 SetFind 重新找、跳到视口往下的第一处
+}
+
+// OpenReplace 开查找条和下面的替换（不在就地编辑时只开查找）。查找框里已经有字时键盘给替换框。
+func (d *Diff) OpenReplace() {
+	d.OpenFind()
+	if !d.editable {
+		return
+	}
+	d.Find.Replace = true
+	if d.Find.Text != "" {
+		d.Find.Focus, d.Find.FocusWith = false, true
+	}
+}
+
+// CanReplace 是能替换：就地编辑着、查找条开着替换。
+func (d *Diff) CanReplace() bool { return d.editable && d.buf != nil && d.Find.Open && d.Find.Replace }
+
+// ReplaceOne 把当前那处换成 Find.With，跳到下一处（VS Code 的“替换”）：当前那处不在新的一边（旧的一边只能看）
+// 或还没跳过时，先跳到下一处新的一边的，不换。换了返回 true。
+func (d *Diff) ReplaceOne() bool {
+	if !d.CanReplace() || len(d.matches) == 0 {
+		return false
+	}
+	if d.findCur < 0 || d.matches[d.findCur].side != 1 {
+		d.stepNew(d.findCur)
+		return false
+	}
+	m := d.matches[d.findCur]
+	s := &Style{Buf: d.buf}
+	d.replace(s, pos{m.line, m.start}, pos{m.line, m.end}, d.Find.With, editOther)
+	// replace 重新对齐时已经重找过：从换进去的字后面找下一处新的一边的
+	at := pos{m.line, m.start + len(d.Find.With)}
+	d.findCur = -1
+	for i, n := range d.matches {
+		if n.side == 1 && !(pos{n.line, n.start}).less(at) {
+			d.findCur = i
+			break
+		}
+	}
+	if d.findCur < 0 {
+		d.stepNew(-1)
+	}
+	d.revealMatch()
+	return true
+}
+
+// stepNew 从 from 往后（到尾绕回）跳到下一处新的一边的。
+func (d *Diff) stepNew(from int) {
+	n := len(d.matches)
+	for k := 1; k <= n; k++ {
+		i := ((from+k)%n + n) % n
+		if d.matches[i].side == 1 {
+			d.findCur = i
+			d.revealMatch()
+			return
+		}
+	}
+}
+
+// ReplaceAll 把新的一边找到的都换成 Find.With（一步撤销），返回换了几处。
+func (d *Diff) ReplaceAll() int {
+	if !d.CanReplace() {
+		return 0
+	}
+	q := foldASCII(d.findQ)
+	if q == "" || q == "\x00" {
+		return 0
+	}
+	lines := d.lines[1]
+	out := make([]string, len(lines))
+	n, first, last := 0, -1, -1
+	for i, t := range lines {
+		src := foldASCII(t)
+		var b strings.Builder
+		at := 0
+		for {
+			k := strings.Index(src[at:], q)
+			if k < 0 {
+				break
+			}
+			b.WriteString(t[at : at+k])
+			b.WriteString(d.Find.With)
+			at += k + len(q)
+			n++
+		}
+		if at == 0 {
+			out[i] = t
+			continue
+		}
+		b.WriteString(t[at:])
+		out[i] = b.String()
+		if first < 0 {
+			first = i
+		}
+		last = i
+	}
+	if n == 0 {
+		return 0
+	}
+	c := d.sel.b
+	s := &Style{Buf: d.buf}
+	d.rewriteLines(s, first, last, out[first:last+1], nil)
+	p := d.clampPos(c)
+	d.sel = selection{side: 1, a: p, b: p}
+	return n
 }
 
 // CloseFind 关查找条，键盘还给视图。

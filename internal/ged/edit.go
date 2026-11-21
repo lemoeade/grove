@@ -192,112 +192,6 @@ func (d *Diff) vertical(c pos, n int, extend bool, s *Style) {
 	d.goalX = goal
 }
 
-// editKey 是就地编辑、有光标时视图自己接的键；没接的（打字的键）返回 false，字跟着以 InputText 来。
-func (d *Diff) editKey(ev wui.InputEvent, g geom, s *Style) bool {
-	c, ok := d.caret(s)
-	if !ok || d.compose != "" { // 输入法正拼着字：键归它
-		return false
-	}
-	mods := ev.Mods & (wui.Shift | wui.Ctrl | wui.Alt | wui.Super)
-	shift, alt, cmd := mods&wui.Shift != 0, mods&wui.Alt != 0, mods&wui.Super != 0
-	if mods&wui.Ctrl != 0 {
-		return false
-	}
-	lines := d.lines[1]
-	page := max(1, int((g.h-2*g.lh)/max(g.lh, 1)))
-	switch ev.Key {
-	case wui.KeyLeft:
-		switch {
-		case !shift && !d.sel.empty() && !cmd && !alt: // 有选中的字：收到前头
-			a, _ := d.sel.span()
-			d.moveTo(a, false)
-		case cmd:
-			d.moveTo(pos{c.line, d.home(c)}, shift)
-		case alt:
-			d.moveTo(d.wordLeft(c), shift)
-		default:
-			d.moveTo(d.left(c), shift)
-		}
-	case wui.KeyRight:
-		switch {
-		case !shift && !d.sel.empty() && !cmd && !alt:
-			_, b := d.sel.span()
-			d.moveTo(b, false)
-		case cmd:
-			d.moveTo(pos{c.line, len(lines[c.line])}, shift)
-		case alt:
-			d.moveTo(d.wordRight(c), shift)
-		default:
-			d.moveTo(d.right(c), shift)
-		}
-	case wui.KeyUp:
-		if cmd {
-			d.moveTo(pos{0, 0}, shift)
-		} else if !alt {
-			d.vertical(c, -1, shift, s)
-		}
-	case wui.KeyDown:
-		if cmd {
-			d.moveTo(pos{len(lines) - 1, len(lines[len(lines)-1])}, shift)
-		} else if !alt {
-			d.vertical(c, 1, shift, s)
-		}
-	case wui.KeyPageUp:
-		d.ScrollY -= float32(page) * g.lh
-		d.vertical(c, -page, shift, s)
-	case wui.KeyPageDown:
-		d.ScrollY += float32(page) * g.lh
-		d.vertical(c, page, shift, s)
-	case wui.KeyHome:
-		d.moveTo(pos{c.line, d.home(c)}, shift)
-	case wui.KeyEnd:
-		d.moveTo(pos{c.line, len(lines[c.line])}, shift)
-	case wui.KeyBackspace:
-		switch {
-		case !d.sel.empty():
-			d.typeText(s, "", editOther)
-		case cmd:
-			d.replace(s, pos{c.line, 0}, c, "", editOther)
-		case alt:
-			d.replace(s, d.wordLeft(c), c, "", editOther)
-		default:
-			d.replace(s, d.left(c), c, "", editDeleting)
-		}
-	case wui.KeyDelete:
-		switch {
-		case !d.sel.empty():
-			d.typeText(s, "", editOther)
-		case cmd:
-			d.replace(s, c, pos{c.line, len(lines[c.line])}, "", editOther)
-		case alt:
-			d.replace(s, c, d.wordRight(c), "", editOther)
-		default:
-			d.replace(s, c, d.right(c), "", editDeleting)
-		}
-	case wui.KeyEnter:
-		if mods&^wui.Shift != 0 {
-			return false
-		}
-		a, _ := d.sel.span()
-		t := lines[a.line][:a.off]
-		d.typeText(s, "\n"+t[:len(t)-len(strings.TrimLeft(t, " \t"))], editOther) // 接着这一行的缩进
-	case wui.KeyTab:
-		if mods != 0 {
-			return false
-		}
-		d.typeText(s, "\t", editTyping)
-	case wui.KeyEscape:
-		if mods != 0 || d.sel.empty() {
-			return false
-		}
-		d.moveTo(d.sel.b, false)
-	default:
-		return false
-	}
-	d.clamp(g)
-	return true
-}
-
 // typeText 把选中的字换成 text（没选就是在光标处插进去）。
 func (d *Diff) typeText(s *Style, text string, kind editKind) {
 	a, b := d.sel.span()
@@ -435,7 +329,7 @@ func (d *Diff) editInput(ev wui.InputEvent, g geom, s *Style) (took, handled boo
 			return false, true
 		}
 		d.compose = ""
-		d.typeText(s, ev.Text, editTyping)
+		d.typeChar(s, ev.Text)
 	case wui.InputCompose:
 		if !ok {
 			return false, true

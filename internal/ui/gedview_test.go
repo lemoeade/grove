@@ -1204,3 +1204,112 @@ func TestGedSplit(t *testing.T) {
 		writeShot(t, tt, dir, "ged-caretline.png")
 	}
 }
+
+// 就地编辑时编辑器那套键在 ged 里也管用（和文件标签共用键位表）：⌥↓ 挪行、⌘/ 注释、⇧⌘K 删行、⌘] 缩进、
+// 打 ( 补上 )；光标挨着括号时两个括号画框，空白按设置画。
+func TestGedEditKeys(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	repo := testutil.NewRepo(t, "gedkeys")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n\ta := 1\n\tb := 2\n\treturn a\n}\n")
+	repo.Commit("初始提交")
+	repo.Write("demo.go", "package demo\n\nfunc f() int {\n\ta := 1\n\tb := 2\n\treturn a + b\n}\n")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = true, false
+	a.St.Settings.Whitespace = "all"
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	d := diffDoc(a, "")
+	a.ToggleDiffEdit(d)
+	wait("Diff 能编辑", func() bool { tt.Frame(); d := diffDoc(a, ""); return d != nil && d.DiffSt != nil && d.DiffSt.Editable })
+	d = diffDoc(a, "")
+	g, buf := d.Ged, d.DiffSt.New
+	lines := func() []string { return strings.Split(buf.String(), "\n") }
+	tt.ClickAt(g.LineX(1)+1, g.Bounds().Y+3.5*g.RowHeight()-g.ScrollY) // 第 4 行（a := 1）
+	tt.Frame()
+	if l, _, ok := g.Caret(); !ok || l != 3 {
+		t.Fatalf("点第 4 行：%d %v", l, ok)
+	}
+	tt.Key(wui.Alt, wui.KeyDown)
+	tt.Frame()
+	if l := lines(); l[3] != "\tb := 2" || l[4] != "\ta := 1" {
+		t.Fatalf("⌥↓ 挪行：%q", l[3:5])
+	}
+	tt.Key(wui.Cmd, wui.KeySlash)
+	tt.Frame()
+	if l := lines(); l[4] != "\t// a := 1" {
+		t.Fatalf("⌘/ 注释：%q", l[4])
+	}
+	tt.Key(wui.Cmd, wui.KeySlash)
+	tt.Key(wui.Cmd|wui.Shift, wui.KeyK)
+	tt.Frame()
+	if l := lines(); l[4] != "\treturn a + b" {
+		t.Fatalf("⌘/ 再 ⇧⌘K：%q", l[3:6])
+	}
+	tt.Key(wui.Cmd, wui.KeyBracketRight)
+	tt.Frame()
+	if l := lines(); l[4] != "\t\treturn a + b" {
+		t.Fatalf("⌘] 缩进：%q", l[4])
+	}
+	tt.Key(wui.Cmd, wui.KeyBracketLeft)
+	tt.Key(wui.Cmd, wui.KeyRight)
+	tt.TypeKey(wui.Shift, wui.Key9, "(")
+	tt.Frame()
+	if l := lines(); l[4] != "\treturn a + b()" {
+		t.Fatalf("打 ( 补 )：%q", l[4])
+	}
+	if l, o, _ := g.Caret(); l != 4 || o != len("\treturn a + b(") {
+		t.Fatalf("光标该在括号中间：%d:%d", l, o)
+	}
+	tt.Command("undo")
+	tt.Frame()
+	if l := lines(); l[4] != "\treturn a + b" {
+		t.Fatalf("撤销补的括号：%q", l[4])
+	}
+	g.PlaceCaret(2, len("func f() int {"))
+	tt.Frame()
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-keys.png")
+		tt.SetScale(1)
+		tt.Frame()
+	}
+
+	// ⌥⌘F：查找条下面开替换；↩ 换一处，“全部替换”换剩下的
+	if c := app.Find("edit.replace"); !c.Enabled(a) {
+		t.Fatal("就地编辑的 ged 上 ⌥⌘F 该能按")
+	}
+	a.Exec("edit.replace")
+	tt.Frame()
+	if !g.Find.Open || !g.Find.Replace {
+		t.Fatal("⌥⌘F 没开替换")
+	}
+	tt.Type("b")
+	tt.Frame()
+	tt.Frame()
+	g.Find.FocusWith = true
+	tt.Frame()
+	tt.Type("z")
+	tt.Key(0, wui.KeyEnter)
+	tt.Frame()
+	if n := strings.Count(buf.String(), "z"); n != 1 {
+		t.Fatalf("↩ 该换一处：%q", buf.String())
+	}
+	mustClick(t, tt, "全部替换（⌥⌘↩）")
+	tt.Frame()
+	if l := lines(); l[3] != "\tz := 2" || l[4] != "\treturn a + z" {
+		t.Fatalf("全部替换：%q", l[3:5])
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-replace.png")
+		tt.SetScale(1)
+		tt.Frame()
+	}
+}
