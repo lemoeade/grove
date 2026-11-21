@@ -97,11 +97,24 @@ func (a *App) linesPatch(d *docs.Doc, toOld bool) (patch string, n int) {
 	if toOld {
 		base = d.Raw[0]
 	}
-	patch = git.LinesPatch(d.Change.Path, base, LinesEdits(d.Raw[0], d.Raw[1], d.DiffSt.Hunks(), sel, toOld))
+	patch = git.LinesPatch(d.Change.Path, base, LinesEdits(d.Raw[0], d.Raw[1], diffHunks(d), sel, toOld))
 	if patch == "" {
 		a.Toast = i18n.T("选中的行里没有改动")
 	}
 	return patch, sel.End - sel.Start + 1
+}
+
+// diffHunks 是选中的行按的一块块改动：ged 画的 Diff 按 ged 对齐的（和看到的一样，哪行配哪行也是），不然是 mygo 的。
+func diffHunks(d *docs.Doc) []editor.DiffHunk {
+	if !d.UsingGed() {
+		return d.DiffSt.Hunks()
+	}
+	hs := d.Ged.Hunks()
+	out := make([]editor.DiffHunk, len(hs))
+	for i, h := range hs {
+		out[i] = editor.DiffHunk{OldStart: h.OldStart, OldEnd: h.OldEnd, NewStart: h.NewStart, NewEnd: h.NewEnd}
+	}
+	return out
 }
 
 // linesNote 是输出栏里那条 git apply 后面的说明。

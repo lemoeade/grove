@@ -40,6 +40,12 @@ type Style struct {
 	// Keys 在视图有键盘焦点时先拿到按下的键（界面那边接 J / K 跳改动这类），接了返回 true；没接的视图自己接
 	// （↑ ↓ 翻页 Home End 滚动、Esc 取消选择）。
 	Keys func(ev wui.InputEvent) bool
+	// Lines / SetLines 是点行号选的行（行级暂存用）：哪边（0 旧、1 新）、第 start 到第 end 行（两头都算，从 0 起）。
+	// 选中的行存在调用方那里（和 mygo 的 Diff 共用一份）。都给了才能选；没给时点行号和点正文一样是选字。
+	Lines    func() (side, start, end int, ok bool)
+	SetLines func(side, start, end int, ok bool)
+	LineSel  wui.Color // 选中的行的底
+	LineMark wui.Color // 选中的行左边的竖条
 }
 
 // Context 是改动上下各留几行不折。
@@ -82,12 +88,28 @@ type Diff struct {
 	selecting bool // 正按着拖选
 	side      int  // 上次按在哪边（⌘A 全选那边，← → 横着滚那边）
 	focus     bool // 按下了：下一帧把键盘焦点给视图
+
+	picking  bool // 正按着在行号上拖着选行
+	anchor   int  // 选行的起点（⇧ 点、拖动从这算），-1 没有
+	gutter   bool // 指针在行号上（能选行时）
+	lsel     lineSel
+	textLeft [2]float32 // 两边正文从哪开始（画的坐标，上一帧的），给测试用
 }
 
 // pos 是一边里的一个位置：第 line 行（从 0 起）第 off 个字节前。
 type pos struct{ line, off int }
 
 func (p pos) less(q pos) bool { return p.line < q.line || p.line == q.line && p.off < q.off }
+
+// lineSel 是这一帧选中的行（Style.Lines 给的）。
+type lineSel struct {
+	side, a, b int
+	ok         bool
+}
+
+func (l lineSel) has(side, line int) bool {
+	return l.ok && l.side == side && line >= l.a && line <= l.b
+}
 
 // selection 是一边（side）里选中的字，从 a 到 b（拖的起点和现在的点，不一定 a 在前）。按原文的行算：
 // 拖过折叠条时折起来的行也算在里面，展开、折起不影响它。
@@ -114,7 +136,9 @@ type lineLayout struct {
 }
 
 // NewDiff 建一个空的 Diff。
-func NewDiff() *Diff { return &Diff{open: map[int]bool{}, hover: -1, cur: -1, want: -1, side: 1} }
+func NewDiff() *Diff {
+	return &Diff{open: map[int]bool{}, hover: -1, cur: -1, want: -1, side: 1, anchor: -1}
+}
 
 // Set 换上两边的内容：key 和上次一样就什么都不做（调用方拿两边的版本号当 key），不一样才调 load 重新对齐。
 // 返回重新对齐了没有。滚动位置留着，折叠的展开状态清掉。
@@ -531,12 +555,15 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	switch {
 	case d.hover >= 0 && d.rows[d.hover].Kind == Fold && !d.onBar:
 		el.Cursor(wui.CursorPointer)
+	case d.gutter && !d.selecting || d.picking:
+		el.Cursor(wui.CursorDefault)
 	case d.hover >= 0 && !d.onBar || d.selecting:
 		el.Cursor(wui.CursorText)
 	}
 	el.Draw(func(p *wui.Painter, r wui.Rect) {
 		g := d.geom(&s, r.W, r.H, p.Scale())
 		d.w, d.h, d.lh, d.box = r.W, r.H, g.lh, r
+		d.textLeft = [2]float32{r.X + g.paneX[0] + g.textX, r.X + g.paneX[1] + g.textX}
 		d.applyWant(g)
 		d.clamp(g)
 		d.paint(p, r, g, &s)
@@ -627,7 +654,7 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 		if s.Keys != nil && s.Keys(ev) {
 			return true
 		}
-		return d.onKey(ev, g)
+		return d.onKey(ev, g, s)
 	case wui.InputCommand:
 		switch ev.Text {
 		case "copy":
@@ -681,6 +708,9 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 			side = 1
 		}
 		d.side = side
+		if d.pickLine(ev, i, side, g, s) {
+			return true
+		}
 		p := d.posAt(ev.X, ev.Y, side, g, s)
 		switch {
 		case ev.Mods&wui.Shift != 0 && !d.sel.empty() && d.sel.side == side: // ⇧ 点：从原来的起点选到这
@@ -700,6 +730,20 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 			d.clamp(g)
 			return true
 		}
+		if d.picking {
+			if ev.Y < 0 {
+				d.ScrollY += ev.Y
+			} else if ev.Y > g.h {
+				d.ScrollY += ev.Y - g.h
+			}
+			d.clamp(g)
+			if i := d.rowAt(min(max(ev.Y, 0), g.h-1), g); i >= 0 && d.rows[i].Kind != Fold {
+				if line := lineOf(d.rows[i], d.lsel.side); line >= 0 && d.anchor >= 0 {
+					s.SetLines(d.lsel.side, d.anchor, line, true)
+				}
+			}
+			return true
+		}
 		if d.selecting {
 			// 拖出视图上下边时跟着滚（只在指针动的时候滚）
 			if ev.Y < 0 {
@@ -713,30 +757,79 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 			return true
 		}
 		hv := d.rowAt(ev.Y, g)
-		if hv != d.hover || inBar != d.onBar {
-			d.hover, d.onBar = hv, inBar
+		gut := !inBar && d.canPick(s) && d.inGutter(ev.X, g)
+		if hv != d.hover || inBar != d.onBar || gut != d.gutter {
+			d.hover, d.onBar, d.gutter = hv, inBar, gut
 			return true
 		}
 	case wui.InputPointerUp:
-		if d.drag || d.selecting {
-			d.drag, d.selecting = false, false
+		if d.drag || d.selecting || d.picking {
+			d.drag, d.selecting, d.picking = false, false, false
 			return true
 		}
 	}
 	return false
 }
 
-// onKey 是视图自己接的键：↑ ↓ 一行，翻页、空格一屏，Home / End、⌘↑ / ⌘↓ 到头尾，← → 横着滚上次按的那边，Esc 取消选择。
-func (d *Diff) onKey(ev wui.InputEvent, g geom) bool {
+// canPick 是能不能点行号选行。
+func (d *Diff) canPick(s *Style) bool { return s.Lines != nil && s.SetLines != nil }
+
+// inGutter 是 x 在不在那边的行号、+ − 上（正文左边）。
+func (d *Diff) inGutter(x float32, g geom) bool {
+	side := 0
+	if x >= g.paneX[1] {
+		side = 1
+	}
+	return x-g.paneX[side] < g.textX-4
+}
+
+// pickLine 是按在行号上：选那一行（⇧ 点从起点选到这，同一边才算），接着拖动扩大。按的不是行号、那边是空行、
+// 不能选行时返回 false，照选字走。
+func (d *Diff) pickLine(ev wui.InputEvent, i, side int, g geom, s *Style) bool {
+	if !d.canPick(s) || i < 0 || d.rows[i].Kind == Fold || !d.inGutter(ev.X, g) {
+		return false
+	}
+	line := lineOf(d.rows[i], side)
+	if line < 0 {
+		return false
+	}
+	d.sel = selection{}
+	ls, a, b, ok := s.Lines()
+	if ev.Mods&wui.Shift != 0 && ok && ls == side {
+		if d.anchor < a || d.anchor > b { // 不是在这里选的（mygo 那个 Diff 选的、或者换过）：从原来的头算
+			d.anchor = a
+		}
+	} else {
+		d.anchor = line
+	}
+	d.lsel = lineSel{side: side, a: min(d.anchor, line), b: max(d.anchor, line), ok: true}
+	s.SetLines(side, d.anchor, line, true)
+	d.picking = true
+	return true
+}
+
+// LineX 是 side 那边正文从哪开始（画的坐标，上一帧的）；往左是行号，按在上面是选行。给测试用。
+func (d *Diff) LineX(side int) float32 { return d.textLeft[side] }
+
+// onKey 是视图自己接的键：↑ ↓ 一行，翻页、空格一屏，Home / End、⌘↑ / ⌘↓ 到头尾，← → 横着滚上次按的那边，
+// Esc 取消选中的字，没有选中的字时取消选中的行。
+func (d *Diff) onKey(ev wui.InputEvent, g geom, s *Style) bool {
 	page := max(g.lh, g.h-2*g.lh)
 	cmd := ev.Mods&wui.Super != 0
 	switch {
 	case ev.Key == wui.KeyEscape && ev.Mods == 0:
-		if d.sel.empty() {
-			return false
+		if !d.sel.empty() {
+			d.sel = selection{}
+			return true
 		}
-		d.sel = selection{}
-		return true
+		if d.canPick(s) {
+			if _, _, _, ok := s.Lines(); ok {
+				s.SetLines(0, 0, 0, false)
+				d.anchor = -1
+				return true
+			}
+		}
+		return false
 	case ev.Key == wui.KeyHome || cmd && ev.Key == wui.KeyUp:
 		d.ScrollY = 0
 	case ev.Key == wui.KeyEnd || cmd && ev.Key == wui.KeyDown:
@@ -837,6 +930,11 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 	if d.font != s.Font || d.theme != *s.Code { // 换了字体、深浅色：排好的字作废
 		d.layouts, d.font, d.theme = nil, s.Font, *s.Code
 	}
+	d.lsel = lineSel{}
+	if d.canPick(s) {
+		side, a, b, ok := s.Lines()
+		d.lsel = lineSel{side: side, a: min(a, b), b: max(a, b), ok: ok}
+	}
 	vis := p.Visible()
 	top := max(vis.Y, r.Y)
 	bottom := min(vis.Y+vis.H, r.Y+r.H)
@@ -880,6 +978,10 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side, lin
 	}
 	if changed {
 		p.Fill(cell, lineBg, 0)
+	}
+	if d.lsel.has(side, line) { // 叠在红绿底上看不太出来：左边再画一道竖条
+		p.Fill(cell, s.LineSel, 0)
+		p.Fill(wui.Rect{X: x0, Y: y, W: 3, H: g.lh}, s.LineMark, 0)
 	}
 	base := y + (g.lh-(g.asc+g.desc))/2 + g.asc
 	num := wui.Shape(strconv.Itoa(line+1), s.Font)

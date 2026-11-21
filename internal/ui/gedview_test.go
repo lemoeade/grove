@@ -211,8 +211,8 @@ func TestGedSelect(t *testing.T) {
 	tt.Frame()
 	box, lh := g.Bounds(), g.RowHeight()
 	rowY := func(i int) float32 { return box.Y + (float32(i)+0.5)*lh - g.ScrollY }
-	// 新的一边，从第 1 行行首（行号那里按下算行首）拖到第 3 行（“import "fmt"”）的最后
-	x0 := box.X + box.W/2 + 4
+	// 新的一边，从第 1 行行首（正文开头；行号上按下是选行）拖到第 3 行（“import "fmt"”）的最后
+	x0 := g.LineX(1) + 1
 	tt.Press(x0, rowY(0))
 	tt.Move(box.X+box.W-30, rowY(2))
 	tt.Release(box.X+box.W-30, rowY(2))
@@ -235,7 +235,7 @@ func TestGedSelect(t *testing.T) {
 		t.Fatalf("⌘C 复制的是 %q", copied)
 	}
 	// 双击选一个词：第 1 行的 package
-	ex := box.X + box.W/2 + 4 + 60 // 正文开头往右一点（package 里面）
+	ex := g.LineX(1) + 20 // 正文开头往右一点（package 里面）
 	tt.ClickAt(ex, rowY(0))
 	tt.ClickAt(ex, rowY(0)) // 紧接着再点一下是双击（Tester 按它自己的钟数）
 	tt.Frame()
@@ -262,5 +262,105 @@ func TestGedSelect(t *testing.T) {
 	}
 	if strings.Contains(d.DiffSt.New.String(), "j") {
 		t.Error("J 打进 diff 里了")
+	}
+}
+
+// ged 的 Diff 上点行号选行：拖着选几行、Esc 取消；点一行再 ⇧ 点一行选上中间的，底下那栏“暂存选中的行”只暂存这几行（临时仓库）。
+func TestGedLines(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	old, new := gedFiles()
+	repo := testutil.NewRepo(t, "gedlines")
+	repo.Write("demo.go", old)
+	repo.Commit("初始提交")
+	repo.Write("demo.go", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = false, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	d := diffDoc(a, "")
+	g := d.Ged
+	// 加了三行的那处（if n > 100 { … }）
+	hi := -1
+	for i, h := range g.Hunks() {
+		if h.OldStart == h.OldEnd && h.NewEnd-h.NewStart == 3 {
+			hi = i
+		}
+	}
+	if hi < 0 {
+		t.Fatalf("没找到加了三行的那处：%v", g.Hunks())
+	}
+	h := g.Hunks()[hi]
+	g.GoToHunk(hi)
+	tt.Frame()
+	tt.Frame()
+	box, lh := g.Bounds(), g.RowHeight()
+	rowOf := func(line int) float32 { // 新的第 line 行在视图里的 y（行中间）
+		for i, row := range g.Rows() {
+			if row.Kind != ged.Fold && row.New == line {
+				return box.Y + (float32(i)+0.5)*lh - g.ScrollY
+			}
+		}
+		t.Fatalf("新的第 %d 行不在视图的行里", line+1)
+		return 0
+	}
+	num := g.LineX(1) - 24 // 新的一边的行号上
+	tt.Press(num, rowOf(h.NewStart))
+	tt.Move(num, rowOf(h.NewStart+2))
+	tt.Release(num, rowOf(h.NewStart+2))
+	tt.Frame()
+	if sel, ok := d.DiffSt.SelectedLines(); !ok || sel.Side != 1 || sel.Start != h.NewStart || sel.End != h.NewStart+2 {
+		t.Fatalf("拖着选行：%+v %v，应为新的 %d–%d", sel, ok, h.NewStart, h.NewStart+2)
+	}
+	if g.Selected() != "" {
+		t.Errorf("选行时还选了字：%q", g.Selected())
+	}
+	if !tt.HasText(i18n.Tn("选中 %d 行", 3)) {
+		t.Error("底下没有“选中 3 行”那栏")
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-lines.png")
+		tt.SetScale(1)
+		a.St.BottomBar = true
+		tt.Frame()
+		box = g.Bounds()
+		num = g.LineX(1) - 24
+	}
+	tt.Key(0, wui.KeyEscape)
+	tt.Frame()
+	if _, ok := d.DiffSt.SelectedLines(); ok {
+		t.Fatal("Esc 没取消选中的行")
+	}
+	// 点第一行、⇧ 点第二行：只选这两行，暂存
+	tt.ClickAt(num, rowOf(h.NewStart))
+	tt.Frame()
+	tt.ClickAtWith(wui.Shift, num, rowOf(h.NewStart+1))
+	tt.Frame()
+	if sel, ok := d.DiffSt.SelectedLines(); !ok || sel.Start != h.NewStart || sel.End != h.NewStart+1 {
+		t.Fatalf("点一行再 ⇧ 点：%+v %v", sel, ok)
+	}
+	mustClick(t, tt, "暂存选中的行")
+	wait("暂存选中的两行", func() bool { return idle(r)() && r.Status.Staged == 1 })
+	cached := repo.Git("diff", "--cached", "--", "demo.go")
+	lines := strings.Split(new, "\n")
+	for _, want := range lines[h.NewStart : h.NewStart+2] {
+		if !strings.Contains(cached, "+"+want+"\n") {
+			t.Fatalf("暂存区里没有 %q：\n%s", want, cached)
+		}
+	}
+	if strings.Contains(cached, "+"+lines[h.NewStart+2]+"\n") || strings.Contains(cached, "翻倍") || strings.Count(cached, "\n+") != 3 /* 两行加上 +++ 那行 */ {
+		t.Fatalf("暂存区里多了别的行：\n%s", cached)
+	}
+	if _, ok := d.DiffSt.SelectedLines(); ok {
+		t.Error("暂存完还选着")
 	}
 }

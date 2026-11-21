@@ -760,7 +760,7 @@ func diffContent(a *app.App, c *wui.Context, d *docs.Doc) {
 		if !d.DiffSt.LineSelection {
 			app.ClearSelectedLines(d)
 		}
-		if useGed(d) { // 试做：选行暂存还没有
+		if useGed(d) { // 试做：Grove 自己画的并排 Diff
 			gedDiff(a, c, d)
 		} else {
 			restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)

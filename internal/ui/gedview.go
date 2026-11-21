@@ -12,7 +12,7 @@ import (
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
-// gedOn：设了 WORKBENCH_GED 时，只看的并排 Diff 用 Grove 自己画的（internal/ged）；统一视图、就地编辑、选行暂存
+// gedOn：设了 WORKBENCH_GED 时，只看的并排 Diff 用 Grove 自己画的（internal/ged）；统一视图、就地编辑
 // 还是 mygo 的 editor.DiffView。试做阶段，默认不开。
 var gedOn = os.Getenv("WORKBENCH_GED") != ""
 
@@ -60,6 +60,16 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 			hunkActions(a, c, bar, d, editor.DiffHunk{OldStart: h.OldStart, OldEnd: h.OldEnd, NewStart: h.NewStart, NewEnd: h.NewEnd},
 				stage, unstage, discard)
 		}
+	}
+	if st.LineSelection { // 点行号选行（行级暂存）：和 mygo 的 Diff 用同一份选中的行，底下那栏、暂存选中的行照旧
+		s.Lines = func() (side, start, end int, ok bool) {
+			r, ok := st.SelectedLines()
+			return int(r.Side), r.Start, r.End, ok
+		}
+		s.SetLines = func(side, start, end int, ok bool) {
+			st.SetSelectedLines(editor.DiffLineRange{Side: editor.DiffSide(side), Start: start, End: end}, ok)
+		}
+		s.LineSel, s.LineMark = c.Theme().Accent.Alpha(0.2), c.Theme().Accent
 	}
 	s.Copy = func(text string) { app.CopyText(text) }
 	s.Keys = func(ev wui.InputEvent) bool { return gedKeys(a, d, ev) }

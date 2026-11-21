@@ -272,7 +272,10 @@ Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`�
 和 mygo 那个 Diff 共用），作为绝对定位的子元素，滚动时贴在块顶；位置在 `View` 里按这一帧的滚动现算（`applyWant`），`Bounds()` 只取大小。
 选字是（哪边，行，字节）的一对位置，`HandleInput` 管拖选、双击选词（`tokens`）、三击选行、⇧ 点击，`InputCommand` 的 copy / selectAll 走 `Style.Copy`（`app.CopyText`）；
 元素 `Focusable`，按下时拿焦点，方向键、翻页、空格、Home / End 滚动，Esc 取消选择。
-`TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页。
+按在行号、+ − 上（`inGutter`，正文左边）是选行：`Style.Lines` / `SetLines` 读写的就是 `DiffState.SelectedLines`（和 mygo 的 Diff 共用一份），所以 `linesBar`、
+`StageLines` / `UnstageLines` / `DiscardLines` 不用改；`app.diffHunks` 在 `UsingGed` 时按 ged 的 `Hunks` 配对（不然 mygo 和 ged 对齐得不一样时，补丁配的行和看到的对不上）。
+拖动扩大（`picking`，到上下边自动滚），⇧ 点从起点（`anchor`；不是在这里选的从原来的头）扩到那一行，选中的行涂 `LineSel` 再加左边一道 `LineMark`。
+`TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页；`TestGedLines` 看拖着选行、Esc、点一行 ⇧ 点一行、暂存选中的行只暂存那两行。
 
 Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.go`）。`git.HunkPatch` 从那一块生成补丁，暂存是 `git apply --cached -`，取消暂存是 `--cached -R`，丢弃是工作区上 `-R`。
 
