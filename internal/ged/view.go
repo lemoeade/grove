@@ -30,8 +30,12 @@ type Style struct {
 
 	UIFont    wui.Font           // 折叠条上的字
 	FoldLabel func(n int) string // 折叠条上写什么（“12 行未修改”）
-	Label     string             // 无障碍名
-	Tab       int                // 制表符几格，0 为 4
+	// FoldScope 是折叠条上数字后面写的、下面那处改动在哪（VS Code 那样写所在的函数那一行）：old 是这段之后第一处改动
+	// 在旧的一边的第几行（从 0 起；加的行算插在它后面那一行）。返回种类的小字（可空）和那一行的字，text 为空不写；nil 不写。
+	FoldScope func(old int) (mark, text string)
+	ScopeText wui.Color // FoldScope 那行字的颜色（0 时用 FoldText）
+	Label     string    // 无障碍名
+	Tab       int       // 制表符几格，0 为 4
 
 	// HunkBar 往指针下（或刚跳到的）那处改动右上角的那排按钮里放东西，nil 不放；i 是第几处改动。
 	// 按钮的无障碍名、悬停提示由界面那边给。
@@ -1074,7 +1078,7 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 		y := r.Y + float32(i)*g.lh - d.ScrollY
 		row := d.rows[i]
 		if row.Kind == Fold {
-			d.paintFold(p, r, g, s, row, y, i == d.hover && !d.onBar)
+			d.paintFold(p, r, g, s, i, y, i == d.hover && !d.onBar)
 			continue
 		}
 		if d.unified {
@@ -1244,7 +1248,8 @@ func hatch(p *wui.Painter, r wui.Rect, cy float32, c wui.Color) {
 	})
 }
 
-func (d *Diff) paintFold(p *wui.Painter, r wui.Rect, g geom, s *Style, row Row, y float32, hover bool) {
+func (d *Diff) paintFold(p *wui.Painter, r wui.Rect, g geom, s *Style, i int, y float32, hover bool) {
+	row := d.rows[i]
 	bg := s.FoldBack
 	if hover {
 		bg = s.FoldHover
@@ -1261,12 +1266,72 @@ func (d *Diff) paintFold(p *wui.Painter, r wui.Rect, g geom, s *Style, row Row, 
 	m := f.Metrics()
 	base := y + (g.lh-(m.Ascent+m.Descent))/2 + m.Ascent
 	gs := wui.Shape("⋯  "+label, f)
+	var mark, scope string
+	if s.FoldScope != nil {
+		if old := d.changeAfter(i); old >= 0 {
+			mark, scope = s.FoldScope(old)
+		}
+	}
+	var ms, ss []wui.Glyph
+	var sf wui.Font
+	if scope != "" {
+		mf := f
+		mf.Weight = 600
+		ms = wui.Shape(mark, mf)
+		sf = s.Font
+		sf.Size -= 0.5
+		ss = wui.Shape(scope, sf)
+	}
+	sc := s.ScopeText
+	if sc.A == 0 {
+		sc = s.FoldText
+	}
 	for side := range 2 {
 		if d.unified && side == 0 { // 一栏只写一次
 			continue
 		}
-		p.Glyphs(gs, r.X+g.paneX[side]+g.textX, base, s.FoldText)
+		x0 := r.X + g.paneX[side]
+		clip := wui.Rect{X: x0, Y: y, W: g.paneW[side] - rulerW*float32(side), H: g.lh} // 右边那格让出概览条
+		p.Clip(clip, 0, func() {
+			x := x0 + g.textX
+			p.Glyphs(gs, x, base, s.FoldText)
+			if scope == "" {
+				return
+			}
+			x += glyphsW(gs) + 14
+			if len(ms) > 0 {
+				p.Glyphs(ms, x, base, s.FoldText)
+				x += glyphsW(ms) + 6
+			}
+			p.Glyphs(ss, x, base, sc)
+		})
 	}
+}
+
+// glyphsW 是排好的一串字多宽。
+func glyphsW(gs []wui.Glyph) float32 {
+	if len(gs) == 0 {
+		return 0
+	}
+	l := gs[len(gs)-1]
+	return l.X + l.Advance
+}
+
+// changeAfter 是第 i 行（折叠行）之后第一处改动在旧的一边的第几行（加的行算插在前一行后面，即前一行 + 1）；后面没有改动了是 -1。
+func (d *Diff) changeAfter(i int) int {
+	row := d.rows[i]
+	next := row.Old + row.N // 折起来的之后旧的一边的下一行
+	for _, r := range d.rows[i+1:] {
+		switch r.Kind {
+		case Same, Fold:
+			next = r.Old + max(r.N, 1)
+		case Added:
+			return next
+		default:
+			return r.Old
+		}
+	}
+	return -1
 }
 
 func (d *Diff) paintRuler(p *wui.Painter, r wui.Rect, g geom, s *Style) {

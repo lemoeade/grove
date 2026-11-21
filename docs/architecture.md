@@ -262,7 +262,7 @@ Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`�
 `internal/ged` 是 Grove 自己的编辑器部件，只用 mygo 公开的接口（`ui.ShapeRichText` 排字、`Painter` 画、`Element.HandleInput` 收输入），不碰 mygo 的 `ui/editor` 视图；
 现在只有只读的 Diff（并排、统一），设了 `WORKBENCH_GED` 时 `useGed`（`ui/gedview.go`）让 Diff 标签、比较标签、替换预览都走它，Diff 里就地编辑时也是（`Style.Buf` 给了就能改，见下）。
 模型在 `ged/diff.go`，不碰界面：`Align` 用 Myers（先去掉头尾一样的；超过 `diffMax` 步就不再配，整段当删加）把两边的行对齐成 `Row`（`Same` / `Changed` / `Deleted` / `Added`，
-一处删 d 行加 a 行时前 min(d, a) 行配成 `Changed`），`Folded` 把离改动 `Context`（3）行外的没改的段折成一行 `Fold`，`Words` 按词比出改了的行里改了哪几段字节（几乎全不一样时整行，去掉缩进）。
+一处删 d 行加 a 行时前 min(d, a) 行配成 `Changed`），`Folded` 把离改动 `Context`（3）行外的没改的段折成一行 `Fold`（折叠条上数字后面写 `Style.FoldScope` 给的、下面那处改动所在的函数：`changeAfter` 找那处改动在旧的一边的行，界面那边 `scopeAt` 查 `DiffOutline`，和 mygo 那个 Diff 的 `sepScope` 共用），`Words` 按词比出改了的行里改了哪几段字节（几乎全不一样时整行，去掉缩进）。
 视图在 `ged/view.go`：一个元素，自己管滚动（`ScrollY` 两边一起走，横着两边各滚各的），`Draw` 里只排、只画看得见的行；一行排好的 `TextLayout` 按（哪边，第几行）留着，换字体 / 颜色时作废；
 语法高亮用语言的 `Tokenizer`，每行开头的分词状态按需往下算；改了的字的底按 `TextLayout.SelectionRects` 量位置、涂满行高；对面留空的行画 45° 斜线（`StrokePolyline`，`Painter.Line` 只画横竖）；
 右边 14 pt 的概览条标改动，按住拖动滚。状态 `ged.Diff` 存在 `Doc.Ged`，`Set` 按两边缓冲区和版本认内容变没变。颜色由 `gedStyle` 按 Grove 的主题给，和 mygo 那个 Diff 一样。
@@ -284,7 +284,7 @@ Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`�
 编辑菜单的 cut / paste / delete / undo / redo。改用 `replace`：`Buf.Edit` 一次一步撤销，mygo 合并打字的没导出，所以 ged 自己记每一组合了几次（`undoGroups`，1 s 内同类的连着打 / 连着删合一组，
 缓冲区版本对不上——别处改过——就清掉），`undo` 按组连调几次 `Buf.Undo` / `Redo`，光标放到 `changedEnd`。改完马上 `reload` → `update`：旧的一边没变时留着折叠展开、旧的一边的排版、选择，只扔新的一边的排版和分词状态。
 光标不闪（静止时不多画帧，见 mygo-pitfalls 编辑器一节），`paintCaret` 记下 `caretBox`，`View` 里 `el.TextCaret` 交给输入法；`revealCaret` 在 `View` 和 `Draw` 里把光标滚进视图（在折叠里就展开）。
-`TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页；`TestGedLines` 看拖着选行、Esc、点一行 ⇧ 点一行、暂存选中的行只暂存那两行；`TestGedUnified` 看切到统一后一栏、上 / 下一处、点删掉的行的行号选旧的一边、暂存选中的行，再切回并排；`TestGedEdit` 看就地编辑的光标、打字、一步撤销、回车缩进、J 打进去、组字、剪切粘贴、⌘S 存盘。`ged` 包里 `TestUnified` 看排成一栏的顺序和折叠，`TestChangedEnd` / `TestWordMoves` 看撤销后的光标和按词移动。
+`TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页；`TestGedLines` 看拖着选行、Esc、点一行 ⇧ 点一行、暂存选中的行只暂存那两行；`TestGedUnified` 看切到统一后一栏、上 / 下一处、点删掉的行的行号选旧的一边、暂存选中的行，再切回并排；`TestGedEdit` 看就地编辑的光标、打字、一步撤销、回车缩进、J 打进去、组字、剪切粘贴、⌘S 存盘。`ged` 包里 `TestUnified` 看排成一栏的顺序和折叠，`TestChangedEnd` / `TestWordMoves` 看撤销后的光标和按词移动，`TestChangeAfter` 看折叠条找的那处改动；`TestGedFoldScope` 看折叠条写的函数。
 
 Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.go`）。`git.HunkPatch` 从那一块生成补丁，暂存是 `git apply --cached -`，取消暂存是 `--cached -R`，丢弃是工作区上 `-R`。
 

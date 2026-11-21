@@ -10,6 +10,7 @@ import (
 	"github.com/lemoeade/grove/internal/docs"
 	"github.com/lemoeade/grove/internal/ged"
 	"github.com/lemoeade/grove/internal/i18n"
+	"github.com/lemoeade/grove/internal/outline"
 )
 
 // gedOn：设了 WORKBENCH_GED 时，Diff（并排、统一、就地编辑）用 Grove 自己画的（internal/ged），
@@ -72,6 +73,13 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 		}
 		s.LineSel, s.LineMark = c.Theme().Accent.Alpha(0.2), c.Theme().Accent
 	}
+	s.FoldScope = func(old int) (mark, text string) { // 折叠条上写下面那处改动所在的函数，和 mygo 那个 Diff 的折叠条一样
+		text, kind := scopeAt(d, old)
+		if text != "" && kind != outline.Heading { // 标题那行自己带着 #
+			mark = symbolGlyph(kind)
+		}
+		return mark, text
+	}
 	s.Copy = func(text string) { app.CopyText(text) }
 	if st.Editable { // 就地编辑：新的一边就是文件标签的缓冲区（BindDiffEdit 接的），打字、撤销都在它上面
 		s.Buf = st.New
@@ -125,6 +133,7 @@ func gedStyle(a *app.App, t *wui.Theme) ged.Style {
 		FoldBack:    ct.Text.Alpha(0.035),
 		FoldHover:   toolFill(t, 0.08),
 		FoldText:    t.TextMuted,
+		ScopeText:   ct.Text.Alpha(0.72),
 		Divider:     t.Border,
 		Ruler:       ct.Text.Alpha(0.02),
 		UIFont:      wui.Font{Size: 11},

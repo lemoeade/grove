@@ -77,3 +77,30 @@ func TestWordMoves(t *testing.T) {
 		t.Errorf("行首 ⌥← 该到上一行行尾：%v", got)
 	}
 }
+
+// 折叠条后面写的是下面那处改动在旧的一边的哪一行：改的、删的是它自己那行，加的是插在前一行后面。
+func TestChangeAfter(t *testing.T) {
+	var old []string
+	for i := range 20 {
+		old = append(old, string(rune('a'+i)))
+	}
+	d := NewDiff()
+	changed := append([]string{}, old...)
+	changed[10] = "改"
+	d.lines = [2][]string{old, changed}
+	d.aligned = Align(old, changed)
+	d.refold()
+	if d.rows[0].Kind != Fold || d.changeAfter(0) != 10 {
+		t.Fatalf("改了第 10 行：%v → %d", d.rows[0], d.changeAfter(0))
+	}
+	if last := len(d.rows) - 1; d.rows[last].Kind != Fold || d.changeAfter(last) != -1 {
+		t.Errorf("最后一段后面没有改动了：%d", d.changeAfter(last))
+	}
+	added := append(append(append([]string{}, old[:10]...), "加"), old[10:]...)
+	d.lines = [2][]string{old, added}
+	d.aligned = Align(old, added)
+	d.refold()
+	if got := d.changeAfter(0); got != 10 {
+		t.Errorf("第 9 行后面加了一行：%d", got)
+	}
+}

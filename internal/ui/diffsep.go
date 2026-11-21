@@ -76,16 +76,22 @@ func sepScope(d *docs.Doc, s *editor.DiffSeparator) (string, outline.Kind) {
 	if !ok {
 		return "", 0
 	}
-	tree := d.DiffOutline()
-	if tree == nil {
-		return "", 0
-	}
 	ctx := diffContext(d.DiffSt)
 	changed := start + s.Lines + ctx
 	if !s.First {
 		changed += ctx
 	}
-	i := tree.Scope(changed)
+	return scopeAt(d, changed)
+}
+
+// scopeAt 是 Diff 旧的一边第 line 行所在的函数 / 类 / 标题（d.DiffOutline 里包着它的最里层符号）那一行的原文，
+// 去掉缩进和行尾的 {，和那个符号的种类；没有大纲、不在任何符号里的为空。mygo 的折叠条（sepScope）和 ged 的（FoldScope）共用。
+func scopeAt(d *docs.Doc, line int) (string, outline.Kind) {
+	tree := d.DiffOutline()
+	if tree == nil {
+		return "", 0
+	}
+	i := tree.Scope(line)
 	if i < 0 {
 		return "", 0
 	}

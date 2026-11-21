@@ -574,3 +574,56 @@ func TestGedEdit(t *testing.T) {
 		return err == nil && string(b) == want
 	})
 }
+
+// ged 的折叠条和 mygo 那个一样，在“N 行未修改”后面写下面那处改动所在的函数（scopeAt 查旧的一边的大纲）。
+func TestGedFoldScope(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	var o strings.Builder
+	o.WriteString("package demo\n\nfunc first() int {\n")
+	for i := range 20 {
+		o.WriteString("\tn := " + strconv.Itoa(i) + "\n")
+	}
+	o.WriteString("\treturn 0\n}\n\nfunc second() int {\n")
+	for i := range 20 {
+		o.WriteString("\tm := " + strconv.Itoa(i) + "\n")
+	}
+	o.WriteString("\treturn 1\n}\n")
+	old := o.String()
+	new := strings.Replace(old, "\tm := 12\n", "\tm := 12 * 2\n", 1)
+	repo := testutil.NewRepo(t, "gedscope")
+	repo.Write("demo.go", old)
+	repo.Commit("初始提交")
+	repo.Write("demo.go", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = false, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	d := diffDoc(a, "")
+	rows := d.Ged.Rows()
+	if rows[0].Kind != ged.Fold {
+		t.Fatalf("开头没折：%v", rows[0])
+	}
+	line := -1
+	for _, row := range rows {
+		if row.Kind == ged.Changed {
+			line = row.Old
+			break
+		}
+	}
+	if text, _ := scopeAt(d, line); text != "func second() int" {
+		t.Errorf("改动所在的函数：%q", text)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-scope.png")
+	}
+}
