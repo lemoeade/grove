@@ -44,3 +44,22 @@ func (t *Tree) Sticky(rowLine func(row int) int, max int, folded map[int]bool) [
 	}
 	return chain
 }
+
+// Scope 是包着第 line 行的最里层的符号在 Flat 里的下标（头在 line 之前、End 在它之后），没有为 -1。
+// Diff 的折叠条用它写藏着的行之后那段在哪个函数里（像 GitHub 块头 @@ 后面的那段）；头就是 line 那行的不算（它自己看得见）。
+func (t *Tree) Scope(line int) int {
+	if t == nil {
+		return -1
+	}
+	best := -1
+	for i := range t.Flat {
+		f := &t.Flat[i]
+		if f.Line >= line || f.End <= line {
+			continue
+		}
+		if b := &t.Flat[max(best, 0)]; best < 0 || f.Line > b.Line || f.Line == b.Line && f.Depth > b.Depth {
+			best = i
+		}
+	}
+	return best
+}

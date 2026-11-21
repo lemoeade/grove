@@ -214,7 +214,8 @@ func changedRow(tt *wui.Tester) (float32, bool) {
 	scale := float32(img.Bounds().Dx()) / 1440 // newUI 的窗口宽
 	x := int((box.X + box.W - 30) * scale)
 	for y := int(box.Y * scale); y < int((box.Y+box.H)*scale); y++ {
-		if c := img.RGBAAt(x, y); int(c.G) > int(c.R)+6 && int(c.G) > int(c.B)+6 {
+		// 绿底是 VS Code 的 #9bb95533 叠在白底上（约 235, 241, 221）：G 比 R 略大、比 B 大得多
+		if c := img.RGBAAt(x, y); int(c.G) > int(c.R)+3 && int(c.G) > int(c.B)+10 {
 			return (float32(y)/scale - box.Y) / box.H, true
 		}
 	}

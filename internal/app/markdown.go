@@ -139,8 +139,8 @@ func (a *App) wrapDefault(d *docs.Doc) bool {
 	return d.Prose()
 }
 
-// canWrap 是 ⌥Z 对 d 有没有用：有编辑器的标签（十六进制的不折行）。
-func canWrap(d *docs.Doc) bool { return d != nil && d.Buf != nil && !d.Hex }
+// canWrap 是 ⌥Z 对 d 有没有用：有编辑器的标签（十六进制的不折行）和文字的 Diff（图片的没有行）。
+func canWrap(d *docs.Doc) bool { return d != nil && !d.Hex && (d.Buf != nil || d.DiffSt != nil) }
 
 // ToggleStickyScroll 开关粘性滚动（view.stickyScroll；设置里存的是反面 noStickyScroll）。
 func (a *App) ToggleStickyScroll() {

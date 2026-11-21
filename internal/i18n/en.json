@@ -2221,6 +2221,7 @@
   "%d 行未修改|1": "%d unchanged line",
   "展开 %d 行未修改": "Expand %d unchanged lines",
   "展开 %d 行未修改|1": "Expand %d unchanged line",
+  "下面的改动在：%s": "The change below is in: %s",
   "点一下往改动那边展开；按住 ⇧ 一次展开全部": "Click to expand toward the change; hold ⇧ to expand all",
   "%d 个改动": "%d changes",
   "%d 个改动|1": "%d change",

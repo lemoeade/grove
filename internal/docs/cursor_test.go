@@ -50,7 +50,7 @@ func TestReindent(t *testing.T) {
 	}
 }
 
-// 换行：换成 CRLF 算改过（mygo 的 SetLineEnding 不动版本），换回来不算；大文件选语言也走后台高亮。
+// 换行：换成 CRLF 算改过（mygo 的 SetLineEnding 不动版本），换回来不算，混着的统一了算；大文件选语言也走后台高亮。
 func TestEOLAndLang(t *testing.T) {
 	d := &Doc{Kind: File, Title: "a.txt", Buf: editor.NewBuffer("a\nb\n")}
 	d.SetEOL("\r\n")
@@ -60,6 +60,15 @@ func TestEOLAndLang(t *testing.T) {
 	d.SetEOL("\n")
 	if d.Modified() {
 		t.Fatal("换回 LF 不算改过")
+	}
+	// 混着换行的文件：多数行是 CRLF，选 CRLF 也把那一行 LF 换过来，算改过
+	m := &Doc{Kind: File, Title: "m.txt", Buf: editor.NewBuffer("a\r\nb\nc\r\n")}
+	if m.Buf.LineEnding() != "\r\n" || m.Modified() {
+		t.Fatal("混着换行的文件刚打开")
+	}
+	m.SetEOL("\r\n")
+	if !m.Modified() {
+		t.Fatal("混着换行的文件统一成 CRLF 应算改过")
 	}
 	d.Big = true
 	d.SetLang("Go")

@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/dlclark/regexp2/v2 v2.8.3
-	github.com/egoist/mygo v0.9.0
+	github.com/egoist/mygo v0.10.0
 	golang.org/x/net v0.59.0
 	golang.org/x/text v0.43.0
 )

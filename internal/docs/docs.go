@@ -150,13 +150,11 @@ type Doc struct {
 	// Indent 是状态栏手动选的这个文件的缩进（IndentAuto 按语言、"tab"、"2"、"4"、"8"），"" 为跟设置；文件标签的记进会话（Tab.Indent）
 	Indent string
 	// Wrap 是 ⌥Z 给这个标签自己定的软换行：0 跟设置（app.WrapOf）、1 换行、-1 不换；各个镜像各管各的，不记进会话
-	Wrap int8
-	// savedEOL 是状态栏换了换行（SetEOL）之前磁盘上那份的换行，"" 为没换过：SetLineEnding 不动内容版本，Modified 看它
-	savedEOL string
-	cursor   cursorInfo // CursorInfo 上次算的
+	Wrap   int8
+	cursor cursorInfo // CursorInfo 上次算的
 	// 文字改没改（Modified 每帧都问）：缓冲区、内容版本、存盘次数都没变就用上次的结果。
 	// mygo 的 Buffer.Modified 在改过之后每次都把当前文本和存盘文本各拼成整串比较，大文件每帧几 MB 分配。
-	// MarkSaved 不动内容版本，所以自己数存盘次数（markSaved，全局的：镜像标签共用一个缓冲区）；Reset、换缓冲区分别动版本和指针。
+	// MarkSaved、SetLineEnding 不动内容版本，所以自己数存盘和换换行的次数（saves，全局的：镜像标签共用一个缓冲区）；Reset、换缓冲区分别动版本和指针。
 	modBuf    *editor.Buffer
 	modVer    uint64
 	modSaves  uint64
@@ -208,6 +206,10 @@ type Doc struct {
 	olSeen uint64        // 粘性滚动（StickyOutline）见过的最新版本
 	olEdit time.Time     // 和它第一次见到的时间
 	olCost time.Duration // 上一次解析花了多久：超过 StickySlow 的，粘性滚动停手了再重新解析
+	// Diff 旧的一边的大纲（DiffOutline）：折叠条上写“所在函数”用，旧的一边换了缓冲区或版本才重新解析
+	dolTree *outline.Tree
+	dolBuf  *editor.Buffer
+	dolVer  uint64
 	// 侧栏大纲的展开和选中，按标签记（键是 outline.Flat.Key）；OutlineSeen 是见过的有子项的符号（新出现的默认展开），
 	// OutlineSyms 是展开状态对过的那棵树，OutlineCur 是上一帧光标所在的符号（变了才跟着选中、滚到）
 	OutlineSt   ui.OutlineState[string]
@@ -657,7 +659,7 @@ func (d *Doc) Share(o *Doc) {
 	d.Bitmap, d.Info, d.Loading, d.Conflict, d.Hex, d.HexTotal = o.Bitmap, o.Info, o.Loading, o.Conflict, o.Hex, o.HexTotal
 	d.SlowLoad, d.BasePending = o.SlowLoad, o.BasePending
 	d.Mtime, d.Size, d.Mode, d.Enc, d.ForcedEnc = o.Mtime, o.Size, o.Mode, o.Enc, o.ForcedEnc
-	d.Lossy, d.Broken, d.Big, d.savedEOL, d.Lang, d.Indent = o.Lossy, o.Broken, o.Big, o.savedEOL, o.Lang, o.Indent
+	d.Lossy, d.Broken, d.Big, d.Lang, d.Indent = o.Lossy, o.Broken, o.Big, o.Lang, o.Indent
 	d.Base, d.BaseSum, d.NoBase = o.Base, o.BaseSum, o.NoBase
 	d.St.DiffBase, d.St.ReadOnly, d.St.Label = o.St.DiffBase, o.St.ReadOnly, o.St.Label
 }
@@ -759,6 +761,21 @@ func (d *Doc) Outline() *outline.Tree {
 	return d.olTree
 }
 
+// DiffOutline 是 Diff 旧的一边（DiffSt.Old）的大纲：折叠条上写藏着的行之后那段在哪个函数里（像 GitHub 块头 @@ 后面那段）。
+// 折起来的行两边一样，旧的一边就够了；按文件名认语言，没有大纲的语言、太大的、一边是空的为 nil。
+// 旧的一边不随打字变（就地编辑改的是新的一边），所以一个 Diff 一般只解析一次。
+func (d *Doc) DiffOutline() *outline.Tree {
+	if d.DiffSt == nil || d.DiffSt.Old == nil || d.DiffSt.Old.Len() == 0 || d.DiffSt.Old.Len() > outline.MaxBytes || !outline.Supported(d.outlineName()) {
+		return nil
+	}
+	old := d.DiffSt.Old
+	if v := old.Version(); old != d.dolBuf || v != d.dolVer {
+		d.dolTree, d.dolBuf, d.dolVer = outline.Build(outline.Parse(d.outlineName(), old.String())), old, v
+		outlineParses.Add(1)
+	}
+	return d.dolTree
+}
+
 // LastOutline 是上次解析出的大纲（可能比内容旧一点），从没解析过为 nil；不解析（打字时每个键都要的地方用，比如补全的种类）。
 func (d *Doc) LastOutline() *outline.Tree {
 	if !d.olOK {
@@ -813,10 +830,10 @@ func (d *Doc) outlineName() string {
 	return "x" + outline.Ext(d.Lang)
 }
 
-// Modified 是有没保存的改动：文字改了，或状态栏换了换行。每帧都问（标签的圆点、状态栏），
-// 文字那半按缓冲区、内容版本、存盘次数缓存（textModified）。
+// Modified 是有没保存的改动：文字改了，或状态栏换了换行（mygo 的 Buffer.Modified 连每行的换行一起比）。
+// 每帧都问（标签的圆点、状态栏），按缓冲区、内容版本、存盘和换换行的次数缓存（textModified）。
 func (d *Doc) Modified() bool {
-	return (d.Kind == File || d.Kind == SettingsDoc) && d.Buf != nil && !d.Hex && (d.textModified() || d.savedEOL != "" && d.Buf.LineEnding() != d.savedEOL)
+	return (d.Kind == File || d.Kind == SettingsDoc) && d.Buf != nil && !d.Hex && d.textModified()
 }
 
 // ModifiedChecks 是 textModified 真去问了几次 Buffer.Modified（测试用：画 N 帧只该问常数次）。
@@ -833,7 +850,7 @@ func (d *Doc) textModified() bool {
 	return d.modVal
 }
 
-// saves 是调过几次 markSaved。按全局数而不按 Doc 数：镜像标签（分屏里同一个文件的两份）共用一个缓冲区，
+// saves 是调过几次 markSaved 和 SetEOL（这两样都不动内容版本）。按全局数而不按 Doc 数：镜像标签（分屏里同一个文件的两份）共用一个缓冲区，
 // 一份存了另一份的缓存也得失效。存盘很少，每次让所有标签各重新比一次不碍事。
 var saves atomic.Uint64
 
@@ -843,15 +860,14 @@ func (d *Doc) markSaved() {
 	saves.Add(1)
 }
 
-// SetEOL 把换行换成 eol（"\n" / "\r\n"，状态栏换行那项选的）：内容没变，保存前算改过。
+// SetEOL 把每一行的换行都换成 eol（"\n" / "\r\n"，状态栏换行那项选的）：内容没变，和磁盘上那份不一样时保存前算改过。
+// 混着几种换行的文件 LineEnding 是多数行的那种，选同一种也照样把少数行换过来。
 func (d *Doc) SetEOL(eol string) {
-	if d.Buf == nil || d.Buf.LineEnding() == eol {
+	if d.Buf == nil {
 		return
 	}
-	if d.savedEOL == "" {
-		d.savedEOL = d.Buf.LineEnding()
-	}
 	d.Buf.SetLineEnding(eol)
+	saves.Add(1) // SetLineEnding 不动内容版本，让 textModified 的缓存失效
 }
 
 // PlainLang 是 Doc.Lang 里"纯文本"的写法，IndentAuto 是 Doc.Indent 里"按语言"的（设置不是按语言时这个文件按语言）。
@@ -1262,7 +1278,6 @@ func (d *Doc) setText(l Loaded) {
 			d.Buf.SetLanguage(lang)
 		}
 	}
-	d.savedEOL = "" // 重读了：换行是文件里的
 	d.St.Buffer, d.St.Label = d.Buf, i18n.Tf("编辑 %s", d.Title)
 	if d.BasePending = l.BasePending(); !d.BasePending {
 		d.SetBase(l.Base, l.BaseSum)
@@ -1437,7 +1452,7 @@ func (d *Doc) write(enc Encoding) error {
 		return err
 	}
 	d.markSaved()
-	d.Conflict, d.savedEOL = false, ""
+	d.Conflict = false
 	if mt, size, err := Stat(d.Abs); err == nil {
 		d.Mtime, d.Size = mt, size
 	}

@@ -101,3 +101,28 @@ func TestStickyChain(t *testing.T) {
 		t.Errorf("Go 方法：%v", got)
 	}
 }
+
+// Scope 是包着那一行的最里层符号（头在它之前）：Diff 折叠条上写“所在函数”用。
+func TestScope(t *testing.T) {
+	text := "class A {\n" + // 0
+		"  void f() {\n" + // 1
+		"    int x;\n" + // 2
+		"  }\n" + // 3（配对的 } 还算 f 里）
+		"  int y;\n" + // 4
+		"}\n" + // 5
+		"\n" // 6
+	tr := Build(Parse("a.java", text))
+	for line, want := range map[int]string{0: "", 1: "A", 2: "f", 3: "f", 4: "A", 6: ""} {
+		got := ""
+		if i := tr.Scope(line); i >= 0 {
+			got = tr.Flat[i].Name
+		}
+		if got != want {
+			t.Errorf("Scope(%d) = %q，应为 %q", line, got, want)
+		}
+	}
+	var nilTree *Tree
+	if nilTree.Scope(1) != -1 {
+		t.Error("没有大纲时应为 -1")
+	}
+}

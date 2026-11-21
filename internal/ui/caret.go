@@ -117,8 +117,15 @@ func restingDiff(c *wui.Context, key any, d *editor.DiffState, r *docs.Rest) wui
 		d.Run(editor.GoToLine)
 		d.Run(editor.Cancel)
 	}
-	softTheme(&d.Theme, c.Theme()) // 和编辑器一样的代码颜色
-	return editor.DiffView(c.Key(key), d).Bind(&r.H)
+	t := c.Theme()
+	softTheme(&d.Theme, t) // 和编辑器一样的代码颜色
+	diffTint(d.Theme, t)
+	// 改了的行的底色 Grove 自己画在底下（difftint.go）
+	base := diffBase(t)
+	clearDiffBackground(d, base)
+	box := wui.Column(c).Background(base).Draw(diffUnder(d, t.Accent.Alpha(0.16)))
+	box.Children(func() { editor.DiffView(c.Key(key), d).Bind(&r.H).Grow(1).MinHeight(0) })
+	return box
 }
 
 // rest 走一帧：键盘不在它那里、刚拿到、来了输入或 changed 就醒着重新计时；醒着够 CaretRest 了就歇着，
@@ -136,4 +143,16 @@ func rest(c *wui.Context, r *docs.Rest, focused, changed bool) {
 			r.Resting = true
 		}
 	}
+}
+
+// diffTint 是 Diff 行首竖条、改了的那几行的行号和行里改了的词的颜色（mygo 把词涂成竖条色的 22%）。照 VS Code：
+// 改了的词是 insertedTextBackground #9ccc2c / removedTextBackground #ff0000 的两三成，叠在 diffUnder 涂的行底上。
+// 行底不归它管（mygo 的固定比例太淡，Grove 自己画，见 difftint.go）。
+// 浅色里 #9ccc2c 的行号叠在浅绿的行底上看不清（对比度 1.6），换成深一点的绿（约 3.3）。
+func diffTint(ct *editor.Theme, t *wui.Theme) {
+	add := wui.Hex("#9ccc2c")
+	if !t.Dark {
+		add = wui.Hex("#4f8a12")
+	}
+	ct.Added, ct.Deleted = add, wui.Hex("#ff0000")
 }

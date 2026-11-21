@@ -772,7 +772,7 @@ func diffContent(a *app.App, c *wui.Context, d *docs.Doc) {
 }
 
 // diffLook 给 Diff 标签和替换预览的 diff 视图上这一帧的样子：并排 / 统一（一边是空的 —— 新文件、删掉的文件 ——
-// 总是统一，不然一半宽度是斜纹）、字体、折叠条（diffSep）、行首不画标记；刚读出来、切了局部 / 全文时
+// 总是统一，不然一半宽度是斜纹）、字体、软换行（⌥Z）、折叠条（diffSep，带所在函数 sepScope）、行首的红绿竖条；刚读出来、切了局部 / 全文时
 // 把光标所在（还没动过就是第一处；替换预览从一处进来的是那一处的）那块改动滚进视图。
 func diffLook(a *app.App, d *docs.Doc) {
 	d.DiffSt.Layout = editor.DiffSplit
@@ -781,8 +781,15 @@ func diffLook(a *app.App, d *docs.Doc) {
 	}
 	d.DiffSt.Font = a.EditorFont()
 	d.DiffSt.Font.Size -= 0.5
-	d.DiffSt.Indicators = editor.DiffNoIndicators // 行首不画竖条：改动靠底色和红绿的行号分
-	d.DiffSt.RenderSeparator = diffSep
+	// 行首红 / 绿竖条（删掉的那边是虚的）。要竖条不光为了标哪几行改了：mygo 只在有竖条时把改了的词涂成红 / 绿
+	// （竖条色的 22%），+ / - 或不画标记时改了的词是灰的（Theme.Occurrence），VS Code 那样的红绿词就没了
+	d.DiffSt.Indicators = editor.DiffBars
+	d.DiffSt.RenderSeparator = func(c *wui.Context, sep wui.Element, s *editor.DiffSeparator) {
+		scope, kind := sepScope(d, s)
+		diffSep(c, sep, s, scope, kind)
+	}
+	// ⌥Z：和文件标签一样按设置（Markdown、纯文本默认换），只切这一个标签
+	d.DiffSt.Wrap = a.WrapOf(d)
 	if d.ToHunk { // 全文 diff 别停在文件顶上、切局部 / 全文别把改动甩出视图（mygo 等视图排过版才滚过去）
 		d.ToHunk = false
 		i, _ := d.DiffSt.CurrentHunk()

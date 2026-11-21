@@ -227,6 +227,18 @@
 - `Buffer.Reset` 把整段旧文字记进撤销日志（mygo 留 256 条），重读几 MB 的文件每次都多留一份旧的。大文件重读不走 Reset，换一个后台建好的新缓冲区。
 - 普通编辑器（`editor.State`）不能在两行之间留一块高度给调用方画东西：mygo 内部有这种块（`blockAnnotation`，排版时把下面的行往下推），但只经 `DiffState.Annotations` + `RenderAnnotation` 开放给 Diff 查看器。
   所以改动预览卡（`ui/peek.go`）只能叠在代码上、盖住块下面几行，做不成 VS Code 那样插在行间。要做得跟 mygo 要一个 `State` 上的同类接口（行号、高度、Key，行号随编辑挪），记作 mygo 的需求。
+- Diff 改了的行的底色是 mygo 按固定比例把 `Theme.Added` / `Deleted` 混进背景（浅色 12%、行号槽 9%、词 15% 透明度，深色 20 / 15 / 20；v0.10.0 还是这样），比例改不了，挑颜色也到不了 VS Code 的浓淡；
+  `editor.State` 有 `LineBackgrounds` / `TextBackgrounds`，但 `DiffState` 不往两边的编辑器传。Grove 的办法（`ui/difftint.go`）是自己画在底下：
+  - `NoBackground = true` 关掉改了的行的底，`Theme.Background` 设成编辑器底色、`A` 为 0（别设成全零的 `Color{}`：mygo 当没设，补回不透明的默认底色；RGB 还用来判断深浅色）。
+  - 外面包一个涂编辑器底色的 `Column`，`Draw` 里按 `DiffState.Hunks` / `LineTop(side, line) - ScrollY()` 现算。`Draw` 每帧都跑，滚动不用另外同步。
+    并排时旧的一边宽 `(W-1) × SplitPercent`（0 当 50%），新的一边从它右边 1 pt 开始；行高和 mygo 一样按屏幕像素取整（`round(字号 × 行高倍数 × scale) / scale`）。
+  - 选中的行 mygo 也是混进 `Background` 的，底透明后看不见，要自己画。
+  - 用 WebView 换一个 Diff 编辑器（Monaco、CodeMirror）不行：一个 WKWebView 连 WebContent、GPU 进程要两三百 MB（`render.IdleClose` 那条），超过内存上限。
+- mygo v0.10.0 的 `Buffer` 每行记自己的换行，`Modified` 连换行一起比；`SetLineEnding` 不动内容版本，按版本缓存 `Modified` 的（`docs.textModified`）换了换行要自己让缓存失效。
+- 行里改了的词：只有 `Indicators` 是 `DiffBars` 时 mygo 才涂成竖条色的 22%（`lineLook.word`）；`DiffClassic`（+ / -）和 `DiffNoIndicators` 下竖条色是空的，改了的词退成 `Theme.Occurrence`（灰），两边一个颜色，看着发脏。要红绿的词就得开竖条。
+- Diff 的滚动条槽里 mygo 自己画改动的标记（增、删、改各一色），别再在旁边加一条概览尺：试过一回，画出来是并排的两条一样的东西。
+- `DiffSeparator` 只导出行数、`Step`、`First` / `Last`，不说那段间隔从哪行开始（字段 `a` 没导出）。折叠条上写所在函数要这个数，`ui/diffsep.go` 的 `sepStart` 用 reflect 读，
+  读不到就不写；`TestSepStart` 在升级 mygo 改了字段时先报。间隔之后第一行看得见的是 `a + 上面留的上下文 + Lines`，改动的第一行再加一份上下文（文件开头那条上面没有上下文；`ContextLines` 为 0 时是 3）。别拿第一行看得见的找所在函数：那常是上一个函数的 `}`。
 - 重读时 `Loading` 不置上：标签已经有缓冲区时重读不清空它。测试里等重读完成要看内容（`strings.HasSuffix(d.Buf.String(), …)`）或 `Gen`，别等 `!d.Loading`。
 - `unsafe.String` 仅用于调用方独占的字节数据：`decode(data, …, owned=true, …)` 把 UTF-8 的 `data` 直接借成字符串、不拷，调用方之后不能再改 `data`
   （`ReadFile` 读的、`git.Blob` 返回的可以）。别人传进来的字节用 `Decode`（会拷一份），由 `TestSameBaseHash` 检查这一约定。
