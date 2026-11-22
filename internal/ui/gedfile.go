@@ -601,8 +601,8 @@ func edCompletionList(a *app.App, c *wui.Context, d *docs.Doc, list []editor.Com
 		y = box.Y - h
 	}
 	first := min(max(0, cl.Sel-n+1), len(list)-n)
-	wui.Column(c.Key("edcompl")).Absolute().Left(max(0, box.X-8)).Top(y).Width(380).Padding(3).
-		Background(raisedBg(t)).Border(1, t.Border).Radius(ctlRadius).Shadow(shadowFloat()).Children(func() {
+	frostFill(c, wui.Column(c.Key("edcompl")).Absolute().Left(max(0, box.X-8)).Top(y).Width(380).Padding(3).Radius(ctlRadius), widgetBg(t)).
+		Border(1, t.Border).Shadow(shadowFloat()).Children(func() {
 		for i := first; i < first+n; i++ {
 			it := list[i]
 			r := wui.Row(c.Key(i)).Height(rowH).Padding(0, 6).Gap(8).AlignItems(wui.Center).Radius(ctlRadius).
@@ -650,8 +650,8 @@ func edTipCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element) {
 		d.EdTip = nil
 		return
 	}
-	card := wui.Column(c.Key("edtip")).Absolute().Left(max(0, box.X-8)).MaxWidth(520).Padding(6, 8).Gap(4).
-		Background(raisedBg(t)).Border(1, t.Border).Radius(ctlRadius).Shadow(shadowFloat())
+	card := frostFill(c, wui.Column(c.Key("edtip")).Absolute().Left(max(0, box.X-8)).MaxWidth(520).Padding(6, 8).Gap(4).Radius(ctlRadius), widgetBg(t)).
+		Border(1, t.Border).Shadow(shadowFloat())
 	if box.Y > row.Bounds().H/3 {
 		card.Bottom(row.Bounds().H - box.Y + 2)
 	} else {
@@ -672,16 +672,30 @@ func edTipCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element) {
 }
 
 // edBindingOf 是编辑器命令 cmd 的键：先看改过的（app.EditorBindings），再看 mygo 默认的；只要一下的、不要和弦。
+// 一个命令有几个键时，挑 VS Code 菜单里写的那个（edMenuKeys），没有就要第一个。
 func edBindingOf(cmd editor.Command) (editor.Binding, bool) {
 	for _, bs := range [][]editor.Binding{app.EditorBindings(), editor.DefaultBindings()} {
+		var first editor.Binding
 		for _, b := range bs {
-			if b.Command == cmd && b.ThenKey == 0 && b.Key != 0 {
+			if b.Command != cmd || b.ThenKey != 0 || b.Key == 0 {
+				continue
+			}
+			if want, ok := edMenuKeys[cmd]; !ok || b.Key == want {
 				return b, true
 			}
+			if first.Key == 0 {
+				first = b
+			}
+		}
+		if first.Key != 0 {
+			return first, true
 		}
 	}
 	return editor.Binding{}, false
 }
+
+// edMenuKeys 是有几个键的命令在菜单上写哪个：更改所有匹配项 VS Code 写 ⌘F2（⇧⌘L 是“选择所有匹配项”的）。
+var edMenuKeys = map[editor.Command]wui.Key{editor.SelectAllMatches: wui.KeyF2}
 
 // gedFileMenu 是 ged 的文件编辑器的右键菜单，照 VS Code 编辑器的右键菜单排：跳到定义、查找引用；更改所有匹配项、
 // 格式化文档；剪切、复制、粘贴；命令面板，到这为止。Grove 自己的（拆分、本地历史、Finder、复制路径）和 VS Code 一样在标签的右键菜单里，

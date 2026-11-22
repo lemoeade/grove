@@ -17,6 +17,7 @@ type Settings struct {
 	Accent         string `json:"accent,omitempty"`         // 强调色："" 是默认的那个（DefaultAccent），或 Accents 里别的
 	SolidSelection bool   `json:"solidSelection,omitempty"` // 列表的选中行用强调色的实心块；默认（关着）是淡底：强调色淡淡的一层、左边一道竖条
 	Zoom           int    `json:"zoom,omitempty"`           // 界面缩放，百分数（⌘= / ⌘- / ⌘0，所有窗口一起）；0 为 100
+	Frost          int    `json:"frostOpacity,omitempty"`   // 浮层（菜单、命令面板、对话框、悬停提示）磨砂时底色盖多少，百分数 50–100（100 不透）；0 为 DefaultFrost
 	// 默认开，存反面
 	NoDiagrams     bool `json:"noDiagrams,omitempty"`     // Markdown 预览里不渲染 Mermaid 图和公式（默认渲染：看不见的 WebView 画成位图，internal/render）
 	NoRemoteImages bool `json:"noRemoteImages,omitempty"` // Markdown 预览里不读网上的图片（https 的徽章、截图；默认读）
@@ -216,6 +217,13 @@ var HistoryDayOpts = []int{7, 30, 90, 365}
 // LocalHistoryDays 是本地历史留几天。
 func (s Settings) LocalHistoryDays() int { return cmp.Or(s.HistoryDays, DefaultHistoryDays) }
 
+// DefaultFrost 是浮层磨砂时底色默认盖的百分数（Frost 为 0）。VS Code 的 modernUIFrostedGlassOpacity 默认 80，
+// 但 80% 的白盖在 #F8F8F8 的侧栏上几乎看不出透，取 65。
+const DefaultFrost = 65
+
+// FrostPercent 是浮层底色盖的百分数（存的 0 是 DefaultFrost）。
+func (s Settings) FrostPercent() int { return cmp.Or(s.Frost, DefaultFrost) }
+
 // ZoomPercent 是界面缩放的百分数（存的 0 是 100）。
 func (s *Settings) ZoomPercent() int { return cmp.Or(s.Zoom, 100) }
 
@@ -249,6 +257,9 @@ func (s *Settings) Clamp() {
 	}
 	if s.Zoom < 50 || s.Zoom > 300 || s.Zoom == 100 {
 		s.Zoom = 0
+	}
+	if s.Frost < 50 || s.Frost > 100 || s.Frost == DefaultFrost {
+		s.Frost = 0
 	}
 	if s.HistoryDays == DefaultHistoryDays || !slices.Contains(HistoryDayOpts, s.HistoryDays) {
 		s.HistoryDays = 0

@@ -283,7 +283,7 @@ func (a *App) ResetSettings() {
 
 // settingLabels 是设置键（json 名）在导入确认里的名字：设置窗口里那一项的名字，几处同名的（字体、字号）带上是哪一页的。
 var settingLabels = map[string]string{
-	"theme": "外观", "look": "风格", "backdrop": "窗口底", "material": "材质", "accent": "强调色", "solidSelection": "选中行用淡底", "zoom": "界面缩放",
+	"theme": "外观", "look": "风格", "backdrop": "窗口底", "material": "材质", "accent": "强调色", "solidSelection": "选中行用淡底", "zoom": "界面缩放", "frostOpacity": "浮层不透明度",
 	"noDiagrams": "Markdown 预览里渲染 Mermaid 图和公式", "noRemoteImages": "Markdown 预览里显示网上的图片",
 	"editorFont": "编辑器字体", "editorSize": "编辑器字号", "indent": "缩进", "wrap": "软换行", "whitespace": "显示空白字符",
 	"autoSave": "自动保存", "trimTrailing": "保存时去掉行尾空白", "finalNewline": "保存时补上末尾换行", "noStickyScroll": "粘性滚动", "noWordComplete": "敲字时提示补全", "noHoverDefinition": "悬停时显示定义",

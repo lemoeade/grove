@@ -286,3 +286,13 @@ func TestGedFileBlame(t *testing.T) {
 	}
 	tt.Frame()
 }
+
+// 菜单上写的键照 VS Code：更改所有匹配项有 ⇧⌘L 和 ⌘F2 两个键，写 ⌘F2；跳到定义只有 F12。
+func TestEdMenuKeys(t *testing.T) {
+	if b, ok := edBindingOf(editor.SelectAllMatches); !ok || b.Key != wui.KeyF2 || b.Mods != wui.Cmd {
+		t.Errorf("更改所有匹配项该写 ⌘F2，是 %+v（%v）", b, ok)
+	}
+	if b, ok := edBindingOf(editor.GoToDefinition); !ok || b.Key != wui.KeyF12 || b.Mods != 0 {
+		t.Errorf("跳到定义该写 F12，是 %+v（%v）", b, ok)
+	}
+}

@@ -29,9 +29,9 @@ func TestWhitespaceFaint(t *testing.T) {
 		if d.St.Theme == nil {
 			t.Fatalf("dark=%v 没套 Grove 的代码颜色", dark)
 		}
-		// mygo 默认是 TextMuted 的 0.45（不透明的 TextMuted 时 A≈115），这里要淡到 0.3 以下
+		// mygo 默认是 TextMuted 的 0.45（不透明的 TextMuted 时 A≈115），这里要淡到 0.3 左右（VS Code 2026 深色是 #8C8C8C 的 0x4D）
 		got := d.St.Theme.Whitespace
-		if got.A == 0 || float32(got.A) > 0.3*255 {
+		if got.A == 0 || float32(got.A) > 0.31*255 {
 			t.Errorf("dark=%v 空白符号的颜色 %+v，应比默认的淡", dark, got)
 		}
 		cols = append(cols, got)

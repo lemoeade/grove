@@ -610,3 +610,61 @@ func TestFileMenuShape(t *testing.T) {
 	}
 	closeMenu(t, tt)
 }
+
+// 高亮项只换底色：不描框（描框会把字往里挤 1 pt，悬停时字像在跳）、字不换色也不挪。两种风格、浅色深色都量：
+// 同一项高亮和不高亮各画一张，字的像素（和底差得多的点）位置一样；VS Code 风格的底是灰的半透明，不带强调色。
+func TestGroveMenuHotOnlyFill(t *testing.T) {
+	defer vsLook.Store(vsLook.Load())
+	it := app.MenuEntry{Label: "复制路径", Keys: "⌥⌘C"}
+	for _, vs := range []bool{true, false} {
+		vsLook.Store(vs)
+		for _, dark := range []bool{false, true} {
+			ink := func(hot bool) map[[2]int]bool {
+				tt := wui.NewTester(func(c *wui.Context) {
+					t := c.Theme()
+					wui.Column(c).Width(240).Height(app.MenuItemH).Background(t.Background).Children(func() {
+						gmenuItem(c, t, it, hot, 20)
+					})
+				}, 240, int(app.MenuItemH))
+				tt.SetDark(dark)
+				tt.Frame()
+				img := tt.Image()
+				bg := img.RGBAAt(1, img.Bounds().Dy()/2)
+				pts := map[[2]int]bool{}
+				for y := 0; y < img.Bounds().Dy(); y++ {
+					for x := 0; x < img.Bounds().Dx(); x++ {
+						p := img.RGBAAt(x, y)
+						if d := int(p.R) - int(bg.R); d > 60 || d < -60 {
+							pts[[2]int{x, y}] = true
+						}
+					}
+				}
+				return pts
+			}
+			off, on := ink(false), ink(true)
+			if len(off) == 0 {
+				t.Fatalf("vs=%v dark=%v：没量到字", vs, dark)
+			}
+			diff := 0
+			for p := range off {
+				if !on[p] {
+					diff++
+				}
+			}
+			for p := range on {
+				if !off[p] {
+					diff++
+				}
+			}
+			if diff > len(off)/8 { // 换了底以后抗锯齿的边上有几个点过不过阈值会变
+				t.Errorf("vs=%v dark=%v：高亮后字的像素变了 %d / %d（描了框或字挪了、换了色）", vs, dark, diff, len(off))
+			}
+		}
+	}
+	for _, th := range []*wui.Theme{wui.LightTheme(), wui.DarkTheme()} {
+		h := vsMenuHot(th)
+		if h.R != h.G || h.G != h.B || h.A == 0 || h.A > 31 {
+			t.Errorf("dark=%v：VS Code 风格菜单的高亮该是灰的淡底：%v", th.Dark, h)
+		}
+	}
+}

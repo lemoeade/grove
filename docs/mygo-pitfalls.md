@@ -46,7 +46,7 @@
 - 减少视觉装饰（见 `ui/accent.go` 开头的说明）：强调色只给"当前 / 焦点 / 可以放"和按类别分的色板。新加的角标、胶囊、横幅、文字按钮用
   `quietFill` / `bannerFill` 和正文色 / 次级色。
 - mygo 的 `Split` 分隔线固定 1 px、不能改宽。面板之间的缝是自己的拖条（`resizer`、分屏的 `splitDivider`），悬停时画 `gapLine`。
-- `Border` 画在元素里面；`Clip` 的元素的描边盖在子节点上面（卡片的描边不会被编辑器盖住）；`Shadow` 只画在外面，缝只有 6 pt，blur 不宜过大。
+- `Border` 画在元素里面，而且占布局：内容往里挪一个边宽。只在悬停、高亮时才加的框会让字跟着跳 1 pt，看着像换了字体；要一道只在某些状态才有的框，用 `Draw` 画（不占布局），或者干脆只换底色（Grove 菜单的高亮项就是这样）。`Clip` 的元素的描边盖在子节点上面（卡片的描边不会被编辑器盖住）；`Shadow` 只画在外面，缝只有 6 pt，blur 不宜过大。
 - 大片的模糊色斑用 `Painter.Shadow` 画，别用 `Element.Blur` 或 `Canvas`：
   - `Element.Blur` 是整层离屏位图，全窗口几 MB。
   - `Shadow(r, …)` 平时只画在 r 外面，但 r 宽或高为 0 时整块模糊的形状都画出来。给一条线段（宽 w−h、高 0）加 spread = h/2 + 余量
@@ -598,7 +598,8 @@
   所以文件树的右键菜单（`treeMenu`、`rowMenu`、仓库行、钉在顶上的行、压缩目录的每一段）画在窗口里（先是 `PopoverMenu`，issue #48 起是 Grove 自己画的
   `ui/gmenu.go`），下面放不下就往上开，窗口本身都放不下才滚。样子跟着主题，磨砂是自己加的（下一条）。后来（issue #58）大多数右键菜单和按钮的菜单也换成了它；还是 mygo 画的（`SetMenuPresentation(PopoverMenus)`）只剩编辑器的右键菜单、设置窗口的“更多”、标题栏的面包屑，名单见 `docs/architecture.md`。
 - 画在窗口里的面板要磨砂用 `Element.Material` + `plugins/glass`（v0.9.0，和 mygo 同一个模块，不加依赖）：`glass.Blur{Radius}` 只糊不上色，
-  `Material` 顶替 `Background`，所以底色要另铺一层半透明的子元素（`gmenuTint`）；`glass.Glass{}` 是 macOS 26 那种带亮边的玻璃。
+  `Material` 顶替 `Background`，所以底色要么另铺一层半透明的子元素，要么（现在的做法，`ui/frost.go` 的 `frostMaterial`）自己写个 `Material`：
+  `PaintMaterial` 里先调 `glass.Blur.PaintMaterial` 再 `p.FillRadii` 盖底色。铺子元素的办法在有 `Gap` / `Padding` 的面板（对话框、命令面板）里会被挤、占一格间距；`glass.Glass{}` 是 macOS 26 那种带亮边的玻璃。
   糊的是这一帧里画在它底下的元素，不是窗口后面的桌面（那是窗口的 `Vibrancy`）。“减少透明度”开着时 `glass.Blur` 自己会画成主题的 `Background`，
   和菜单的底色不是一个颜色，所以 Grove 自己看 `c.Preferences()` 退回 `Background(gmenuBg)`。无头的 Tester 画得出来（glass 有 CPU 的一份），
   和 Metal 离屏渲染的对过，圆角、颜色一致。mygo 的 `PopoverMenu` / `ContextMenu` 没有改面板样子的入口（只有 `PopoverMenuButtonOptions.Panel`），

@@ -121,6 +121,14 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
+			{0, "浮层不透明度（%）", "菜单、命令面板、对话框、悬停提示的底色盖多少：越小越透，底下的内容糊开透出来；100 是不透明的。系统开了“减少透明度”时总是不透明", func(c *wui.Context, l, d string) {
+				pct := float32(s.FrostPercent())
+				number(c, l, d, &pct, workspace.DefaultFrost, 50, 100, 5, func() {
+					s.Frost = int(pct)
+					s.Clamp()
+					done()
+				})
+			}},
 			{0, "界面缩放（%）", "放大、缩小、回到 100% 的快捷键；所有窗口一起", func(c *wui.Context, l, d string) {
 				zoom := float32(s.ZoomPercent())
 				number(c, l, zoomDesc(), &zoom, 100, 50, 300, 5, func() { a.SetZoom(int(zoom)) })

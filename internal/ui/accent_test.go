@@ -36,13 +36,13 @@ func TestApplyAccent(t *testing.T) {
 	a.St.Settings.Accent = workspace.DefaultAccent
 	th := base(false)
 	applyAccent(a, &th)
-	if def.Accent != wui.Hex("#005FB8") || th != def {
+	if def.Accent != wui.Hex("#0069CC") || th != def {
 		t.Errorf("默认的强调色该是蓝：%v，选了蓝 %v", def.Accent, th.Accent)
 	}
 	a.St.Settings.Accent = ""
 	def = base(true)
 	applyAccent(a, &def)
-	if def.Accent != wui.Hex("#0078D4") || def.AccentText != wui.Hex("#ffffff") {
+	if def.Accent != wui.Hex("#297AA0") || def.AccentText != wui.Hex("#ffffff") {
 		t.Errorf("深色蓝：%v，字 %v", def.Accent, def.AccentText)
 	}
 	a.St.Settings.Accent = "forest"
@@ -158,7 +158,7 @@ func TestSelectedRowLook(t *testing.T) {
 		t.Errorf("跟随系统时选中行是 %v，系统的强调色 %v", sel, pink)
 	}
 	a.St.Settings.Accent = ""
-	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#005FB8"), 3) {
+	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#0069CC"), 3) {
 		t.Errorf("默认的选中行是 %v，应是蓝", sel)
 	}
 

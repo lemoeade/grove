@@ -341,7 +341,14 @@ func quickOpen(a *app.App, c *wui.Context) {
 	tip := app.Tip(i18n.T("按文件名快速打开"), "file.quickOpen")
 	b := wui.ButtonBase(c).Label(i18n.T("快速打开")).Gap(6).AlignItems(wui.Center).Padding(3, 10).Radius(6).Width(260).MinWidth(120).Shrink(1).
 		Background(t.Text.Alpha(0.05)).BorderWidth(1).BorderColor(t.Border).Cursor(wui.CursorPointer).Tooltip(tip)
-	if b.Hovered() {
+	switch {
+	case vscode(): // VS Code 2026 的命令中心：白底（深色和标题栏一色）、#D8D8D8 2/3 的框，悬停淡淡一层灰（commandCenter.*）
+		bg := pick(t, wui.Hex("#ffffff"), vsSide(t))
+		if b.Hovered() {
+			bg = pick(t, wui.Hex("#dadada").Alpha(0x4f/255.0), wui.RGBA(255, 255, 255, 0x0f/255.0)).Over(bg)
+		}
+		b.Background(bg).BorderColor(pick(t, wui.Hex("#d8d8d8").Alpha(0xaa/255.0), wui.Hex("#2e3031")))
+	case b.Hovered():
 		b.Background(toolFill(t, 0.08))
 	}
 	b.Children(func() {

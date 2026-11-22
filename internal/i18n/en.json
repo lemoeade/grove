@@ -2323,5 +2323,8 @@
   "替换（↩）": "Replace (↩)",
   "风格": "Style",
   "VS Code 是不透明的平面和 VS Code 的代码配色；Grove 是窗口底上的圆角卡片，窗口底和材质只在 Grove 风格里用": "VS Code is flat and opaque with VS Code's code colors; Grove is rounded cards on the window background. Window background and material only apply to the Grove style",
-  "蓝": "Blue"
+  "蓝": "Blue",
+  "浮层不透明度": "Overlay Opacity",
+  "浮层不透明度（%）": "Overlay opacity (%)",
+  "菜单、命令面板、对话框、悬停提示的底色盖多少：越小越透，底下的内容糊开透出来；100 是不透明的。系统开了“减少透明度”时总是不透明": "How opaque menus, the Command Palette, dialogs and hovers are: lower lets the content underneath show through, blurred; 100 is solid. Always solid when Reduce Transparency is on in System Settings."
 }

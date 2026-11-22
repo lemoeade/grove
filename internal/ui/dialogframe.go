@@ -56,7 +56,8 @@ func dialogFrame(c *wui.Context, open *bool, o dialogOpts, body, footer func()) 
 		// 居中在去掉底下 20% 的那块里：矮的确认框顶边落在窗高三成左右，高的表单照样放得下
 		back.Background(wui.RGBA(0, 0, 0, dlgShade(t))).Padding(16, 16, 16+h*0.2, 16)
 		panel.Width(w).MaxWidth(max(cw-32, 200)).MaxHeight(max(h*0.8-32, 120)).Padding(14, dlgPad, 14, dlgPad).Gap(12).
-			Radius(dlgRadius).Background(t.Background).Border(1, t.Border).Shadow(shadowDialog()).Label(o.Title)
+			Radius(dlgRadius).Border(1, t.Border).Shadow(shadowDialog()).Label(o.Title)
+		frostFill(c, panel, dialogBg(t)) // 磨砂的（frost.go）
 		if o.Enter != nil && panel.OverlayShortcut(0, wui.KeyEnter) {
 			enter = true
 		}
@@ -184,7 +185,15 @@ func dlgButton(c *wui.Context, label string, k btnKind, disabled, focus bool) bo
 		black := wui.RGBA(0, 0, 0, 1)
 		base, hover, press, fg = t.Danger, t.Danger.Mix(black, 0.1), t.Danger.Mix(black, 0.18), t.AccentText
 	default:
-		b.Border(1, t.Border)
+		if !vscode() {
+			b.Border(1, t.Border)
+			break
+		}
+		// VS Code 2026 的次要按钮：浅灰的面（深色是透明的、描一道框）
+		var border wui.Color
+		base, border = vsSecondary(t)
+		hover, press = toolFill(t, 0.06).Over(base), toolFill(t, 0.12).Over(base)
+		b.Border(1, border)
 	}
 	bg := base
 	switch {

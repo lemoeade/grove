@@ -330,7 +330,7 @@ ged 自己不做的命令（跳行、补全、跳到定义、显示悬停……�
 卡是和 mygo 编辑器共用的 `peekCardAt`（`edPeekCard` 按 `CharBox` 算卡顶）。诊断（`St.Diagnostics`，`SyncProblems` 照旧设）画成 `Style.Squiggles` 的波浪线；行内 blame（`Doc.BlameInlay`）是 `Style.Notes` 的行尾淡字。
 单栏时 ged 和 mygo 的编辑器一样把键、字、按下先给 `Style.Keys`（`docKeys`：片段跳位的 Tab、⇧⌥F 和它跟着送来的 ⌥ 字），再自己处理；右键菜单是 Grove 画的（`gedFileMenu`，测试用 `shownMenu` / `chooseMenu`），照 VS Code 编辑器的右键菜单只到命令面板：跳到定义、查找引用；更改所有匹配项、格式化文档；剪切、复制、粘贴；命令面板。
 拆分、本地历史、Finder、复制路径和 VS Code 一样在标签的右键菜单（`tabMenu`），保存、检查、blame 在菜单栏和命令面板；mygo 编辑器的菜单照旧接 `docFileItems`。
-编辑器自己的命令（跳到定义、更改所有匹配项）不在菜单栏的注册表里，键按 `edBindingOf` 从 `app.EditorBindings()` 再 `editor.DefaultBindings()` 找（只要一下的，不要和弦）。
+编辑器自己的命令（跳到定义、更改所有匹配项）不在菜单栏的注册表里，键按 `edBindingOf` 从 `app.EditorBindings()` 再 `editor.DefaultBindings()` 找（只要一下的，不要和弦）；一个命令有几个键时挑 `edMenuKeys` 里 VS Code 菜单写的那个（更改所有匹配项 ⌘F2，`TestEdMenuKeys`）。
 括号按层上色（`Style.Brackets`，只在 VS Code 风格里给，Light+ / Dark+ 的三种色）：每行开头的括号层数和分词状态一起缓存（`depths` / `stateAt`），`walkBrackets` 跳过字符串、注释里的括号。
 小地图（`ged/minimap.go`，`Style.Minimap`，也只在 VS Code 风格里开）：概览条左边 100 pt，一行 2 pt、一个字 1 pt，按词的颜色画细条（每行按字和分词状态缓存），
 比编辑器高时按比例跟着滚（编辑器滚到底它也到底）；`geom.right` 是右边让出的宽，正文、粘性滚动、横滚、软换行的宽都按它算。指针在上面时出滑块，按滑块外把滑块挪到指针下再拖。`ged` 包里 `TestMinimap`。
@@ -469,10 +469,16 @@ Grove 菜单选中的项在下一帧的开头、建树之前执行（`root` 里�
 - 状态机是 `app.PopMenu`（`app/popmenu.go`，每个窗口一个 `App.Menu`），不碰界面：项由建菜单的函数经 `app.MenuSink` 收集（每帧重收，灰不灰跟着状态），
   位置、命中、子菜单延迟（`MenuSubDelay` 0.2 s）、安全三角、灰项提示（`MenuTipDelay` 0.5 s）、按住拖松开（挪出 4 pt 才算动过，没动过就松开菜单留着）、零滚动不关（`dy` 小于 0.01 不算滚）、键盘都在里面，
   `popmenu_test.go` 直接喂事件测（Tester 按不住右键）。选中一项后再跑一遍建菜单的函数，选中那项的 `Chosen()` 报真（和 mygo 的菜单一样）。
-- 面板是磨砂的（`gmenuPanel`）：`Material(glass.Blur{Radius: gmenuBlur})` 把窗口画在它底下的内容糊开（mygo 的 `plugins/glass`，和 mygo 同一个模块），
-  里面第一个子元素是一层半透明的底色（`gmenuTint`：`gmenuBg` 的颜色，浅色 44%、深色 60% 不透明，自己带圆角；模糊半径 12）。两个不透明度是能透到的底：
+- 面板是磨砂的（`gmenuPanel`）：`Material(frostMaterial{gmenuTint(t)})`（`ui/frost.go`）把窗口画在它底下的内容糊开（mygo 的 `plugins/glass` 的 `glass.Blur`，和 mygo 同一个模块），
+  再按圆角盖一层半透明的底色（`gmenuTint`：Grove 风格是 `gmenuBg` 的颜色，浅色 44%、深色 60% 不透明；VS Code 风格是 `vsEditor` 盖 `frostAlpha()`；模糊半径 12）。两个不透明度是能透到的底：
   底下是主题自己的底色时字（面板上的、高亮项上的）够 4.5:1，底下是最坏的颜色（浅色主题底下全黑、深色底下全白）时也够 3:1，再透就不够了（`TestGroveMenuTintContrast`）。系统的“减少透明度”/“增强对比度”开着时（`gmenuFrosted`）
-  不糊，直接用不透明的 `gmenuBg`（`TestGroveMenuFrosted`）。
+  不糊，直接用不透明的底色（`TestGroveMenuFrosted`）。
+- 别的浮层也照 VS Code 的 frosted glass 磨砂（`ui/frost.go`）：`frostFill(c, el, bg)` 在 `canFrost`（没开减少透明度、增强对比度）时给 `el` 上 `frostMaterial`
+  （`glass.Blur{Radius: frostBlur}` 糊开底下，再 `FillRadii` 盖 `bg` 的 `frostAlpha()`，一个 Material 画完，不另铺子元素——铺满的子元素会占 `Gap`），
+  不能时是纯色 `bg`。用在命令面板（`paletteBg`）、`dialogFrame`（`dialogBg`）、编辑器的悬停提示 `edTipCard` 和补全列表 `edCompletionList`（`widgetBg`）；
+  VS Code 风格下底色是 VS Code 2026 的 menu / quickInput / editorWidget 底（`vsOverlayBg`，`vsQuickBg` / `vsWidgetBg` 都是它，#FAFAFD / #202122）。`TestFrostFill` 在黑白交界上量糊没糊、退没退回纯色。
+  盖多少是设置的“浮层不透明度”（`Settings.Frost`，json `frostOpacity`，50–100，0 是 `DefaultFrost` 65：VS Code 默认 80，但 80% 的浮层底盖在差不多一色的侧栏上看不出透）；
+  取颜色的函数拿不到 App，每帧 `setLook` 把它记进包级的 `frostPct`，100 时 `canFrost` 报假、直接纯色。65% 时 VS Code 的字色在最坏的底上也有 2.5:1（深色盖在纯白上 2.7:1，`TestFrostContrast`）。
 - 菜单项在无障碍树里是能按的（`gmenuItem` 那一行的 `Clicked()`）：辅助技术按了走 `PopMenu.Press`，和键盘回车一样选它（有子菜单的开子菜单）。
   鼠标的按下松开不走这条，还是接收层交给 `PopMenu` 的那一套。
 - 项很多的菜单带筛选框（`PopMenu.Filterable`，界面是 `filterMenuButton`，现在只有状态栏的语言）：框钉在面板顶上（`MenuLevel.Head`，
@@ -782,7 +788,7 @@ shell 按需启动：首次需要显示（底栏开着、当前仓库是它、�
 
 ### 窗口底和颜色
 
-风格（`Settings.Look`，`ui/look.go`）两种：默认 `""` 是 VS Code，`grove` 是下面说的圆角卡片。取颜色的小函数（`cardBg` / `windowBg` / `headerBg` / `cardLine` / `diffBase`）只拿得到主题，所以每帧 `applyAccent` 开头 `setLook` 把风格记在包级的 `vsLook`，`applyLook` 换字色、线色、弹出层的底；VS Code 风格下 `card` 不要圆角和阴影，`panelCard`（底栏、右栏）是侧栏色的底、不描边，`center` 的缝是 0（拖条还是 `cardGap` 宽，底色就是侧栏色），根的中间一行顶上、状态栏顶上各一道 `vsLine`，`panelTab` 当前那页顶上一道强调色线，`focusBar` 不画。代码配色走 `vsCodeTheme`（`fullCodeTheme` / `softTheme` 里换），ged 的 Diff 颜色走 `gedStyle` 里的 VS Code 分支（`PlainNumbers` 让改了的行号不变色）。`applyLook` 还把主题的 `ScrollbarStyle` 换成 VS Code 的（`vsScrollbar`：10 宽、方、贴两头、半透明灰，ged 的概览条 14 宽）。侧栏正文字号、仓库名字号、文件树行高、右栏历史行高跟着风格（`sideFont()` / `repoFont()` / `treeRowH()` / `histRowH()`，Grove 14 / 14.5 / 24 / 30，VS Code 13 / 13 / 22 / 22），提交图的节点在行高的正中（`graphNodeY()`）。VS Code 风格下：`segTabsOf` 只有图标时（侧栏视图切换）是平的、当前那个底下一道线；侧栏列表左右不留（`sidePadX()`）、选中块方的（`sideRowRadius()`；实心时 `newListLook` 换一份圆角 0 的主题），淡底的三档颜色走 `softFills` 的 VS Code 分支，活动选中由 `listLook.rowAt` 描 1 pt 强调色的框、不画竖条；吸顶栈的底是 `vsSide`；`hitText` 的命中是蓝的粗字；Grove 画的菜单（`gmenuPanel`）不磨砂（`gmenuFrosted`），`vsEditor` 的底、`vsMenuLine` 的框和分隔线，高亮项实心强调色；底栏标签走 `panelTitle`（不分格，当前那个底下一道线），编辑器标签还是 `panelTab`。VS Code 风格不透（`cmd/workbench` 的 `vibrancy`）。
+风格（`Settings.Look`，`ui/look.go`）两种：默认 `""` 是 VS Code（照 VS Code 1.147 的 Light 2026 / Dark 2026：`vsSide` / `vsEditor` / `vsLine` 三块颜色，`vsFocus` 是焦点框，`vsActiveLine` 是当前标签和底栏标题的线、浅色黑，`vsActivityLine` 是视图切换的线，强调色默认的「蓝」是它的 #0069CC / #297AA0），`grove` 是下面说的圆角卡片。取颜色的小函数（`cardBg` / `windowBg` / `headerBg` / `cardLine` / `diffBase`）只拿得到主题，所以每帧 `applyAccent` 开头 `setLook` 把风格记在包级的 `vsLook`，`applyLook` 换字色、线色、弹出层的底；VS Code 风格下 `card` 不要圆角和阴影，`panelCard`（底栏、右栏）是侧栏色的底、不描边，`center` 的缝是 0（拖条还是 `cardGap` 宽，底色就是侧栏色），根的中间一行顶上、状态栏顶上各一道 `vsLine`，`panelTab` 当前那页顶上一道 `vsActiveLine`，`focusBar` 不画。代码配色走 `vsCodeTheme`（`fullCodeTheme` / `softTheme` 里换），ged 的 Diff 颜色走 `gedStyle` 里的 VS Code 分支（`PlainNumbers` 让改了的行号不变色）。`applyLook` 还把主题的 `ScrollbarStyle` 换成 VS Code 的（`vsScrollbar`：10 宽、方、贴两头、半透明灰，ged 的概览条 14 宽）。侧栏正文字号、仓库名字号、文件树行高、右栏历史行高跟着风格（`sideFont()` / `repoFont()` / `treeRowH()` / `histRowH()`，Grove 14 / 14.5 / 24 / 30，VS Code 13 / 13 / 22 / 22），提交图的节点在行高的正中（`graphNodeY()`）。VS Code 风格下：`segTabsOf` 只有图标时（侧栏视图切换）是平的、当前那个底下一道线；侧栏列表左右不留（`sidePadX()`）、选中块方的（`sideRowRadius()`；实心时 `newListLook` 换一份圆角 0 的主题），淡底的三档颜色走 `softFills` 的 VS Code 分支，三档都是中性的灰，活动选中由 `listLook.rowAt` 描 1 pt `vsFocus` 的框、不画竖条；吸顶栈的底是 `vsSide`；`hitText` 的命中是 `vsHighlight` 的粗字；Grove 画的菜单（`gmenuPanel`）照 VS Code 的 frosted glass 磨砂（`vsOverlayBg` 盖浮层不透明度，见上面菜单那节），`vsMenuLine` 的框、`vsMenuSep` 的分隔线，高亮项只垫 `vsMenuHot` 的灰色半透明底，不描框（mygo 的 Border 占布局，描了框字会往里挪 1 pt，悬停时字像在跳，`TestGroveMenuHotOnlyFill` 比高亮前后字的像素）、字不换色；主题的 `Surface` 是输入框的白（mygo 的输入框拿它垫底），标题栏的快速打开照命令中心（`quickOpen`），对话框的次要按钮走 `vsSecondary`；底栏标签走 `panelTitle`（不分格，当前那个底下一道线），编辑器标签还是 `panelTab`。VS Code 风格不透（`cmd/workbench` 的 `vibrancy`）。
 
 窗口底（`Settings.Backdrop`，只在 Grove 风格里用）三种：柔和（默认）、纯色（`flat`）、通透（`vibrancy`，再选系统材质 `material`）。柔和是纯色底上用 `Draw` 画几团很淡的色斑（`paintBackdrop`，Shadow 的模糊；左上那团的颜色从强调色推出来，`blobColor`），不依赖桌面壁纸；通透在默认壁纸上看起来是平的、HUD 一类材质会把字冲淡，所以不是默认。
 

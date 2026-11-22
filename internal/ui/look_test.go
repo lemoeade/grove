@@ -9,7 +9,7 @@ import (
 	"github.com/lemoeade/grove/internal/app"
 )
 
-// 风格：默认（存成 ""）是 VS Code——字色、线色、底色、代码配色照 VS Code 的 Modern 主题，卡片是平的；
+// 风格：默认（存成 ""）是 VS Code——字色、线色、底色、代码配色照 VS Code 的 2026 主题，卡片是平的；
 // “grove” 是原来的样子，主题不动、代码是 GitHub 配色。
 func TestLook(t *testing.T) {
 	defer vsLook.Store(true)
@@ -20,9 +20,9 @@ func TestLook(t *testing.T) {
 			th = *wui.DarkTheme()
 		}
 		applyAccent(a, &th)
-		text, kw, bg := "#3b3b3b", "#0000ff", "#ffffff"
+		text, kw, bg := "#202020", "#cf222e", "#ffffff"
 		if dark {
-			text, kw, bg = "#cccccc", "#569cd6", "#1f1f1f"
+			text, kw, bg = "#bfbfbf", "#ff7b72", "#121314"
 		}
 		if !vscode() || th.Text != wui.Hex(text) || th.Background != wui.Hex(bg) || th.Border != vsLine(&th) {
 			t.Errorf("深色 %v：默认风格的字 %v、底 %v、线 %v", dark, th.Text, th.Background, th.Border)
@@ -43,7 +43,8 @@ func TestLook(t *testing.T) {
 	if vscode() || th.Text != want.Text || th.Background != want.Background || th.Border != want.Border {
 		t.Errorf("Grove 风格不该动字色、底色、线色：%v %v %v", th.Text, th.Background, th.Border)
 	}
-	if kw := fullCodeTheme(&th).Tokens[editor.TokenKeyword].Color; kw == wui.Hex("#569cd6") {
-		t.Errorf("Grove 风格的代码用的还是 VS Code 配色：%v", kw)
+	// VS Code 2026 的代码配色和 mygo 默认的一样是 GitHub 那一套，认底色和正文色
+	if ct := fullCodeTheme(&th); ct.Background == vsEditorDark || ct.Tokens[editor.TokenText].Color == vsCodeText(&th) {
+		t.Errorf("Grove 风格的代码用的还是 VS Code 配色：底 %v、字 %v", ct.Background, ct.Tokens[editor.TokenText].Color)
 	}
 }

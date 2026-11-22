@@ -283,11 +283,17 @@ func gedStyle(a *app.App, t *wui.Theme) ged.Style {
 	diffTint(ct, t)
 	font := a.EditorFont()
 	font.Size -= 0.5
-	if vscode() { // VS Code 的 Diff 默认颜色：改了的词 #9ccc2c40（深色 33）/ #ff000033，对面空着的斜线 #22222233（深色 #cccccc33）
+	if vscode() { // VS Code 2026 的 Diff 颜色：改了的词 #587C0C26 / #AD070726（深色 #57AB5A4D / #F470674D），
+		// 深色改了的行也换成它的 #347D3926 / #C93C3726（浅色还是默认的 #9BB95533 / #FF000033）；对面空着的斜线 #22222233（深色 #cccccc33）
 		s := gedStyleBase(t, ct, font)
-		s.AddedWord, s.DeletedWord = wui.Hex("#9ccc2c").Alpha(pickF(t, 0.25, 0.2)), wui.Hex("#ff0000").Alpha(0.2)
+		if t.Dark {
+			s.AddedWord, s.DeletedWord = wui.Hex("#57ab5a").Alpha(0x4d/255.0), wui.Hex("#f47067").Alpha(0x4d/255.0)
+			s.AddedLine, s.DeletedLine = wui.Hex("#347d39").Alpha(0x26/255.0), wui.Hex("#c93c37").Alpha(0x26/255.0)
+		} else {
+			s.AddedWord, s.DeletedWord = wui.Hex("#587c0c").Alpha(0x26/255.0), wui.Hex("#ad0707").Alpha(0x26/255.0)
+		}
 		s.Filler = pick(t, wui.Hex("#222222").Alpha(0.2), wui.Hex("#cccccc").Alpha(0.2))
-		s.FoldBack = pick(t, wui.Hex("#f8f8f8"), wui.Hex("#181818"))
+		s.FoldBack = vsSide(t)
 		s.PlainNumbers = true
 		s.Brackets = bracketColors(t)
 		return s

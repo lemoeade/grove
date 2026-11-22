@@ -18,7 +18,7 @@ import (
 // accentColors 是能选的强调色（跟随系统的 "system" 不在这里）：浅色、深色主题各一个；
 // darkText 是深色主题里强调色上的字，零值是白色（石墨的深色太浅，白字看不清）。
 var accentColors = map[string]struct{ light, dark, darkText wui.Color }{
-	"blue":     {wui.Hex("#005FB8"), wui.Hex("#0078D4"), wui.Color{}},        // 默认：VS Code Modern 的蓝，白字 6.4:1、深色 4.5:1
+	"blue":     {wui.Hex("#0069CC"), wui.Hex("#297AA0"), wui.Color{}},        // 默认：VS Code 2026 的强调色（button.background），白字 5.4:1、深色 4.8:1
 	"forest":   {wui.Hex("#2B7A57"), wui.Hex("#5DBB8C"), wui.Hex("#0E1A14")}, // 白字 5.2:1；深色的白字只有 2.3:1，换墨绿的深字（7.6:1）
 	"steel":    {wui.Hex("#4E6E8E"), wui.Hex("#8FA9C6"), wui.Hex("#18181B")}, // 白字 5.3:1；深色的太亮，白字只有 2.4:1，换深字
 	"ink":      {wui.Hex("#3B5B84"), wui.Hex("#7A9CC6"), wui.Color{}},
@@ -104,9 +104,11 @@ func softAlpha(t *wui.Theme) float32 {
 // softFills 是淡底列表行的三档底色：悬停是字色 4%（深色 6%），非活动选中是字色 8%（深色 12%），
 // 活动选中是强调色 softAlpha。深色主题里 mygo 的 SurfaceHover 和淡底的选中几乎一样亮，所以悬停也换掉。
 func softFills(t *wui.Theme) (f struct{ hover, inactive, active wui.Color }) {
-	if vscode() { // VS Code 的 list.hoverBackground、list.inactiveSelectionBackground；活动选中另外描一道强调色的框（rowAt）
-		f.hover, f.inactive = pick(t, wui.Hex("#e8e8e8"), wui.Hex("#2a2d2e")), pick(t, wui.Hex("#e4e6f1"), wui.Hex("#37373d"))
-		f.active = t.Accent.Alpha(softAlpha(t))
+	if vscode() { // VS Code 2026 的列表全是中性的灰：list.hoverBackground、inactiveSelectionBackground、activeSelectionBackground；
+		// 活动选中另外描一道 focusBorder 的框（rowAt）
+		f.hover = pick(t, wui.RGBA(0, 0, 0, 0x14/255.0), wui.RGBA(255, 255, 255, 0x14/255.0))
+		f.inactive = pick(t, wui.Hex("#dadada").Alpha(0x99/255.0), wui.Hex("#2c2d2e"))
+		f.active = pick(t, wui.RGBA(0, 0, 0, 0x25/255.0), wui.RGBA(255, 255, 255, 0x22/255.0))
 		return f
 	}
 	f.hover, f.inactive = t.Text.Alpha(0.04), t.Text.Alpha(0.08)
@@ -168,7 +170,8 @@ func (l *listLook) rowAt(c *wui.Context, i int, sel, focused bool, fn func()) {
 		}
 		bar := l.real.Accent
 		rad := l.real.Radius
-		if vscode() { // VS Code 的列表：满行、方的；活动选中不画竖条，描一道 1 pt 强调色的框（list.focusOutline），连着选中的几行框成一块
+		if vscode() { // VS Code 的列表：满行、方的；活动选中不画竖条，描一道 1 pt focusBorder 的框（list.focusOutline），连着选中的几行框成一块
+			bar = vsFocus(l.real)
 			box := wui.Box(c).Shrink(0).Children(fn)
 			if sel {
 				box.Draw(func(p *wui.Painter, r wui.Rect) {

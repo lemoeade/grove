@@ -27,8 +27,8 @@ func palette(a *app.App, c *wui.Context) {
 	t := c.Theme()
 	wui.DialogBase(c, &p.Open, func(back, panel wui.Element) {
 		back.Justify(wui.Start).Padding(56, 16, 16, 16)
-		panel.Width(640).Padding(6).Gap(4).Radius(dlgRadius).Background(t.Background).Border(1, t.Border).
-			Shadow(shadowDialog()) // 和 dialogFrame 一样的圆角、阴影
+		frostFill(c, panel.Width(640).Padding(6).Gap(4).Radius(dlgRadius), paletteBg(t)).Border(1, t.Border).
+			Shadow(shadowDialog()) // 和 dialogFrame 一样的圆角、阴影；磨砂的（frost.go）
 		wui.Row(c).Padding(2, 8).Gap(8).AlignItems(wui.Center).Children(func() {
 			icon := iconSearch
 			if strings.HasPrefix(p.Text, ">") {
@@ -196,13 +196,13 @@ func hitSpans(c *wui.Context, s string, hits []int, off int, size float32, color
 
 // hitText 和 hitSpans 一样，只是字号、颜色、粗细、删除线都跟着元素（调用方在返回的元素上设，文件树筛选的行用）。
 //
-// VS Code 风格照它的列表：命中的字不加底，换成 list.highlightForeground 的蓝、加粗；在实心的强调色行上（hl 是 AccentText 调出来的）
+// VS Code 风格照它的列表：命中的字不加底，换成 list.highlightForeground（#0069CC / #48A0C7）、加粗；在实心的强调色行上（hl 是 AccentText 调出来的）
 // 只加粗、字色跟着行。
 func hitText(c *wui.Context, s string, hits []int, off int, hl wui.Color) wui.Element {
 	var spans []wui.Span
 	vs, vsHit := vscode(), wui.Color{}
 	if t := c.Theme(); vs && (hl.R != t.AccentText.R || hl.G != t.AccentText.G || hl.B != t.AccentText.B) {
-		vsHit = pick(t, wui.Hex("#0066bf"), wui.Hex("#2aaaff"))
+		vsHit = vsHighlight(t)
 	}
 	plain := func(from, to int) {
 		if from < to {

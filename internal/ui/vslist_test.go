@@ -11,8 +11,8 @@ import (
 	"github.com/lemoeade/grove/internal/workspace"
 )
 
-// VS Code 风格的侧栏列表：行满宽、方的；非活动选中是 #E4E6F1（list.inactiveSelectionBackground），
-// 活动选中是强调色的淡底加一道 1 pt 强调色的框（list.focusOutline），没有 Grove 那道 3 pt 的竖条。
+// VS Code 风格的侧栏列表：行满宽、方的；非活动选中是 #DADADA 60% 盖在侧栏的 #FAFAFD 上（list.inactiveSelectionBackground），
+// 活动选中是黑 15% 的灰底加一道 1 pt focusBorder（#0069CC）的框（list.focusOutline），没有 Grove 那道 3 pt 的竖条。
 func TestVSListSelection(t *testing.T) {
 	r0 := testutil.NewRepo(t, "vslist")
 	for _, name := range []string{"go.mod", "main.go", "zz.txt"} {
@@ -51,7 +51,7 @@ func TestVSListSelection(t *testing.T) {
 
 	a.FocusTree = false
 	px, row := shot()
-	inactive := wui.Hex("#e4e6f1")
+	inactive := vsSideLight.Mix(wui.Hex("#dadada"), 0x99/255.0)
 	mid := row.Y + row.H/2
 	// 满宽：行的左头（侧栏的边往里半个像素）、右头往里 12 pt（滚动条之外）都是选中的底；方的：左上角那个像素也是
 	for _, p := range []struct {
@@ -65,7 +65,7 @@ func TestVSListSelection(t *testing.T) {
 
 	a.FocusTree = true
 	px, row = shot()
-	accent := wui.Hex("#005fb8")
+	accent := wui.Hex("#0069cc")
 	if c := px(row.X+0.25, mid); !near(c, accent, 6) {
 		t.Errorf("活动选中左边的框是 %v，应是强调色 %v", c, accent)
 	}
@@ -77,7 +77,7 @@ func TestVSListSelection(t *testing.T) {
 	}
 }
 
-// VS Code 风格的筛选命中是 list.highlightForeground 的蓝（浅色 #0066BF）、加粗，不垫底色。
+// VS Code 风格的筛选命中是 list.highlightForeground 的蓝（浅色 #0069CC）、加粗，不垫底色。
 func TestVSHitText(t *testing.T) {
 	repo := testutil.NewRepo(t, "proj")
 	repo.Write("notes/docs.txt", "n\n")
@@ -97,7 +97,7 @@ func TestVSHitText(t *testing.T) {
 		t.Fatalf("找不到 docs.txt：%q", tt.Texts())
 	}
 	img := tt.Image()
-	blue := color.RGBA{0x00, 0x66, 0xbf, 255}
+	blue := color.RGBA{0x00, 0x69, 0xcc, 255}
 	n := 0
 	for y := int(row.Y * scale); y < int((row.Y+row.H)*scale); y++ {
 		for x := int(row.X * scale); x < int((row.X+row.W)*scale); x++ {

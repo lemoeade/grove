@@ -315,7 +315,7 @@ func segIconTabs(c *wui.Context, sel *int, segs ...seg) wui.Element {
 func segTabsOf(c *wui.Context, sel *int, iconOnly bool, segs []seg) wui.Element {
 	t := c.Theme()
 	p := wui.SegmentedBase(c, sel, len(segs))
-	flat := iconOnly && vscode() // VS Code 风格的视图切换照它放在顶上的活动栏：没有胶囊，图标平放，当前那个字色深、底下一道线
+	flat := iconOnly && vscode() // VS Code 风格的视图切换照它放在顶上的活动栏：没有胶囊，图标平放，当前那个字色深、底下一道黑线（深色是正文色）
 	p.Track.Height(26).Padding(2).Gap(2).Radius(7).Background(t.Text.Alpha(0.055)).AlignItems(wui.Stretch).MinWidth(0)
 	if flat {
 		p.Track.Height(toolSize).Padding(0).Radius(0).Background(wui.Color{})
@@ -338,7 +338,7 @@ func segTabsOf(c *wui.Context, sel *int, iconOnly bool, segs []seg) wui.Element 
 			case flat && i == *sel:
 				fg = t.Text
 				s.Draw(func(p *wui.Painter, r wui.Rect) {
-					p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, t.Text, 0)
+					p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, vsActivityLine(t), 0)
 				})
 			case flat:
 				if s.Hovered() {
@@ -377,8 +377,8 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 	b := wui.Row(c).Height(headerHeight).Padding(0, 4, 0, 10).Gap(6).AlignItems(wui.Center).Shrink(0).Cursor(wui.CursorPointer).
 		BorderWidth(0, 1, 0, 0).BorderColor(cardLine(t))
 	switch {
-	case active && vscode(): // VS Code：当前标签顶上一道强调色的线
-		b.Background(t.Background).Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, t.Accent, 0) })
+	case active && vscode(): // VS Code 2026：当前标签顶上一道线（tab.activeBorderTop：浅色黑、深色 #3994BC）
+		b.Background(t.Background).Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, vsActiveLine(t), 0) })
 	case active:
 		b.Background(t.Background)
 	case b.Hovered():
@@ -388,7 +388,7 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 }
 
 // panelTitle 是底栏标题行里的标签（终端、输出、问题）。Grove 风格同 panelTab；VS Code 风格照它面板的标题：
-// 不分格、不垫底色，当前的那个字深、底下一道 1 pt 强调色的线（panelTitle.activeBorder），别的字淡、悬停变深。
+// 不分格、不垫底色，当前的那个字深、底下一道 1 pt 的线（panelTitle.activeBorder：浅色黑、深色 #3994BC），别的字淡、悬停变深。
 func panelTitle(c *wui.Context, active bool) wui.Element {
 	if !vscode() {
 		return panelTab(c, active)
@@ -397,7 +397,7 @@ func panelTitle(c *wui.Context, active bool) wui.Element {
 	b := wui.Row(c).Height(headerHeight).Padding(0, 4, 0, 10).Gap(6).AlignItems(wui.Center).Shrink(0).Cursor(wui.CursorPointer)
 	if active {
 		b.Draw(func(p *wui.Painter, r wui.Rect) {
-			p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, t.Accent, 0)
+			p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, vsActiveLine(t), 0)
 		})
 	}
 	return b

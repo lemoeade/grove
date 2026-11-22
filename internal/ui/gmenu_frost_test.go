@@ -54,7 +54,7 @@ func TestGroveMenuFrosted(t *testing.T) {
 	gamma.Commit("加 menu.txt")
 	k := newTreeKit(t, alpha.Root, beta.Root, gamma.Root)
 	tt := k.tt
-	k.a.St.Settings.Look = "grove" // 磨砂是 Grove 风格的；VS Code 风格的不透，最后量
+	k.a.St.Settings.Look = "grove" // Grove 风格的底更透，量得出磨砂；VS Code 风格最后量
 	const winW = 1200
 	tt.SetSize(winW, 800)
 	tt.Frame()
@@ -98,17 +98,20 @@ func TestGroveMenuFrosted(t *testing.T) {
 		}
 	}
 	tt.SetPreferences(wui.Preferences{TextScale: 1})
-	// VS Code 风格：不透，底是编辑器的底（白 / #1F1F1F）
+	// VS Code 风格也磨砂（底色 menu.background 盖 65%，和底下的侧栏、编辑器颜色差不多，量不出来——frostFill 的磨砂由 TestFrostFill 量）；
+	// 减少透明度时是不透的 menu.background（#FAFAFD / #202122）
 	k.a.St.Settings.Look = ""
+	tt.SetPreferences(wui.Preferences{TextScale: 1, ReduceTransparency: true})
 	for _, dark := range []bool{false, true} {
 		tt.SetDark(dark)
-		want := vsEditorLight
+		want := wui.Hex("#fafafd")
 		if dark {
-			want = vsEditorDark
+			want = wui.Hex("#202122")
 		}
 		if c := at(); !same(c, want) {
-			t.Errorf("dark=%v：VS Code 风格的菜单该是不透的 %v，量到 %v", dark, want, c)
+			t.Errorf("dark=%v：减少透明度时 VS Code 风格的菜单该是不透的 %v，量到 %v", dark, want, c)
 		}
 	}
+	tt.SetPreferences(wui.Preferences{TextScale: 1})
 	tt.SetDark(false)
 }

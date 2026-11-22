@@ -4,7 +4,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/egoist/mygo/plugins/glass"
 	wui "github.com/egoist/mygo/ui"
 
 	"github.com/lemoeade/grove/internal/app"
@@ -404,30 +403,34 @@ func luminance(c wui.Color) float64 {
 // gmenuBg 是菜单面板的底色：浅色白、深色比卡片亮一档（raisedBg，和展开的提交卡片一样）。
 func gmenuBg(t *wui.Theme) wui.Color { return raisedBg(t) }
 
-// 面板是磨砂的：窗口画在它底下的东西糊开（gmenuBlur，mygo 的 glass.Blur），上面盖一层半透明的底色（gmenuTint）。
-// 糊的是窗口自己画的内容，不是窗口后面的桌面。
-const gmenuBlur = 12
+// 面板是磨砂的（frost.go 的 frostMaterial）：窗口画在它底下的东西糊开，上面盖一层半透明的底色（gmenuTint）。
 
 // gmenuTint 是盖在糊开的内容上的那层底色：gmenuBg 的颜色，浅色 44%、深色 60% 不透明。再透字就不清楚了：
 // 底下是主题自己的底色时字（面板上的、高亮项上的）要够 4.5:1，底下是最坏的颜色（浅色主题底下全黑、深色主题底下全白，比如看图）时
 // 也要够 3:1（TestGroveMenuTintContrast）。
+// VS Code 风格照它的磨砂：menu.background（#FAFAFD / #202122）盖 frostAlpha()（设置里的浮层不透明度）。
 func gmenuTint(t *wui.Theme) wui.Color {
+	if vscode() {
+		return vsOverlayBg(t).Alpha(frostAlpha())
+	}
 	if t.Dark {
 		return gmenuBg(t).Alpha(0.60)
 	}
 	return gmenuBg(t).Alpha(0.44)
 }
 
-// gmenuFrosted 报面板要不要磨砂：系统开了“减少透明度”或“增强对比度”时不要，用不透明的 gmenuBg；
-// VS Code 风格也不要（VS Code 的菜单是不透的白底，深色 #1F1F1F）。
-func gmenuFrosted(c *wui.Context) bool {
-	p := c.Preferences()
-	return !p.ReduceTransparency && !p.HighContrast && !vscode()
-}
+// gmenuFrosted 报面板要不要磨砂：系统开了“减少透明度”或“增强对比度”时不要（canFrost），用不透明的底色。
+// 两种风格都磨砂：VS Code 风格照 VS Code 的 modernUIFrostedGlass（底色 80%），Grove 风格的底更透（gmenuTint）。
+func gmenuFrosted(c *wui.Context) bool { return canFrost(c) }
 
-// VS Code 风格的菜单照它的 menu.* 颜色：底是编辑器的底（白 / #1F1F1F），框和分隔线 #CECECE（#454545），
-// 高亮项是实心的强调色、字反白（menu.selectionBackground，默认就是强调色的蓝）。
-func vsMenuLine(t *wui.Theme) wui.Color { return pick(t, wui.Hex("#cecece"), wui.Hex("#454545")) }
+// VS Code 风格的菜单照 VS Code 2026 的 menu.* 颜色：底 #FAFAFD（#202122），框 #E4E5E6（#2A2B2C），分隔线 #EEEEF1（#2A2B2C），
+// 高亮项不照它的强调色淡底加框（描框会把字挤开一点，悬停时字像在跳）：只垫一层灰的半透明底（黑 8%，深色白 10%，同列表行的悬停），
+// 不描框、字不换色。
+func vsMenuLine(t *wui.Theme) wui.Color { return pick(t, wui.Hex("#e4e5e6"), wui.Hex("#2a2b2c")) }
+func vsMenuSep(t *wui.Theme) wui.Color  { return pick(t, wui.Hex("#eeeef1"), wui.Hex("#2a2b2c")) }
+func vsMenuHot(t *wui.Theme) wui.Color {
+	return pick(t, wui.RGBA(0, 0, 0, 0x14/255.0), wui.RGBA(255, 255, 255, 0x1a/255.0))
+}
 
 // gmenuPanel 画一层：open 是这一层里开着子菜单的那项（高亮着）。l.Head 不为 0 的那层顶上钉着筛选框
 // （query 是打的字，hint 是没字时的灰字），项在它下面滚。press 是无障碍树里按了第 i 项（读屏、按名字按；指针和键盘走接收层）。
@@ -437,15 +440,15 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, 
 	vs := vscode()
 	border, sep := t.Border.Alpha(0.9), t.Border.Alpha(0.5)
 	if vs {
-		border, sep = vsMenuLine(t), vsMenuLine(t)
+		border, sep = vsMenuLine(t), vsMenuSep(t)
 	}
 	panel := wui.Column(c).Absolute().Left(r.X).Top(r.Y).Width(r.W).Height(r.H).Radius(gmenuRadius).
 		Border(1, border).Shadow(shadowMenu(t)).Clip().Role(wui.RoleMenu)
 	switch {
 	case frosted:
-		panel.Material(glass.Blur{Radius: gmenuBlur})
+		panel.Material(frostMaterial{gmenuTint(t)}) // 糊开底下、按圆角盖半透明的底色，一层画完
 	case vs:
-		panel.Background(vsEditor(t))
+		panel.Background(vsOverlayBg(t))
 	default:
 		panel.Background(gmenuBg(t))
 	}
@@ -467,10 +470,6 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, 
 		})
 	}
 	panel.Children(func() {
-		if frosted {
-			// 底色自己带圆角：Metal 里只有最里面那层裁剪是圆的，不靠面板的 Clip 修角
-			wui.Column(c).Absolute().Left(0).Top(0).Width(r.W).Height(r.H).Radius(gmenuRadius).Background(gmenuTint(t)).PassThrough()
-		}
 		if l.Head == 0 {
 			items()
 			return
@@ -520,8 +519,7 @@ func gmenuItem(c *wui.Context, t *wui.Theme, it app.MenuEntry, hot bool, textL f
 			row.Background(t.Danger.Alpha(0.14))
 		}
 	case hot && vscode():
-		row.Background(t.Accent)
-		fg, muted = t.AccentText, t.AccentText.Alpha(0.85)
+		row.Background(vsMenuHot(t))
 	case hot:
 		bg, text := gmenuHot(t)
 		row.Background(bg)
