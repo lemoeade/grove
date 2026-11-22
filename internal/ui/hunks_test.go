@@ -17,6 +17,7 @@ import (
 // 临时仓库上走一遍 Diff 里的块级操作：J / K 跳改动，光标所在那块的"暂存这一块"只暂存它、
 // 已暂存的 diff 里"取消暂存这一块"、确认后"丢弃这一块"，⌥J / ⌥K 跳到下一个 / 上一个改动的文件。
 func TestHunkOps(t *testing.T) {
+	mygoDiff(t)
 	repo := testutil.NewRepo(t, "hunks")
 	lines := testutil.DemoLines()
 	repo.Write("h.txt", strings.Join(lines, "\n")+"\n")
@@ -164,6 +165,7 @@ func shows(tt *wui.Tester, s string) bool {
 // 全文 diff 打开就停在第一处改动（原来停在文件顶上，300 行的文件看不到改动），
 // 局部 / 全文来回切时光标所在那块留在视图里。
 func TestDiffFirstHunk(t *testing.T) {
+	mygoDiff(t)
 	repo := testutil.NewRepo(t, "firsthunk")
 	lines := make([]string, 300)
 	for i := range lines {

@@ -26,6 +26,7 @@ func stickyGo() string {
 // 粘性滚动：滚到函数中间，编辑器顶上吸着一行，字是函数头；点它光标回到函数头、那一行滚到顶（就不吸了）；
 // 查找条开着时叠层不盖它；设置关掉就没有；两层的点里层，它滚到外层下面。
 func TestStickyOverlay(t *testing.T) {
+	gedEditor(t, false) // 测的是 mygo 编辑器自己的东西（FindBar、LineTop / ScrollY、TextBackgrounds、它画的粘性滚动）
 	root, ws := testutil.TempRepo(t)
 	os.WriteFile(filepath.Join(root, "long.go"), []byte(stickyGo()), 0o644)
 	a, tt, wait := newUI(t, ws, "")

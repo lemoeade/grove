@@ -15,6 +15,8 @@ import (
 // ⌘F / ⌥⌘F / ⌃G；焦点在别处（筛选框）时窗口接到同一个键；命令面板里也有。⌥⌘F 在文件标签里是替换，
 // 在 Diff 标签里是全文 diff。
 func TestFindReplaceGoToLine(t *testing.T) {
+	gedEditor(t, false) // 测的是 mygo 编辑器自己的东西（FindBar、LineTop / ScrollY、TextBackgrounds、它画的粘性滚动）
+	mygoDiff(t)
 	_, ws := testutil.TempRepo(t)
 	a, tt, wait := newUI(t, ws, "")
 	r := a.Repos[0]
@@ -26,7 +28,7 @@ func TestFindReplaceGoToLine(t *testing.T) {
 	a.FocusDoc = true
 	tt.Frame()
 	tt.Frame()
-	if !d.St.Focused() {
+	if !d.EditorFocused() {
 		t.Fatal("编辑器没拿到焦点")
 	}
 

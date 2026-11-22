@@ -36,6 +36,7 @@ func folded(tt *wui.Tester) []int {
 
 // 折叠条是细线上的一颗胶囊：按住 ⇧ 点结尾那条一次全部展开，文件开头那条点一下往改动那边展开 100 行。
 func TestDiffSeparatorExpand(t *testing.T) {
+	mygoDiff(t)
 	repo := testutil.NewRepo(t, "diffsep")
 	lines := make([]string, 300)
 	for i := range lines {

@@ -396,7 +396,9 @@ func panelTitle(c *wui.Context, active bool) wui.Element {
 	t := c.Theme()
 	b := wui.Row(c).Height(headerHeight).Padding(0, 4, 0, 10).Gap(6).AlignItems(wui.Center).Shrink(0).Cursor(wui.CursorPointer)
 	if active {
-		b.Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, t.Accent, 0) })
+		b.Draw(func(p *wui.Painter, r wui.Rect) {
+			p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, t.Accent, 0)
+		})
 	}
 	return b
 }

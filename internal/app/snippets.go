@@ -94,7 +94,7 @@ func (a *App) SnippetCompletions(d *docs.Doc, req editor.CompletionRequest) {
 	items, offer := a.snippetCompletions(d, req)
 	d.SnipOffer = offer
 	if len(items) > 0 {
-		d.St.ShowCompletions(req.Offset-len(req.Prefix), items)
+		d.ShowCompletions(req.Offset-len(req.Prefix), items)
 	}
 }
 

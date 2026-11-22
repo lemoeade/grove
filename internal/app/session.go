@@ -119,7 +119,7 @@ func sessionTab(d *docs.Doc) (t workspace.Tab, ok bool) {
 	} else if d.Pending != nil {
 		t.Line, t.Col = d.Pending.Line, d.Pending.Col
 	}
-	if first, last := d.St.VisibleLines(); last > 0 { // 画过：以画出来的为准
+	if first, last := d.VisibleLines(); last > 0 { // 画过：以画出来的为准
 		t.Top = first
 	}
 	return t, true

@@ -72,7 +72,7 @@ func (a *App) ToggleSidePreview() {
 		return
 	}
 	pv := &docs.Doc{Kind: docs.MDPreview, Root: d.Root, Rel: d.Rel, Abs: d.Abs, Title: i18n.Tf("预览 %s", d.Title), MDSource: d}
-	if first, last := d.St.VisibleLines(); last > 0 && first > 0 {
+	if first, last := d.VisibleLines(); last > 0 && first > 0 {
 		pv.AnchorLine = first + 1 // 一开就是编辑器正看着的那一节
 	}
 	a.Docs = append(a.Docs, pv)

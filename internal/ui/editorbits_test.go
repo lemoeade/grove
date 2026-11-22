@@ -45,6 +45,7 @@ func TestBottomTitleShrinks(t *testing.T) {
 // 粘性滚动的光标露出来：光标跳到被吸着的行盖住的那一行（GoTo 只在看不见时才滚），编辑器往上滚到它正好在叠层下面；
 // 五层的一样；光标不动、滚轮把它滚到叠层底下不拽回来；方向键往上走进叠层也露出来。
 func TestStickyCursorReveal(t *testing.T) {
+	gedEditor(t, false) // 测的是 mygo 编辑器自己的东西（FindBar、LineTop / ScrollY、TextBackgrounds、它画的粘性滚动）
 	root, ws := testutil.TempRepo(t)
 	os.WriteFile(filepath.Join(root, "long.go"), []byte(stickyGo()), 0o644)
 	var py strings.Builder
@@ -161,7 +162,7 @@ func TestSnippetUI(t *testing.T) {
 	a.FocusDoc = true
 	tt.Frame()
 	tt.Frame()
-	if !d.St.Focused() {
+	if !d.EditorFocused() {
 		t.Fatal("编辑器没拿到焦点")
 	}
 	d.St.GoTo(editor.Pos{Line: 3, Col: 1})
@@ -234,6 +235,7 @@ func snippetOf(t *testing.T, a *app.App, name string) snippets.Snippet {
 // 文件末尾也是（scroll past end，最后一行上来后下面是空白）；mygo 自己只留 3 行。点击不补：
 // 点在离下边不到 5 行的地方，视图不动；没挪光标的按键之后，内容从外面变了也不补。
 func TestCaretMargin(t *testing.T) {
+	gedEditor(t, false) // 测的是 mygo 编辑器自己的东西（FindBar、LineTop / ScrollY、TextBackgrounds、它画的粘性滚动）
 	root, ws := testutil.TempRepo(t)
 	var b strings.Builder
 	for i := range 200 {

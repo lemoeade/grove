@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"slices"
@@ -45,7 +46,7 @@ func gedFiles() (old, new string) {
 	return o.String(), n.String()
 }
 
-// 开了 WORKBENCH_GED 时 Diff 标签的并排视图是 ged 的：只看改动附近时长段没改的折起来、点折叠条展开、滚轮滚得动；
+// Diff 标签的并排视图是 ged 的：只看改动附近时长段没改的折起来、点折叠条展开、滚轮滚得动；
 // 切成全文就不折。
 func TestGedDiff(t *testing.T) {
 	saved := gedOn
@@ -1371,4 +1372,57 @@ func TestGedSticky(t *testing.T) {
 	if st := g.Stuck(1); len(st) != 0 {
 		t.Errorf("关了粘性滚动还吸着 %v", st)
 	}
+}
+
+// mygoDiff 让这个测试里的 Diff 用 mygo 的 editor.DiffView（WORKBENCH_GED=off 的样子）：测的是 mygo 那条路
+// （它的折叠条、底色、读屏名），ged 的另有 TestGed*。
+func mygoDiff(t *testing.T) {
+	saved := gedOn
+	gedOn = false
+	t.Cleanup(func() { gedOn = saved })
+}
+
+// ged 的 Diff 全文打开时滚到第一处改动（在视图的上半截）；切到只看改动附近、在第 2 处切回全文，都还看得见当前那处。
+func TestGedFirstHunk(t *testing.T) {
+	repo := testutil.NewRepo(t, "first")
+	lines := make([]string, 300)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i+1)
+	}
+	repo.Write("p.txt", strings.Join(lines, "\n")+"\n")
+	repo.Commit("初始提交")
+	lines[199], lines[259] = "line 200（改过）", "line 260（改过）"
+	repo.Write("p.txt", strings.Join(lines, "\n")+"\n")
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")
+	a.St.FullDiff = true
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "p.txt"}, true)
+	wait("p.txt 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	g := diffDoc(a, "").Ged
+	check := func(what string, hunk int) {
+		t.Helper()
+		for range 3 {
+			tt.Frame()
+		}
+		if i, in := g.Current(); i != hunk || !in {
+			t.Errorf("%s：当前该是第 %d 处，是 %d（看得见=%v）", what, hunk+1, i+1, in)
+		}
+		hs := g.Hunks()
+		if hunk >= len(hs) || g.RowHeight() <= 0 {
+			t.Fatalf("%s：没有第 %d 处或还没画", what, hunk+1)
+		}
+		y := (g.RowTop(hs[hunk].Row0) - g.ScrollY) / g.Bounds().H
+		if y < 0 || y > 0.6 {
+			t.Errorf("%s：改动的那行应在视图的上半部分，在 %.2f", what, y)
+		}
+	}
+	check("全文打开", 0)
+	a.ToggleScope()
+	check("切到局部", 0)
+	g.GoToHunk(1)
+	tt.Frame()
+	a.ToggleScope()
+	check("在第 2 处切回全文", 1)
 }

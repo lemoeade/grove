@@ -206,7 +206,7 @@ type viewMark struct {
 // 没画过的、Markdown 预览没有这份位置，十六进制的行不是文件的行，回到开头的不用记。
 func (a *App) noteView(d *docs.Doc) {
 	p, ok := d.Cursor()
-	first, last := d.St.VisibleLines()
+	first, last := d.VisibleLines()
 	if d.Kind != docs.File || d.Hex || !ok || last == 0 || p == (editor.Pos{}) && first == 0 {
 		return
 	}

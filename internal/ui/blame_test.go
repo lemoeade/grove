@@ -206,11 +206,11 @@ func TestInlineBlame(t *testing.T) {
 		t.Helper()
 		tt.RightClickAt(st.X-300, 400)
 		tt.Frame()
-		m := tt.Menu()
+		m := shownMenu(t, tt)
 		if i := slices.Index(m, "显示 blame 装订线"); i < 0 || m[i+1] != "显示行内 blame" {
 			t.Fatalf("编辑器右键 %q", m)
 		}
-		if err := tt.ChooseMenuItem(item); err != nil {
+		if err := chooseMenu(t, tt, item); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()

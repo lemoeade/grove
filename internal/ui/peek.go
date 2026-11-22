@@ -85,9 +85,14 @@ func peekCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element, left flo
 		maxH = max(rb.H/3, 90)
 	}
 	g := stickyGutter(c, st, lines, lh)
+	peekCardAt(a, c, d, left+g.textX-4, top, maxH, lh, check, h, i, n)
+}
+
+// peekCardAt 是卡本身：clipLeft 是裁剪框左边（编辑器装订线右缘），top 是卡顶离编辑器顶多远，check 每帧看滚动变了没有。
+func peekCardAt(a *app.App, c *wui.Context, d *docs.Doc, clipLeft, top, maxH, lh float32, check func(*wui.Painter, wui.Rect), h editor.DiffHunk, i, n int) {
 	t := c.Theme()
 	ct := fullCodeTheme(t)
-	clip := wui.Box(c.Key(peekClipKey{d})).Absolute().Top(0).Bottom(0).Left(left + g.textX - 4).Right(8).Clip().PassThrough().Draw(check)
+	clip := wui.Box(c.Key(peekClipKey{d})).Absolute().Top(0).Bottom(0).Left(clipLeft).Right(8).Clip().PassThrough().Draw(check)
 	clip.Children(func() {
 		card := wui.Column(c.Key(peekKey{d})).Absolute().Top(top).Left(0).Right(0).MaxHeight(maxH).Clip().
 			Background(ct.Background).Border(1, t.Border).Radius(6).Shadow(shadowFloat()).
@@ -97,7 +102,7 @@ func peekCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element, left flo
 		}
 		card.Children(func() {
 			peekHead(a, c, d, h, i, n)
-			peekBody(c, d, h, lh, ct)
+			peekBody(c, d, h, lh, ct, a.EditorFont())
 		})
 	})
 }
@@ -136,13 +141,12 @@ func peekHead(a *app.App, c *wui.Context, d *docs.Doc, h editor.DiffHunk, i, n i
 }
 
 // peekBody 是这一块在 HEAD 里的旧行：删除底色、等宽、行号用旧行号；纯新增的块只写一句。
-func peekBody(c *wui.Context, d *docs.Doc, h editor.DiffHunk, lh float32, ct *editor.Theme) {
+func peekBody(c *wui.Context, d *docs.Doc, h editor.DiffHunk, lh float32, ct *editor.Theme, font wui.Font) {
 	t := c.Theme()
 	if h.OldEnd <= h.OldStart {
 		wui.Text(c, i18n.Tn("新增 %d 行，HEAD 里没有", h.NewEnd-h.NewStart)).FontSize(11.5).TextColor(t.TextMuted).Padding(6, 10).Shrink(0)
 		return
 	}
-	font := d.St.Font
 	bg := ct.Deleted.Alpha(0.12)
 	if t.Dark {
 		bg = ct.Deleted.Alpha(0.2)

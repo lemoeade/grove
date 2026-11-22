@@ -161,6 +161,7 @@ func TestOccurrenceHighlight(t *testing.T) {
 
 // 大于 StickyQuick 的文件只标看得见的那几行，滚了重标。
 func TestOccurrenceBigFile(t *testing.T) {
+	gedEditor(t, false) // 测的是 mygo 编辑器自己的东西（FindBar、LineTop / ScrollY、TextBackgrounds、它画的粘性滚动）
 	root, ws := testutil.TempRepo(t)
 	line := "foo bar baz " + strings.Repeat("x", 60) + "\n"
 	n := docs.StickyQuick/len(line) + 100

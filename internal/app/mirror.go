@@ -87,7 +87,7 @@ func (a *App) OpenMirror(d *docs.Doc) *docs.Doc {
 	}
 	p := d.St.CursorPos()
 	m.JumpTo(docs.Jump{Line: p.Line, Col: p.Col})
-	if first, last := d.St.VisibleLines(); last > 0 {
+	if first, last := d.VisibleLines(); last > 0 {
 		m.Top = first // 编辑器排过一次版后界面滚过去（同会话恢复）
 	}
 	ds, sel := a.GroupDocs(from) // 先放在 d 后面，再搬过去（MoveDocTo / splitOff 管键盘、‹ ›、会话）

@@ -288,6 +288,10 @@
   应用里别的写盘（重命名 / 移动、恢复、`>restore`）自己调 `LocalHist()` 记。
 - 设置文档的保存不写盘：`docs.SettingsDoc` 是可编辑的内存文档，`Save` / `WriteDoc` 见到它交给 `applySettingsDoc`。加新的保存入口时不要让它进入文件写入流程（它没有 `Abs`）。
   设置从别处改了（设置窗口、⌘=、导入），`SettingsChanged` 里 `syncSettingsDocs` 换掉没改过的设置文档，改过的不动。
+- ged 的文件编辑器底下 `editor.State` 没有视图：`Selections` / `GoTo` / `Select` / `Insert` / `Run` 照样能用（只碰缓冲区，撤销也是缓冲区的），
+  但 `ScrollY` / `LineTop` / `VisibleLines` 这些按排版算的没有意义，`Run(Copy / Cut / Paste)` 碰不到窗口的剪贴板（要走 `app.CopyText` / `ReadClipboard`）。
+  要知道看得见哪几行、要滚，走 `Doc.VisibleLines` / `ScrollTo`（`docs/edit.go`），别直接问 St；新加碰 St 视图的地方先看 `Doc.UsingEd`。
+- 测 ged 的文件编辑器时键盘不会自己落到编辑器上：`OpenFile` 之后要 `a.FocusDoc = true`，等 `d.Ed.Focused()` 再敲键（`openGedFile`）。
 
 ## 终端和 termd
 

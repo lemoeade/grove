@@ -48,7 +48,7 @@ func TestFormatUI(t *testing.T) {
 	a.FocusDoc = true
 	tt.Frame()
 	tt.Frame()
-	if !d.St.Focused() {
+	if !d.EditorFocused() {
 		t.Fatal("编辑器没拿到焦点")
 	}
 	tt.Key(wui.Shift|wui.Alt, wui.KeyF)
@@ -75,7 +75,7 @@ func TestFormatUI(t *testing.T) {
 	}
 	tt.RightClickAt(lang.X-300, 200)
 	tt.Frame()
-	if err := tt.ChooseMenuItem("格式化文档"); err != nil {
+	if err := chooseMenu(t, tt, "格式化文档"); err != nil {
 		t.Fatalf("右键菜单 %v：%q", err, tt.Menu())
 	}
 	wait("右键格式化完", func() bool { return !d.Formatting && d.Buf.String() == "package a\n" })

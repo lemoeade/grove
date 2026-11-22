@@ -24,7 +24,7 @@ func hoverSetup(a *app.App, d *docs.Doc) {
 		if h == nil {
 			return
 		}
-		d.St.ShowHover(h.Start, h.End, h.Code, func(c *wui.Context) { hoverBody(a, c, d, h) })
+		d.ShowHover(h.Start, h.End, h.Code, func(c *wui.Context) { hoverBody(a, c, d, h) })
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 
 	"github.com/lemoeade/grove/internal/docs"
+	"github.com/lemoeade/grove/internal/ged"
 	"github.com/lemoeade/grove/internal/git"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/workspace"
@@ -109,34 +110,50 @@ func hasEditor(a *App) bool {
 	return d != nil && d.Kind != docs.Diff && d.Buf != nil
 }
 
-// gedFind 是当前标签是 ged 画的 Diff（查找条是 ged 的）。
-func gedFind(a *App) bool {
+// gedFind 是当前标签的查找条是 ged 的：ged 画的 Diff，或 ged 的单栏编辑器画的文件。
+func gedFind(a *App) bool { return findGed(a) != nil }
+
+// findGed 是当前标签上画着的 ged（Diff 的或单栏编辑器的）；mygo 的编辑器、没有标签是 nil。
+func findGed(a *App) *ged.Diff {
 	d := a.CurrentDoc()
-	return d != nil && d.Kind == docs.Diff && d.UsingGed()
+	switch {
+	case d == nil:
+		return nil
+	case d.Kind == docs.Diff && d.UsingGed():
+		return d.Ged
+	case d.Kind != docs.Diff && d.UsingEd():
+		return d.Ed
+	}
+	return nil
 }
 
 func canFind(a *App) bool { return hasEditor(a) || gedFind(a) }
 
 // canReplace 是替换能按：文件编辑器，或就地编辑着的 ged 的 Diff（查找条下面开替换）。
-func canReplace(a *App) bool { return hasEditor(a) || gedFind(a) && a.CurrentDoc().Ged.CanEdit() }
+func canReplace(a *App) bool {
+	if g := findGed(a); g != nil && a.CurrentDoc().Kind == docs.Diff {
+		return g.CanEdit()
+	}
+	return hasEditor(a)
+}
 
 func replaceIn(a *App) {
-	if gedFind(a) {
-		a.CurrentDoc().Ged.OpenReplace()
+	if g := findGed(a); g != nil {
+		g.OpenReplace()
 		return
 	}
 	a.CurrentDoc().St.Run(editor.FindReplace)
 }
 
-// findIn 是查找、查找下一个的 Run：ged 的 Diff 上开它的查找条（dir 0）或跳到下一处（查找条没开、没字时先开），
-// 别的在编辑器里执行 cmd。
+// findIn 是查找、查找下一个的 Run：ged（Diff 或单栏编辑器）上开它的查找条（dir 0）或跳到下一处（查找条没开、
+// 没字时先开），别的在编辑器里执行 cmd。
 func findIn(cmd editor.Command, dir int) func(a *App) {
 	return func(a *App) {
-		if !gedFind(a) {
+		g := findGed(a)
+		if g == nil {
 			a.CurrentDoc().St.Run(cmd)
 			return
 		}
-		g := a.CurrentDoc().Ged
 		if dir == 0 || !g.Find.Open || g.Find.Text == "" {
 			g.OpenFind()
 			return
@@ -145,7 +162,7 @@ func findIn(cmd editor.Command, dir int) func(a *App) {
 	}
 }
 
-// goToLine 是跳到行的 Run：ged 的 Diff 上开命令面板的 ":"（跳的是新的一边的行），别的在编辑器里开它的跳行条。
+// goToLine 是跳到行的 Run：ged 上开命令面板的 ":"（Diff 跳的是新的一边的行），别的在编辑器里开它的跳行条。
 func goToLine(a *App) {
 	if gedFind(a) {
 		a.OpenPalette(":")
@@ -156,7 +173,7 @@ func goToLine(a *App) {
 
 // inEditor 把编辑器的命令包成命令的 Run：在当前标签的编辑器里执行（查找条、跳行条由编辑器自己画）。
 func inEditor(cmd editor.Command) func(a *App) {
-	return func(a *App) { a.CurrentDoc().St.Run(cmd) }
+	return func(a *App) { a.CurrentDoc().Run(cmd) }
 }
 func sidebarIs(mode string) func(a *App) bool {
 	return func(a *App) bool { return a.St.Sidebar && a.St.SidebarMode == mode }
@@ -435,7 +452,7 @@ func buildCommands() []*Command {
 
 		// 编辑器：编辑器有焦点时它自己接这些键；没焦点（焦点在文件树、终端）或从命令面板来时走这里。
 		// 不进菜单栏：⌥⌘F 在菜单里是 Diff 的全文 diff，同一个键按当前标签分派（RunKey）
-		// ged 画的 Diff 标签（WORKBENCH_GED）也走这两条：开它自己的查找条、跳下一处（mygo 那个 Diff 有焦点时自己接）
+		// ged 画的 Diff 标签也走这两条：开它自己的查找条、跳下一处（mygo 那个 Diff 有焦点时自己接）
 		&Command{ID: "edit.find", Title: "查找…", Mods: cmd, Key: ui.KeyF, Context: Editor, Enabled: canFind, Run: findIn(editor.Find, 0), ed: editor.Find},
 		&Command{ID: "edit.replace", Title: "替换…", Mods: alt | cmd, Key: ui.KeyF, Context: Editor, Enabled: canReplace, Run: replaceIn, ed: editor.FindReplace},
 		&Command{ID: "edit.findNext", Title: "查找下一个", Mods: cmd, Key: ui.KeyG, Context: Editor, Enabled: canFind, Run: findIn(editor.FindNext, 1), ed: editor.FindNext},
@@ -635,26 +652,35 @@ func editorCommands(menu []*Command) []*Command {
 			b.Key = 0
 		}
 		cs = append(cs, &Command{ID: "editor." + e.cmd.String(), Title: e.title, Context: Editor, Section: e.section,
-			Hint: hint, Enabled: en, Run: inEditorChecked(en, func(st *editor.State) { st.Run(e.cmd) }), Local: true, ed: e.cmd,
+			Hint: hint, Enabled: en, Run: inEditorChecked(en, func(d *docs.Doc) { d.Run(e.cmd) }), Local: true, ed: e.cmd,
 			hintMods: b.Mods, hintKey: b.Key})
 	}
 	// 折叠导入不是 mygo 的命令（打开文件时编辑器可以自己折一次），排在折叠那几条后面
 	imports := &Command{ID: "editor.foldImports", Title: "折叠导入", Context: Editor, Section: "折叠", Enabled: hasEditor,
-		Run: inEditorChecked(hasEditor, (*editor.State).FoldImports)}
+		Run: inEditorChecked(hasEditor, foldImports)}
 	i := slices.IndexFunc(cs, func(c *Command) bool { return c.Section != "折叠" })
 	return slices.Insert(cs, i, imports)
 }
 
 // inEditorChecked 是编辑器自带命令的 Run：先查 Enabled（只读的标签上改文字的命令什么都不做），
 // 再在当前标签的编辑器里执行；面板关掉后键盘回到编辑器，多光标、选中的结果能接着敲。
-func inEditorChecked(en func(a *App) bool, fn func(st *editor.State)) func(a *App) {
+func inEditorChecked(en func(a *App) bool, fn func(d *docs.Doc)) func(a *App) {
 	return func(a *App) {
 		if !en(a) {
 			return
 		}
-		fn(&a.CurrentDoc().St)
+		fn(a.CurrentDoc())
 		a.FocusDoc = true
 	}
+}
+
+// foldImports 折起文件开头的导入：ged 的单栏编辑器折第一段 import，mygo 的编辑器自己认。
+func foldImports(d *docs.Doc) {
+	if d.UsingEd() {
+		d.Ed.FoldImports()
+		return
+	}
+	d.St.FoldImports()
 }
 
 // Find 是 id 对应的命令；没有为 nil。

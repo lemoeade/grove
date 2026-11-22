@@ -171,6 +171,8 @@ func TestEditCommandUndo(t *testing.T) {
 // 键位表：改过的键先查，绑到 NoCommand 的键算拿走了，没改的按 mygo 的默认键。
 func TestCommandLookup(t *testing.T) {
 	s := &Style{}
+	d := NewDiff()
+	command := d.command
 	if got := command(wui.InputEvent{Key: wui.KeyDown, Mods: wui.Alt}, s); got != editor.MoveLinesDown {
 		t.Errorf("⌥↓ = %v，应为挪行", got)
 	}
@@ -254,5 +256,28 @@ func TestReplace(t *testing.T) {
 	d.OpenFind()
 	if d.Find.Replace {
 		t.Error("⌘F 收起替换")
+	}
+}
+
+// 和弦：单栏编辑器里 ⌘K 先记着，⌘L 一起认成折叠 / 展开；Diff 里 ⌘K 不认。
+func TestChord(t *testing.T) {
+	s := &Style{}
+	d := NewEditor()
+	k := wui.InputEvent{Key: wui.KeyK, Mods: wui.Super}
+	if got := d.command(k, s); got != chordPending {
+		t.Fatalf("⌘K = %v，应为等第二个键", got)
+	}
+	if got := d.command(wui.InputEvent{Key: wui.KeyL, Mods: wui.Super}, s); got != editor.ToggleFold {
+		t.Errorf("⌘K ⌘L = %v，应为折叠 / 展开", got)
+	}
+	d.command(k, s)
+	if got := d.command(wui.InputEvent{Key: wui.KeyQ}, s); got != chordDropped {
+		t.Errorf("⌘K Q = %v，应为吃掉", got)
+	}
+	if got := d.command(wui.InputEvent{Key: wui.KeyDown, Mods: wui.Alt}, s); got != editor.MoveLinesDown {
+		t.Errorf("和弦以后 ⌥↓ = %v", got)
+	}
+	if got := NewDiff().command(k, s); got == chordPending {
+		t.Errorf("Diff 里 ⌘K 不该等第二个键")
 	}
 }

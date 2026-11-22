@@ -14,22 +14,56 @@ import (
 
 // 就地编辑时的键：和 Grove 的编辑器（mygo 的 editor）用一张键位表（Style.Bindings 叠在 editor.DefaultBindings 上，
 // 改过的键两处一起变），认出是哪个命令以后 ged 自己做。ged 只有一个光标：⌘D 没选字时选中光标处的词，选了字时
-// 选中下一处一样的（不是多加一个光标）。和弦（⌘K ⌘…）、折叠、多光标、补全这些 ged 没有的命令不接，键交回去。
+// 选中下一处一样的（Diff 里不是多加一个光标）。ged 不做的命令（多光标、补全……）交给 Style.Fallback（单栏编辑器
+// 交给 mygo 的 State 做，ged 只画结果），没给 Fallback 时键交回去。和弦（⌘K ⌘L 这种）、折叠只在单栏编辑器里认。
 
 var defaultBindings = sync.OnceValue(editor.DefaultBindings)
 
-// command 是 ev 在键位表里对应的命令（单键的；和弦不认）。改过的键（Style.Bindings）先查，绑到 NoCommand 的键算拿走了。
-func command(ev wui.InputEvent, s *Style) editor.Command {
+// command 是 ev 在键位表里对应的命令。改过的键（Style.Bindings）先查，绑到 NoCommand 的键算拿走了。
+// 和弦（⌘K ⌘L 这种）：第一个键只是记下来（返回 chordPending），下一个键和它一起查；查不到就算了（两个键都吃掉）。
+func (d *Diff) command(ev wui.InputEvent, s *Style) editor.Command {
 	mods := ev.Mods & (wui.Shift | wui.Ctrl | wui.Alt | wui.Super)
-	for _, list := range [][]editor.Binding{s.Bindings, defaultBindings()} {
-		for _, b := range list {
-			if b.ThenKey == 0 && b.Mods == mods && b.Key == ev.Key {
-				return b.Command
+	if ev.Key == wui.KeyUnknown { // 只按了修饰键
+		return editor.NoCommand
+	}
+	if d.chordOn {
+		d.chordOn = false
+		for _, list := range [][]editor.Binding{s.Bindings, defaultBindings()} {
+			for _, b := range list {
+				if b.ThenKey != 0 && b.Mods == d.chord.Mods && b.Key == d.chord.Key && b.ThenMods == mods && b.ThenKey == ev.Key {
+					return b.Command
+				}
 			}
 		}
+		return chordDropped
+	}
+	prefix := false
+	for _, list := range [][]editor.Binding{s.Bindings, defaultBindings()} {
+		for _, b := range list {
+			if b.Mods != mods || b.Key != ev.Key {
+				continue
+			}
+			if b.ThenKey == 0 {
+				return b.Command
+			}
+			prefix = true
+		}
+		if prefix {
+			break
+		}
+	}
+	if prefix && d.plain { // 和弦只在单栏编辑器里认（Diff 里 ⌘K 没有要接的）
+		d.chord, d.chordOn = editor.Binding{Mods: mods, Key: ev.Key}, true
+		return chordPending
 	}
 	return editor.NoCommand
 }
+
+// 和弦的第一个键、和弦没查到：command 返回的假命令（键吃掉，什么都不做）。
+const (
+	chordPending editor.Command = 0xFFFF - iota
+	chordDropped
+)
 
 // editKey 是就地编辑、有光标时视图自己接的键；没接的（打字的键、ged 没有的命令）返回 false。
 func (d *Diff) editKey(ev wui.InputEvent, g geom, s *Style) bool {
@@ -37,7 +71,7 @@ func (d *Diff) editKey(ev wui.InputEvent, g geom, s *Style) bool {
 	if !ok || d.compose != "" { // 输入法正拼着字：键归它
 		return false
 	}
-	if !d.runEdit(command(ev, s), c, g, s) {
+	if !d.runEdit(d.command(ev, s), c, g, s) {
 		return false
 	}
 	d.clamp(g)
@@ -50,7 +84,31 @@ func (d *Diff) runEdit(cmd editor.Command, c pos, g geom, s *Style) bool {
 	page := max(1, int((g.h-2*g.lh)/max(g.lh, 1)))
 	last := pos{len(lines) - 1, len(lines[len(lines)-1])}
 	a, b := d.sel.span()
+	if d.plain {
+		if done, ok := d.foldCommand(cmd); ok {
+			return done
+		}
+		switch cmd { // 单栏编辑器的查找条是 ged 的（Diff 的查找由 App 的命令开）
+		case editor.Find:
+			d.OpenFind()
+			return true
+		case editor.FindReplace:
+			d.OpenReplace()
+			return true
+		case editor.FindNext, editor.FindPrevious:
+			if !d.Find.Open || d.Find.Text == "" {
+				d.OpenFind()
+			} else if cmd == editor.FindNext {
+				d.FindStep(1)
+			} else {
+				d.FindStep(-1)
+			}
+			return true
+		}
+	}
 	switch cmd {
+	case chordPending, chordDropped:
+		return true
 	case editor.MoveLeft:
 		if !d.sel.empty() { // 有选中的字：收到前头
 			d.moveTo(a, false)
@@ -121,6 +179,9 @@ func (d *Diff) runEdit(cmd editor.Command, c pos, g geom, s *Style) bool {
 		d.sel = selection{side: 1, a: a, b: end}
 		d.reveal = true
 	case editor.SelectNext:
+		if !d.sel.empty() && s.Fallback != nil { // 单栏编辑器：⌘D 再按是多加一个光标（交给 Fallback）
+			return s.Fallback(cmd)
+		}
 		if d.sel.empty() {
 			d.sel = d.wordAt(1, c)
 			d.sel.side = 1
@@ -208,7 +269,12 @@ func (d *Diff) runEdit(cmd editor.Command, c pos, g geom, s *Style) bool {
 		if i := d.rowOfLine(1, c.line); i >= 0 {
 			d.ScrollY = max(0, float32(d.top(i))*g.lh-g.h/2)
 		}
+	case editor.ScrollLineUp, editor.ScrollLineDown:
+		d.ScrollY += map[bool]float32{true: -g.lh, false: g.lh}[cmd == editor.ScrollLineUp]
 	default:
+		if cmd != editor.NoCommand && s.Fallback != nil {
+			return s.Fallback(cmd)
+		}
 		return false
 	}
 	return true

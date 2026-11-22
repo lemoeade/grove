@@ -17,6 +17,7 @@ import (
 // 行级暂存走一遍：选着行时底下出一栏"选中 N 行"；只暂存选中的那行（同一块里另一行留在未暂存里），
 // 选的都是没改的行时说一声，Esc 取消选择，丢弃选中的行先问，已暂存的 diff 里取消暂存选中的行。
 func TestLineStaging(t *testing.T) {
+	mygoDiff(t)
 	repo := testutil.NewRepo(t, "lines")
 	join := func(l ...string) string { return strings.Join(l, "\n") + "\n" }
 	repo.Write("h.txt", join("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))

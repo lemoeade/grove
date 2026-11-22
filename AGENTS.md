@@ -97,7 +97,8 @@ WORKBENCH_TERM_CMD='echo MARK-$$'            # 第一个仓库的第一个终端
 WORKBENCH_ALLOPEN='async def'                # "全开"：仓库读完后开两个 Diff、侧栏搜这个词、当前仓库的终端都起
 WORKBENCH_MATERIAL=hud                       # 窗口底是通透时用这种材质（mygo.Vibrancy 的值），压过设置里的「材质」
 WORKBENCH_PLAIN=1                            # 普通标题栏、不要毛玻璃，对比内存用
-WORKBENCH_GED=1                              # Diff 用 Grove 自己画的（internal/ged，试做中）
+WORKBENCH_GED=off                            # Diff 退回 mygo 的（默认是 Grove 自己画的 internal/ged）
+WORKBENCH_GED_EDITOR=off                     # 文件标签的编辑器退回 mygo 的（默认也是 internal/ged）
 WORKBENCH_FONT=<字体家族>                    # 终端 / 编辑器的等宽字体（"monospace" 是系统默认）
 WORKBENCH_SECOND=<工作区>  WORKBENCH_SECOND_CLOSE=30s   # 启动时再开一个窗口；过这么久把它关掉（看还不还内存）
 WORKBENCH_RESTORE_GAP=600ms                  # 还原几个窗口时前一个画完第一帧后隔多久开下一个（默认 2.5s）
@@ -172,7 +173,7 @@ MYGO_FRAME_STATS=all                         # mygo 的帧统计写进日志（�
 - `internal/ui`：纯界面。界面函数只读状态，通过 `a.Exec(命令 id)` 或 `App` 的方法改状态；后台 goroutine 只经 `a.Update` 回主线程
 - 不碰界面的逻辑：`internal/git`、`files`、`docs`、`search`、`globs`、`fuzzy`、`watch`、`workspace`、`graph`、`outline`、`highlight`、
   `history`（本地历史）、`termd`（终端后台进程）、`askpass`、`tasks`、`snippets`、`render`（Mermaid 和公式）
-- `internal/ged`：Grove 自己画的编辑器部件（现在只有 Diff：并排、统一、就地编辑，`WORKBENCH_GED` 打开），只用 mygo 公开的排字、画图、输入接口；不认 Grove 的主题和 `internal/ui`
+- `internal/ged`：Grove 自己画的编辑器部件（Diff：并排、统一、就地编辑，和文件标签的单栏编辑器，默认都用它，`WORKBENCH_GED=off` / `WORKBENCH_GED_EDITOR=off` 退回 mygo 的），只用 mygo 公开的排字、画图、输入接口；不认 Grove 的主题和 `internal/ui`
 - `internal/i18n`：文案表；`internal/version`、`crash`、`appicon`：版本号、日志和崩溃日志、代码画的图标
 - `internal/testutil`：测试辅助（临时仓库、等待、计时预算）
 - `tools/measure`：量内存的脚本

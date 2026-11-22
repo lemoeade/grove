@@ -175,7 +175,7 @@ func (d *Diff) vertical(c pos, n int, extend bool, s *Style) {
 			return
 		}
 	}
-	t := c.line + n
+	t := d.stepLine(c.line, n)
 	switch {
 	case t < 0:
 		d.moveTo(pos{0, 0}, extend)
@@ -412,6 +412,10 @@ func (d *Diff) revealCaret(g geom, s *Style) {
 
 // rowOfLine 是 side 那边第 line 行在 rows 里是第几行；在折起来的段里时展开那段。没有是 -1。
 func (d *Diff) rowOfLine(side, line int) int {
+	if d.plain {
+		d.revealLine(line)
+		return d.plainRow(line)
+	}
 	for i, r := range d.rows {
 		l := lineOf(r, side)
 		switch {

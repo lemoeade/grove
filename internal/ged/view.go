@@ -77,7 +77,60 @@ type Style struct {
 	StickyShadow wui.Color // 吸着的行下面那道阴影（三像素渐淡）
 	// Guides 是画缩进参考线（颜色是 Code.IndentGuide，就地编辑时光标那一块的是 ActiveIndentGuide，见 guides.go）。
 	Guides bool
+
+	// 下面这些是单栏编辑器（editor.go）给界面那边留的口子。
+	// Intercept 先拿到视图的每个输入（界面那边接多光标、补全列表这些），接了返回 true，视图就不管了。
+	Intercept func(ev wui.InputEvent) bool
+	// Fallback 做 ged 自己不做的编辑器命令（多光标、补全、跳到定义……：界面那边交给 mygo 的 State），做了返回 true。
+	Fallback func(cmd editor.Command) bool
+	// Changed 在视图接了一个输入以后调（光标挪了、字改了：界面那边同步给 mygo 的 State）。
+	Changed func()
+	// Hover 是指针在字上停稳了（HoverDelay）：第 line 行第 off 个字节；指针走了、按了键调 Hover(-1, 0)。nil 不接。
+	Hover func(line, off int)
+	// Definition 是 ⌘点了第 line 行第 off 个字节（跳到定义）。nil 不接（⌘点和点一样）。
+	Definition func(line, off int)
+	// Extra 是另外几个光标 / 选中的字（多光标：界面那边从 mygo 的 State 拿来），画得和主的一样。
+	Extra []Range
+	// Changes 是行号右边那道改动的竖条（VS Code 的 dirty diff：加的绿、改的蓝，删的在下一行顶上画个红三角），
+	// 按 Start 排好；颜色是 Code.Added / Modified / Deleted。
+	Changes []Change
+	// GutterClick 是点了第 line 行的行号那块（不在折叠箭头上）：接了返回 true（界面那边开改动的就地卡）。nil 不接。
+	GutterClick func(line int) bool
+	// Squiggles 是字下面的波浪线（诊断）。
+	Squiggles []Squiggle
+	// Notes 是画在行尾后面的淡字（行内 blame），颜色 NoteColor；不占位置，光标、选择碰不到它。
+	Notes     []Note
+	NoteColor wui.Color
 }
+
+// Note 是第 Line 行行尾后面的一段淡字（开头的空格算隔开的距离）。
+type Note struct {
+	Line int
+	Text string
+}
+
+// Change 是单栏编辑器里一处跟 HEAD 不一样的行：第 Start 到 End 行（不含 End，从 0 起）。Kind 是 ChangeDeleted 时
+// Start == End，删的那几行原来在第 Start 行前面。
+type Change struct{ Start, End, Kind int }
+
+// Change 的种类。
+const (
+	ChangeAdded = iota
+	ChangeModified
+	ChangeDeleted
+)
+
+// Squiggle 是从 Range 的 A 到 B 那段字下面的波浪线；A、B 一样时画到那个词的末尾（至少一个字）。
+type Squiggle struct {
+	Range
+	Color wui.Color
+}
+
+// Range 是单栏编辑器里的一段选择：从第 AL 行第 AO 个字节到光标那头第 BL 行第 BO 个字节（行从 0 起）。
+type Range struct{ AL, AO, BL, BO int }
+
+// HoverDelay 是指针停多久算停稳了（Style.Hover）。
+const HoverDelay = 500 * time.Millisecond
 
 // Context 是改动上下各留几行不折。
 const Context = 3
@@ -85,8 +138,12 @@ const Context = 3
 // Diff 是一个 Diff 视图的状态，跨帧留着（调用方按标签存）：两边的行、对齐的结果、折叠、滚动、排好的字。
 type Diff struct {
 	key         any
-	guide       guides   // 这一帧的缩进参考线
-	stuck       [2][]int // 这一帧两边吸在顶上的行（sticky.go）
+	plain       bool             // 单栏的文件编辑器（editor.go）：没有旧的一边
+	folded      map[int]int      // 单栏编辑器折起来的：头一行 → 藏到第几行（含）
+	gutterHover bool             // 指针在行号那块上（单栏编辑器画能折的箭头）
+	ellipses    map[int]wui.Rect // 这一帧折起来的行后面那个“⋯”在哪（本地坐标）
+	guide       guides           // 这一帧的缩进参考线
+	stuck       [2][]int         // 这一帧两边吸在顶上的行（sticky.go）
 	stickyHover stickyHit
 	lines       [2][]string
 	lang        *editor.Language
@@ -177,6 +234,15 @@ type Diff struct {
 	// 右键菜单（menu.go）
 	spot     Spot // 上一次右键按在哪
 	menuHeld bool // 右键按着（按着拖、松开也给 Style.Menu）
+
+	// 单栏编辑器（editor.go）
+	chord     editor.Binding // 按了和弦的第一个键（chordOn 时）
+	chordOn   bool
+	wantTop   int       // 下一帧滚到顶上的那行（rows 的下标 + 1），0 没有
+	hoverPos  pos       // 指针停在哪个字上（hoverOn 时）
+	hoverOn   bool      // 指针在字上
+	hoverAt   time.Time // 指针停到 hoverPos 的时候
+	hoverSent bool      // 这次停稳已经报过 Style.Hover 了
 }
 
 // findTop 是查找条离视图顶多远。
@@ -246,12 +312,38 @@ func (d *Diff) Set(key any, load func() (old, new []string), lang *editor.Langua
 // update 换上两边的行，变了才重新对齐。旧的一边没变时留着折叠的展开、旧的一边排好的字、选中的字（夹到新的行里）。
 func (d *Diff) update(old, new []string) bool {
 	keep := d.aligned != nil && sameLines(old, d.lines[0])
-	if keep && sameLines(new, d.lines[1]) {
+	var before []string
+	if d.plain { // 单栏：只有一份行，内容变了也是同一个文件
+		keep = d.aligned != nil
+		if keep && sameLines(new, d.lines[1]) {
+			return false
+		}
+		before = d.lines[1]
+		d.lines = [2][]string{new, new}
+	}
+	if keep && !d.plain && sameLines(new, d.lines[1]) {
 		return false
 	}
-	d.lines = [2][]string{old, new}
+	if !d.plain {
+		d.lines = [2][]string{old, new}
+	}
 	d.align()
-	if keep {
+	if keep && d.plain { // 单栏：改的那行往前排好的字、分词状态都还对
+		first := firstDiff(before, new)
+		for k := range d.layouts {
+			if k.line >= first {
+				delete(d.layouts, k)
+			}
+		}
+		for side := range 2 {
+			if len(d.states[side]) > first+1 {
+				d.states[side] = d.states[side][:first+1]
+			}
+		}
+		if d.sel.side == 1 {
+			d.sel.a, d.sel.b = d.clampPos(d.sel.a), d.clampPos(d.sel.b)
+		}
+	} else if keep {
 		for k := range d.layouts {
 			if k.side == 1 {
 				delete(d.layouts, k)
@@ -270,6 +362,9 @@ func (d *Diff) update(old, new []string) bool {
 		d.cur = -1
 		d.sel, d.selecting = selection{}, false
 	}
+	if d.plain {
+		d.shiftFolds(before, new)
+	}
 	d.refold()
 	if d.findQ != "" { // 内容变了：重找，当前那处留着（夹到新的个数里）
 		d.search()
@@ -280,6 +375,15 @@ func (d *Diff) update(old, new []string) bool {
 
 // align 按 lines、trim 重新对齐，跟着重算改动、配对的行、行里改了的字。
 func (d *Diff) align() {
+	if d.plain {
+		n := len(d.lines[1])
+		d.aligned = make([]Row, n)
+		for i := range n {
+			d.aligned[i] = Row{Kind: Same, Old: i, New: i}
+		}
+		d.words, d.hunks, d.pairs = map[int][2][]Span{}, nil, [2]map[int]int{{}, {}}
+		return
+	}
 	d.aligned = AlignTrim(d.lines[0], d.lines[1], d.trim)
 	d.words = map[int][2][]Span{}
 	d.hunks = Hunks(d.aligned)
@@ -335,6 +439,16 @@ func (d *Diff) Unified() bool { return d.unified }
 
 // refold 按 full、open、unified 重排显示的行，跟着重算行和改动的对应。
 func (d *Diff) refold() {
+	if d.plain {
+		d.rows = d.plainRows()
+		d.topsDirty = true
+		d.rowHunk = make([]int, len(d.rows))
+		for i := range d.rowHunk {
+			d.rowHunk[i] = -1
+		}
+		d.hunkRow, d.hunkEnd = nil, nil
+		return
+	}
 	if d.full {
 		d.rows = d.aligned
 	} else {
@@ -769,6 +883,11 @@ func (d *Diff) geom(s *Style, w, h, scale float32) geom {
 	}
 	g.markX = g.numR2 + 8
 	g.textX = g.markX + cw + 8
+	if d.plain { // 一列行号，后面是折叠箭头那一格
+		g.numR = plainNumbersW(len(d.lines[1]), cw)
+		g.numR2, g.markX = g.numR, g.numR
+		g.textX = g.numR + 4 + foldGutterW + 6
+	}
 	if d.unified { // 一栏：两边的“格子”是同一个
 		g.paneW = [2]float32{w, w}
 	} else {
@@ -805,7 +924,7 @@ func charWidth(f wui.Font) float32 {
 }
 
 func (d *Diff) clamp(g geom) {
-	d.ScrollY = min(d.ScrollY, max(0, g.content-g.h+g.lh*3))
+	d.ScrollY = min(d.ScrollY, max(0, g.content-g.h+d.tail(g)))
 	d.ScrollY = max(d.ScrollY, 0)
 	if d.wrap { // 折行了：不横着滚
 		d.scrollX = [2]float32{}
@@ -823,8 +942,17 @@ func (d *Diff) clamp(g geom) {
 	}
 }
 
+// tail 是最后一行下面还能滚出来多少：Diff 三行；单栏编辑器照 VS Code 的 scrollBeyondLastLine，最后一行能滚到顶上
+// （一屏放得下的文件不滚）。恢复的标签滚回原来的顶、跳到文件末尾的定义都靠它。
+func (d *Diff) tail(g geom) float32 {
+	if d.plain && g.content > g.h {
+		return max(g.lh*3, g.h-g.lh)
+	}
+	return g.lh * 3
+}
+
 func (d *Diff) bar(g geom) wui.Scrollbar {
-	return wui.Scrollbar{Box: g.ruler, View: g.h, Content: g.content + g.lh*3, Offset: d.ScrollY,
+	return wui.Scrollbar{Box: g.ruler, View: g.h, Content: g.content + d.tail(g), Offset: d.ScrollY,
 		Style: wui.ScrollbarStyle{TrackWidth: rulerW, ThumbWidth: rulerW, Square: true, Flush: true}}
 }
 
@@ -884,7 +1012,17 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 		d.clamp(g)
 		p.Clip(r, 0, func() { d.paint(p, r, g, &s) }) // 最后一行露一半时别画到下面那栏上
 	})
-	el.HandleInput(func(ev wui.InputEvent) bool { return d.input(ev, &s) })
+	el.HandleInput(func(ev wui.InputEvent) bool {
+		if s.Intercept != nil && s.Intercept(ev) {
+			return true
+		}
+		took := d.input(ev, &s)
+		if took && s.Changed != nil {
+			s.Changed()
+		}
+		return took
+	})
+	d.hoverTick(c, el.Hovered(), &s)
 	size, fsize := d.barBox, d.findBox
 	d.barBox, d.findBox = wui.Rect{}, wui.Rect{}
 	findOpen := d.Find.Open && s.FindBar != nil
@@ -922,8 +1060,17 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 }
 
 func (d *Diff) applyWant(g geom) {
+	topped := false
+	if d.wantTop > 0 && g.lh > 0 {
+		d.ScrollY, d.wantTop, topped = float32(d.top(d.wantTop-1))*g.lh, 0, true
+	}
 	if d.wrapAt >= 0 && g.lh > 0 {
 		d.ScrollY, d.wrapAt = float32(d.top(d.wrapAt))*g.lh, -1
+	}
+	if topped && d.want >= 0 && g.h > 0 { // 恢复的标签：先滚到原来的顶，光标在视野里就不再为它挪（还没画过时 SetSelection 当它看不见）
+		if y := float32(d.top(d.want)) * g.lh; y >= d.ScrollY && y+g.lh <= d.ScrollY+g.h {
+			d.want = -1
+		}
 	}
 	if d.want >= 0 && g.lh > 0 {
 		d.ScrollY, d.want = max(0, float32(d.top(d.want)-Context)*g.lh), -1
@@ -980,8 +1127,11 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 	if d.w <= 0 {
 		return false
 	}
+	if ev.Kind == wui.InputKeyDown || ev.Kind == wui.InputPointerDown || ev.Kind == wui.InputScroll {
+		d.endHover(s)
+	}
 	g := d.geomNow(s)
-	inBar := ev.X >= g.ruler.X && g.content+g.lh*3 > g.h
+	inBar := ev.X >= g.ruler.X && g.content+d.tail(g) > g.h
 	if took, handled := d.splitInput(ev, g, inBar); handled {
 		return took
 	}
@@ -999,6 +1149,9 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 	if took, handled := d.menuInput(ev, g, s); handled {
 		return took
 	}
+	if d.plain && s.Keys != nil && (ev.Kind == wui.InputKeyDown || ev.Kind == wui.InputText || ev.Kind == wui.InputPointerDown) && s.Keys(ev) {
+		return true // 单栏编辑器和 mygo 的一样：键、字、按下先给外面（片段的 Tab、⇧⌥F 和它跟着打出的 Ï……）
+	}
 	if took, handled := d.editInput(ev, g, s); handled {
 		return took
 	}
@@ -1012,7 +1165,7 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 				return false
 			}
 		}
-		if s.Keys != nil && s.Keys(ev) {
+		if !d.plain && s.Keys != nil && s.Keys(ev) {
 			return true
 		}
 		return d.onKey(ev, g, s)
@@ -1063,6 +1216,18 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 		d.goalX = -1
 		d.endGroup()
 		i := d.rowAt(ev.Y, g)
+		if d.plain && i >= 0 {
+			if line, ok := d.ellipsisAt(ev.X, ev.Y); ok {
+				d.Unfold(line)
+				return true
+			}
+			if d.inFoldGutter(ev.X, g) && d.ToggleFold(d.rows[i].New) {
+				return true
+			}
+			if s.GutterClick != nil && ev.X < g.paneX[1]+g.textX && ev.Mods == 0 && ev.Clicks == 1 && s.GutterClick(d.rows[i].New) {
+				return true
+			}
+		}
 		if i >= 0 && d.ExpandMore(i, d.foldZone(i, ev.X, g)) {
 			d.hoverZ = 0
 			return true
@@ -1082,6 +1247,11 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 			return true
 		}
 		p := d.posAt(ev.X, ev.Y, side, g, s)
+		if d.plain && s.Definition != nil && ev.Mods&(wui.Super|wui.Shift|wui.Alt|wui.Ctrl) == wui.Super && ev.Clicks == 1 {
+			d.sel = selection{side: 1, a: p, b: p} // ⌘点：光标放过去，跳到那个名字的定义
+			s.Definition(p.line, p.off)
+			return true
+		}
 		switch {
 		case ev.Mods&wui.Shift != 0 && !d.sel.empty() && d.sel.side == side: // ⇧ 点：从原来的起点选到这
 			d.sel.b = p
@@ -1127,6 +1297,14 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 			return true
 		}
 		hv := d.rowAt(ev.Y, g)
+		if s.Hover != nil {
+			d.trackHover(ev.X, ev.Y, hv, inBar, g, s)
+		}
+		if gh := d.plain && !inBar && hv >= 0 && ev.X < g.textX; gh != d.gutterHover {
+			d.gutterHover = gh
+			d.hover = hv
+			return true
+		}
 		gut := !inBar && d.canPick(s) && d.inGutter(ev.X, g)
 		z := 0
 		if hv >= 0 && !inBar {
@@ -1466,7 +1644,11 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 			p.Glyphs(num, x0+right-(last.X+last.Advance), base, nc)
 		}
 	}
-	if d.unified { // 两列：旧的行号、新的行号（删掉的行只有旧的，加的只有新的）
+	if d.plain {
+		number(row.New, g.numR)
+		d.paintFoldMark(p, x0, y, line, g, s)
+		d.paintChange(p, x0, y, h, line, g, s)
+	} else if d.unified { // 两列：旧的行号、新的行号（删掉的行只有旧的，加的只有新的）
 		number(row.Old, g.numR)
 		number(row.New, g.numR2)
 	} else {
@@ -1509,6 +1691,12 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 				p.Fill(wui.Rect{X: sx + rc.X, Y: vy(rc.Y) + 1, W: rc.W, H: g.lh - 2}, c, 2)
 			}
 		}
+		for _, e := range s.Extra { // 多光标：另外几个选中的字
+			if side != 1 {
+				break
+			}
+			d.paintSelOf(selection{side: 1, a: pos{e.AL, e.AO}, b: pos{e.BL, e.BO}}, p, l, line, sx, vy, g, s)
+		}
 		if !d.sel.empty() {
 			switch {
 			case d.sel.side == side:
@@ -1529,10 +1717,32 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 			}
 		}
 		p.TextLayout(l.l, sx, ty, s.Code.Text)
+		if d.plain {
+			d.paintSquiggles(p, l, line, sx, vy, g, s)
+			d.paintNotes(p, l, line, sx, vy, g, s)
+			d.paintEllipsis(p, r, l, line, sx, y, g, s)
+		}
 		if side == 1 && d.editable && d.focused && d.sel.side == 1 && line == d.sel.b.line {
 			d.paintCaret(p, r, l, sx, vy, g, s)
 		}
+		if side == 1 && d.editable && d.focused {
+			for _, e := range s.Extra {
+				if e.BL == line {
+					d.paintBar(p, l, e.BO, sx, vy, g, s)
+				}
+			}
+		}
 	})
+}
+
+// paintBar 画多光标里另外的一个光标（和主的一样，2 pt 宽）。
+func (d *Diff) paintBar(p *wui.Painter, l *lineLayout, off int, sx float32, vy func(float32) float32, g geom, s *Style) {
+	cr := l.l.Caret(l.u16[min(max(off, 0), len(l.u16)-1)])
+	c := s.Code.Cursor
+	if c.A == 0 {
+		c = s.Code.Text
+	}
+	p.Fill(wui.Rect{X: sx + cr.X - 1, Y: vy(cr.Y), W: 2, H: g.lh}, c, 0)
 }
 
 // paintSpaces 按 Style.Whitespace 画空白：空格一个小点，Tab 一道横线。默认只画选中的字里的（和 VS Code 的
@@ -1618,7 +1828,14 @@ func (d *Diff) paintCaret(p *wui.Painter, r wui.Rect, l *lineLayout, sx float32,
 
 // paintSel 涂这一行里选中的那段；选到下一行的，行尾多涂半个字宽（像编辑器里选中的换行）。
 func (d *Diff) paintSel(p *wui.Painter, l *lineLayout, line int, sx float32, vy func(float32) float32, g geom, s *Style) {
-	a, b := d.sel.span()
+	d.paintSelOf(d.sel, p, l, line, sx, vy, g, s)
+}
+
+func (d *Diff) paintSelOf(sl selection, p *wui.Painter, l *lineLayout, line int, sx float32, vy func(float32) float32, g geom, s *Style) {
+	if sl.empty() {
+		return
+	}
+	a, b := sl.span()
 	if line < a.line || line > b.line {
 		return
 	}
@@ -1813,9 +2030,12 @@ func (d *Diff) paintRuler(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 	rr := wui.Rect{X: r.X + g.ruler.X, Y: r.Y, W: rulerW, H: r.H}
 	p.Fill(rr, s.Ruler, 0)
 	// 概览：改动在整个文件里的位置，旧的一边（删）画左半、新的一边（加）画右半
-	total := g.content + g.lh*3
+	total := g.content + d.tail(g)
 	mh := max(2, g.lh*r.H/total)
 	for i, row := range d.rows {
+		if d.plain {
+			break
+		}
 		if row.Kind == Same || row.Kind == Fold {
 			continue
 		}

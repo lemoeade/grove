@@ -28,12 +28,12 @@ func TestRestoreTabs(t *testing.T) {
 		if d == nil || d.Buf == nil || d.Title != "a.txt" {
 			return false
 		}
-		first, _ := d.St.VisibleLines()
+		first, _ := d.VisibleLines()
 		return d.Top == 0 && first == 20 && tt.HasText("README.md")
 	})
 	tt.Frame()
 	d := a.CurrentDoc()
-	if first, _ := d.St.VisibleLines(); first != 20 {
+	if first, _ := d.VisibleLines(); first != 20 {
 		t.Fatalf("又滚走了：第一行 %d", first)
 	}
 	if p, _ := d.Cursor(); p.Line != 25 {

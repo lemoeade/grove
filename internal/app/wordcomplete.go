@@ -64,7 +64,7 @@ func (a *App) Complete(d *docs.Doc, req editor.CompletionRequest) {
 	if len(words) > 0 {
 		a.words.offer = &wordOffer{d: d, start: start, ver: d.Buf.Version(), cur: req.Offset, items: items}
 	}
-	d.St.ShowCompletions(start, items)
+	d.ShowCompletions(start, items)
 }
 
 // autoWords 是 d 敲字时就给词：设置开着、能改的代码文件（Markdown、纯文本这些只在 ⌃Space 时给）。
@@ -192,7 +192,7 @@ func (a *App) CompleteTick(d *docs.Doc) {
 		return
 	}
 	o.items = slices.Delete(slices.Clone(o.items), i, i+1)
-	d.St.ShowCompletions(o.start, o.items)
+	d.ShowCompletions(o.start, o.items)
 }
 
 // nearWords 是 b 里 off 前后 wordWindow 以内的词，离 off 近的在前；从 skip 开始的那个词（正在打的）不算。

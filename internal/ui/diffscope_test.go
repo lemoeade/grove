@@ -57,6 +57,7 @@ func scopeRepo(t *testing.T) (*app.App, func(string, func() bool), *app.Repo) {
 
 // 折叠条左半截写藏着的行之后那段所在的函数（像 GitHub 块头 @@ 后面的那段），函数头那行去掉缩进和 {；文件结尾那条不写。
 func TestDiffSepScope(t *testing.T) {
+	mygoDiff(t)
 	repo := testutil.NewRepo(t, "scope")
 	repo.Write("demo.go", scopeFile(false))
 	repo.Commit("初始提交")
@@ -161,6 +162,7 @@ func TestScreenshotDiffLook(t *testing.T) {
 // 按改动那行认所在符号，不按第一行看得见的：改动在两个函数之间（上下文里是上一个函数的 }）时不写；
 // Markdown 写最里层的标题（## 那节），不是包着全文的 #。
 func TestDiffSepScopeChangedLine(t *testing.T) {
+	mygoDiff(t)
 	body := func(changed bool) (goSrc, md string) {
 		var g, m strings.Builder
 		g.WriteString("package demo\n\n")
@@ -224,6 +226,7 @@ func TestDiffSepScopeChangedLine(t *testing.T) {
 
 // Diff 改了的行的底色是 Grove 画在底下的（difftint.go）：mygo 不涂底，红绿和 mygo 排的行对齐，没改的行、并排时对面留的空不涂。
 func TestDiffTints(t *testing.T) {
+	mygoDiff(t)
 	repo := testutil.NewRepo(t, "tint")
 	repo.Write("demo.go", scopeFile(false))
 	repo.Commit("初始提交")

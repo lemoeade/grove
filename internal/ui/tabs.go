@@ -517,8 +517,8 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 		a.SyncProblems(d)             // 检查报的问题：这个文件的变了才重设诊断
 		d.St.ContextMenu = func(m *wui.Menu) { docMenu(a, nativeMenu(m), d) }
 		if d.Top > 0 { // 恢复的标签：第一帧就滚（光标在视野里就不再动），光标不在视野里第一帧会被挪走，排过版再滚一次
-			d.St.ScrollTo(d.Top)
-			if _, last := d.St.VisibleLines(); last > 0 {
+			d.ScrollTo(d.Top)
+			if _, last := d.VisibleLines(); last > 0 {
 				d.Top = 0
 			} else {
 				c.Invalidate()
@@ -545,7 +545,13 @@ func docContent(a *app.App, c *wui.Context, d *docs.Doc, focused bool) {
 		var ed wui.Element
 		build := func() wui.Element { return restingEditor(c, d, &d.St, &d.Rest, keys) }
 		d.St.RenderFindBar, d.St.RenderGoToLine = nil, nil // 粘性滚动开着时换成记下位置的（stickyBars）
+		useEd := useGedEditor(a, d, len(blocks) > 0 || flagged)
+		if !useEd && d.EdOn { // 从 ged 换回 mygo 的（开了 blame、变成只读……）：下次换回来重新对齐
+			d.EdOn, d.EdSel, d.EdCompl, d.EdTip = false, nil, nil, nil
+		}
 		switch {
+		case useEd:
+			ed = gedFile(a, c, d, keys)
 		case d.ShowBlame && a.CanBlame(d):
 			ed = blameEditor(a, c, d, build)
 		case stickyOn(a, d):

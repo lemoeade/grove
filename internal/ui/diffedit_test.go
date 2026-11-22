@@ -15,6 +15,7 @@ import (
 // Diff 里就地编辑：未暂存的 Diff 标签条上有铅笔开关，点了新的一边可以直接打字（J / K 是字，不再跳改动），
 // 标签条上出保存、状态栏写没保存，⌘S 写回文件；再点铅笔退回只看。已暂存的 Diff 上没有这个开关。
 func TestDiffEditUI(t *testing.T) {
+	mygoDiff(t)
 	m := testutil.NewRepo(t, "proj")
 	m.Write("a.txt", "一\n二\n三\n")
 	m.Write("b.txt", "甲\n")

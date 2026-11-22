@@ -117,7 +117,7 @@ func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
 	}
 	v := mdViewOf(d)
 	if d.Kind == docs.MDPreview { // 跟着源文件的编辑器滚：最上面那一行变了，预览把那一行所在的块滚到最上面
-		if first, last := d.MDSource.St.VisibleLines(); last > 0 {
+		if first, last := d.MDSource.VisibleLines(); last > 0 {
 			if v.srcSeen && first != v.srcTop {
 				d.AnchorLine = first + 1
 			}

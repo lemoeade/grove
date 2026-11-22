@@ -381,7 +381,7 @@ func TestAccessLabels(t *testing.T) {
 	use := sd.Buf.Len() - 3
 	wait("符号索引", func() bool { return a.HoverAt(sd, use) != nil })
 	sd.St.Select(use, use)
-	sd.St.Run(editor.ShowHover)
+	sd.Run(editor.ShowHover)
 	wait("悬停提示", func() bool { return tt.HasText("work/src/a.go:4") })
 	accessCheck(t, tt, "悬停提示")
 	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {

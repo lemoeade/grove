@@ -233,9 +233,18 @@ type Doc struct {
 	// 改动、保存、撤销都是它的；nil 为只看。不记进会话
 	EditDoc *Doc
 
-	Rest  Rest      // 编辑器 / Diff 视图的光标停手多久了（ui 的 restingEditor / restingDiff）
-	Ged   *ged.Diff // WORKBENCH_GED 时 Grove 自己的并排 Diff 的状态（滚动、折叠、排好的字），ui 的 gedDiff 建
-	Occur Occur     // 光标下那个词在本文件里的其他出现（ui 的 occurMarks）
+	Rest Rest      // 编辑器 / Diff 视图的光标停手多久了（ui 的 restingEditor / restingDiff）
+	Ged  *ged.Diff // Grove 自己的并排 Diff 的状态（滚动、折叠、排好的字），ui 的 gedDiff 建
+	// Ed 是 Grove 自己画的单栏编辑器（ged.NewEditor），文件标签用它画时 ui 的 gedFile 建；EdOn 是上一帧画的是它，
+	// 这时看得见哪几行、滚到哪、编辑器命令、补全列表都问它（edit.go），光标和选中的字两边对齐（EdSel）。
+	Ed      *ged.Diff
+	EdOn    bool
+	EdSel   []editor.Selection // 上次对齐时 St 的选择：St 的和它不一样就是 App 那边挪过光标（GoTo、Select、命令）
+	EdCompl *Completions       // ged 编辑器上开着的补全列表；nil 没开
+	EdTip   *Tip               // ged 编辑器上的悬停提示；nil 没有
+	EdRange ged.Range          // 上次对齐时 ged 的选择：ged 的变了才往 St 推（多光标时滚动、点空白不收掉别的光标）
+	EdOut   bool               // 指针离开了悬停的那个字：提示上一帧也没被指着就关
+	Occur   Occur              // 光标下那个词在本文件里的其他出现（ui 的 occurMarks）
 
 	// blame 装订线（⌃⌘B，app/blame.go）：按标签记，不进 state.json
 	ShowBlame    bool

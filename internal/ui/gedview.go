@@ -14,9 +14,9 @@ import (
 	"github.com/lemoeade/grove/internal/outline"
 )
 
-// gedOn：设了 WORKBENCH_GED 时，Diff（并排、统一、就地编辑）用 Grove 自己画的（internal/ged），
-// 不用 mygo 的 editor.DiffView。试做阶段，默认不开。
-var gedOn = os.Getenv("WORKBENCH_GED") != ""
+// gedOn：Diff（并排、统一、就地编辑）用 Grove 自己画的（internal/ged），不用 mygo 的 editor.DiffView。
+// 默认开；WORKBENCH_GED=off 退回 mygo 的（对比、排查用）。
+var gedOn = os.Getenv("WORKBENCH_GED") != "off"
 
 // useGed 是这个 Diff 这一帧用不用 ged：开了、是文字的 Diff（和 docs.Doc.UsingGed 一样，只是那个还要建过 Ged）。
 func useGed(d *docs.Doc) bool {

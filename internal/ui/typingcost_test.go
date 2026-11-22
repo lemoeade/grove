@@ -17,6 +17,7 @@ import (
 // 大纲只在停手 StickyPause 后解析一次（StickySlow 改成 0，当它解析得慢）；改动块一直用同一个 DiffState 增量算，不从头整篇 diff。
 // 停手后粘性滚动的标题、改动块都和从头算的一样。用计数不用计时（CI 负载下计时不稳）。
 func TestTypingNoFullRecompute(t *testing.T) {
+	gedEditor(t, false) // 测的是 mygo 编辑器自己的东西（FindBar、LineTop / ScrollY、TextBackgrounds、它画的粘性滚动）
 	keep := docs.StickySlow
 	docs.StickySlow = 0
 	t.Cleanup(func() { docs.StickySlow = keep })

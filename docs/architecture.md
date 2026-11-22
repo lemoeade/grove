@@ -260,7 +260,7 @@ git 请求用户名、密码或 SSH 口令时，由 Grove 显示凭据对话框�
 Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`）每帧设：一边是空的（`oneSided`：新文件、删掉的文件）时不管 `unified` 都画成统一的一栏，标签条上的并排 / 统一按钮灰着；底栏 `compareLabel` 对已暂存 / 未暂存写“已暂存的改动”“未暂存的改动”，`HEAD ↔ 索引` 之类放在悬停提示里；`Indicators` 是 `DiffBars`（行首红 / 绿竖条；mygo 只在有竖条时把改了的词涂成红 / 绿，别的是灰的），改了的行的底色 Grove 自己画（`ui/difftint.go`）：mygo 混进背景的比例固定、太淡，`restingDiff` 让它不涂底（`clearDiffBackground`：`NoBackground`，`Theme.Background` 透明），外面包一层编辑器底色的 `Column`，`Draw(diffUnder)` 每帧按 `DiffState.Hunks` / `LineTop` / `ScrollY` 现算位置（`diffTints`，`TestDiffTints` 盯着）涂 VS Code 默认主题的 `#9bb95533` / `#ff000033`，选中的行也在这里画；竖条、行号和改了的词还是 mygo 画在上面，颜色是 `diffTint` 换的 `Theme.Added` / `Deleted`，折起来的未修改行由 `RenderSeparator = diffSep`（`ui/diffsep.go`）画成整行一条淡底，左边“N 行未修改”，点了走 `expandSep`（开头 / 结尾的展开 `Step` 行，中间的或按住 ⇧ 全部展开）；后面的字是 `sepScope`：下面那段改动第一行所在的符号那一行（间隔开头 + 上下文 + 藏着的行数 + 上下文）（`Doc.DiffOutline` 是旧的一边的大纲，按 `Buffer` 和版本缓存；`outline.Tree.Scope` 找包着那一行的最里层符号）。mygo 只给折叠条的行数和在不在头尾，间隔从哪行开始是没导出的 `DiffSeparator.a`，`sepStart` 用 reflect 读，读不到就不写（`TestSepStart` 盯着）。`DiffState.Wrap` 跟 `WrapOf`（⌥Z 的 `canWrap` 也认文字的 Diff）。改动在滚动条槽里的标记是 mygo 自己画的。空出来那边的斜纹和 mygo 自带的折叠条样式在 mygo 里，Grove 不改。
 
 `internal/ged` 是 Grove 自己的编辑器部件，只用 mygo 公开的接口（`ui.ShapeRichText` 排字、`Painter` 画、`Element.HandleInput` 收输入），不碰 mygo 的 `ui/editor` 视图；
-现在只有只读的 Diff（并排、统一），设了 `WORKBENCH_GED` 时 `useGed`（`ui/gedview.go`）让 Diff 标签、比较标签、替换预览都走它，Diff 里就地编辑时也是（`Style.Buf` 给了就能改，见下）。
+Diff（并排、统一）默认用它：`useGed`（`ui/gedview.go`）让 Diff 标签、比较标签、替换预览都走它，Diff 里就地编辑时也是（`Style.Buf` 给了就能改，见下）；`WORKBENCH_GED=off`（`gedOn`）退回 mygo 的 `editor.DiffView`，测 mygo 那条路的测试用 `mygoDiff(t)` 钉住。
 模型在 `ged/diff.go`，不碰界面：`Align` 用 Myers（先去掉头尾一样的；超过 `diffMax` 步就不再配，整段当删加）把两边的行对齐成 `Row`（`Same` / `Changed` / `Deleted` / `Added`，
 一处删 d 行加 a 行时前 min(d, a) 行配成 `Changed`），`Folded` 把离改动 `Context`（3）行外的没改的段折成一行 `Fold`（折叠条上数字后面写 `Style.FoldScope` 给的、下面那处改动所在的函数：`changeAfter` 找那处改动在旧的一边的行，界面那边 `scopeAt` 查 `DiffOutline`，和 mygo 那个 Diff 的 `sepScope` 共用），`Words` 按词比出改了的行里改了哪几段字节（几乎全不一样时整行，去掉缩进）。
 视图在 `ged/view.go`：一个元素，自己管滚动（`ScrollY` 两边一起走，横着两边各滚各的），`Draw` 里只排、只画看得见的行；一行排好的 `TextLayout` 按（哪边，第几行）留着，换字体 / 颜色时作废；
@@ -315,6 +315,24 @@ Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`�
 配对括号 `matchBracket` / `scanBracket` 只认单字的括号、最多看 `bracketScan` 行，每帧在有光标时算一次（`brk`），画成 `Code.MatchingBracket` 的框。空白按 `Style.Whitespace`（设置的「显示空白」）由 `paintSpaces` 画。
 替换：`Find.Replace` / `With` 是查找条下面那一行，`edit.replace`（⌥⌘F）在就地编辑的 ged 上 `OpenReplace`；`ReplaceOne` 只换新的一边的当前那处（在旧的一边时先跳），`ReplaceAll` 一次 `rewriteLines`。
 `TestGedDiff` 在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文；`TestGedHunks` 看上 / 下一处和暂存这一块只暂存那一块；`TestGedSelect` 看拖选、⌘C、双击、Esc、J、翻页；`TestGedLines` 看拖着选行、Esc、点一行 ⇧ 点一行、暂存选中的行只暂存那两行；`TestGedUnified` 看切到统一后一栏、上 / 下一处、点删掉的行的行号选旧的一边、暂存选中的行，再切回并排；`TestGedEdit` 看就地编辑的光标、打字、一步撤销、回车缩进、J 打进去、组字、剪切粘贴、⌘S 存盘。`ged` 包里 `TestUnified` 看排成一栏的顺序和折叠，`TestChangedEnd` / `TestWordMoves` 看撤销后的光标和按词移动，`TestChangeAfter` 看折叠条找的那处改动；`TestGedFoldScope` 看折叠条写的函数；`TestGedWrap` 看软换行后长行变高、短行不变、点第二截放光标、↑ ↓ 在折出来的行里走、关了还原；`TestGedFind` 看 ⌘F 开条、数处数、回车跳到折叠里那处会展开、Esc 关；`TestGedMenu` 看右键开 ged 的菜单、记的位置、只看时没有剪切粘贴、复制这一行（两边）、菜单里暂存这一块只暂存那一块、⇧F10 开菜单再选查找。`TestGedFoldExpand` 看开头那段只有往上的箭头、点箭头露 20 行、中间那段两个箭头、右键折叠条的菜单、剩的不多时不画箭头、点条中间整段展开；`ged` 包里 `TestFoldReveal` / `TestExpandMore` 看折的时候让出露的行、剩的不多整段展开。`TestGedTrim` 看菜单里勾上忽略空白后只剩真改了的那处、暂存这一块只暂存那一行；`ged` 包里 `TestAlignTrim`。`TestGedGoToLine` 看 ⌃G 开 ":"、跳到折着的第 150 行会展开并滚进视图。`TestGedOccurrences` 看选中一个词后两边别处一样的词都涂、选的那处自己不算；`ged` 包里 `TestOccurrences` 看全是空白、跨行的不涂。`TestGedSplit` 看拖中间那道线到 30% 处、右边正文跟着左挪、不选字，双击还原，再就地编辑放光标（截图 ged-caretline.png 看光标那一行）。`TestGedEditKeys` 用真键看 ⌥↓、⌘/、⇧⌘K、⌘]、打 ( 补 )、撤销，再 ⌥⌘F 替换一处、全部替换（截图 ged-keys.png 看括号框和空白、ged-replace.png 看替换条）；`ged` 包里 `TestEditCommands` / `TestAutoClose` / `TestEditCommandUndo` / `TestCommandLookup` / `TestMatchBracket` / `TestReplace`。
+
+文件标签的编辑器默认也是 ged（`ged.NewEditor`，单栏：`Diff.plain`，没有旧的一边）：`useGedEditor`（`ui/gedfile.go`）对能改的普通文件用它，十六进制、大文件、只读、
+有冲突标记、开着 blame 栏、超过 `gedEditorMaxLines`（5 万行）的照旧用 mygo 的 `editor.View`；`WORKBENCH_GED_EDITOR=off`（`gedEditorOn`）全退回 mygo 的，测那条路的测试用 `gedEditor(t, false)` 钉住。
+状态存在 `Doc.Ed`，`Doc.EdOn` 是这一帧用着它（`Doc.UsingEd`）。mygo 的 `editor.State`（`d.St`）照旧在、没有视图也能用（`Selections` / `GoTo` / `Insert` / `Run` 都只碰缓冲区），
+所以缓冲区、光标和 St 对齐着，App 那边问光标、`St.GoTo` / `St.Select`、代码片段、词补全、格式化、拖进来的字都不用改。对齐两条：每帧画之前 `edPull`——St 的选择和上次对齐时（`Doc.EdSel`）
+不一样就是 App 挪过光标，主的那个 `SetSelection` 给 ged（滚进视图），别的光标当 `Style.Extra` 画；ged 接了事件以后 `Style.Changed` → `edPush`，ged 的选择变了就 `St.SetSelections`（只剩一个）。
+多光标由 St 做：St 有不止一个选择时 `Style.Intercept` → `edMulti` 把打字（`St.Insert`）、按键（`Diff.Lookup` 查成命令，`edRunMulti` 在 St 上 `Run`，剪贴板走 Grove 的）交给 St，Esc 只留一个；⌥点击 `PointAt` 加一个。
+ged 自己不做的命令（跳行、补全、跳到定义、显示悬停……）走 `Style.Fallback`（`edFallback`），其余的交给 `St.Run` 再 `edPull`。看得见的行、滚到某行、执行编辑器命令、开补全 / 悬停提示经 `Doc.VisibleLines` / `ScrollTo` / `Run` /
+`ShowCompletions` / `ShowHover`（`docs/edit.go`）分到 ged 或 St，App 里原来直接碰 St 视图的地方都改走它们；`findGed` 让查找、替换、跳到行在 `UsingEd` 时也给 ged。
+补全列表（`edCompletionList`）和悬停提示（`edTipCard`）在 `gedFile` 那层 Row 里按 `CharBox` 摆：打标识符里的字时 `Changed` 里 `edComplete` → `a.Complete` → `Doc.ShowCompletions`（`Doc.EdCompl`），`edCompletions` 先按前缀、再按子序列筛，
+↑ ↓ 回车 Tab Esc 在 Intercept 里接，接受是 `St.Select` + `St.Insert`（片段照旧由 `SnipTick` 认）；指针停稳 `Style.Hover` → `edHover`：`a.HoverAt` 的声明加上盖住那处的诊断（`edDiagnosticsAt`），指针在卡上时不关（`Doc.EdOut`）。
+行号右边的改动竖条是 `Style.Changes`（`edChanges` 从 `app.DocHunks`：加的绿、改的蓝、删的在下一行顶上一个红三角，`ged/marks.go`），点那一行的行号 `Style.GutterClick` → `a.TogglePeek`，
+卡是和 mygo 编辑器共用的 `peekCardAt`（`edPeekCard` 按 `CharBox` 算卡顶）。诊断（`St.Diagnostics`，`SyncProblems` 照旧设）画成 `Style.Squiggles` 的波浪线；行内 blame（`Doc.BlameInlay`）是 `Style.Notes` 的行尾淡字。
+单栏时 ged 和 mygo 的编辑器一样把键、字、按下先给 `Style.Keys`（`docKeys`：片段跳位的 Tab、⇧⌥F 和它跟着送来的 ⌥ 字），再自己处理；右键菜单是 Grove 画的（`gedFileMenu`，测试用 `shownMenu` / `chooseMenu`）。
+最后一行下面能滚出来多少（`Diff.tail`）：Diff 三行，单栏照 VS Code 的 scrollBeyondLastLine 能把最后一行滚到顶上（一屏放得下的不滚），恢复的标签才滚得回原来的顶；
+同一帧里既有恢复的顶（`wantTop`）又有要露出来的光标（`want`），光标在滚好的视野里就不再为它挪。测的是 mygo 编辑器自己的东西（它的 FindBar、`LineTop` / `ScrollY`、
+`TextBackgrounds`、它画的粘性滚动行）的测试钉在 `gedEditor(t, false)` 上。
+和弦（⌘K ⌘0 这种）由 ged 的 `command` 按键位表认（第一个键返回 `chordPending`）；⌘K 开头的被菜单的“运行 git 命令…”先拿走，和 mygo 的编辑器一样。
 
 Diff 标签里每块改动有暂存 / 取消暂存 / 丢弃按钮（`app/hunks.go`）。`git.HunkPatch` 从那一块生成补丁，暂存是 `git apply --cached -`，取消暂存是 `--cached -R`，丢弃是工作区上 `-R`。
 
