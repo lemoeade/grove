@@ -2,6 +2,7 @@ package ged
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,6 +76,8 @@ type Style struct {
 	// （从外到里，最多 max 行，像 VS Code 那样一行吸着、下一行再看它下面的）。nil 不吸。
 	Sticky       func(side int, rowLine func(k int) int, max int) []int
 	StickyShadow wui.Color // 吸着的行下面那道阴影（三像素渐淡）
+	// Minimap 是单栏编辑器右边画缩略图（见 minimap.go，照 VS Code 的小地图）：每行按词的颜色画成细条，点、拖滚动。
+	Minimap bool
 	// Guides 是画缩进参考线（颜色是 Code.IndentGuide，就地编辑时光标那一块的是 ActiveIndentGuide，见 guides.go）。
 	Guides bool
 
@@ -101,6 +104,9 @@ type Style struct {
 	// Notes 是画在行尾后面的淡字（行内 blame），颜色 NoteColor；不占位置，光标、选择碰不到它。
 	Notes     []Note
 	NoteColor wui.Color
+	// Brackets 是括号按层上色（VS Code 的 bracket pair colorization）用的几种颜色，一层一种、轮着用；
+	// 字符串、注释里的括号不算。空的不上色。
+	Brackets []wui.Color
 }
 
 // Note 是第 Line 行行尾后面的一段淡字（开头的空格算隔开的距离）。
@@ -163,10 +169,12 @@ type Diff struct {
 	want        int               // 下一帧要滚到的那行（rows 的下标），-1 没有
 	words       map[int][2][]Span // Changed 行按旧行号
 	states      [2][]uint64       // 每行开头的分词状态（块注释、多行字符串跨行）
+	depths      [2][]int          // 每行开头括号套了几层（和 states 一起算、一起截）
 	toks        []editor.Token
 	layouts     map[lineKey]*lineLayout
 	font        wui.Font // layouts 是按这个字体、这套颜色排的
 	theme       editor.Theme
+	brackColors []wui.Color
 
 	ScrollY float32
 	scrollX [2]float32
@@ -179,6 +187,7 @@ type Diff struct {
 	hover   int // 指针在第几行（rows 的下标），-1 不在
 	hoverZ  int // 指针在折叠条的哪个箭头上（foldZone）
 	onBar   bool
+	mm      mmState  // 小地图（minimap.go）
 	barBox  wui.Rect // 改动上那排按钮在哪（本地坐标；大小是上一帧量的）：按在上面的归按钮
 
 	split     float32 // 并排时左边占多宽（0 到 1，0 是一半）：拖中间那道线改，双击还原
@@ -338,6 +347,7 @@ func (d *Diff) update(old, new []string) bool {
 		for side := range 2 {
 			if len(d.states[side]) > first+1 {
 				d.states[side] = d.states[side][:first+1]
+				d.depths[side] = d.depths[side][:first+1]
 			}
 		}
 		if d.sel.side == 1 {
@@ -349,14 +359,14 @@ func (d *Diff) update(old, new []string) bool {
 				delete(d.layouts, k)
 			}
 		}
-		d.states[1] = nil
+		d.states[1], d.depths[1] = nil, nil
 		d.cur = min(d.cur, len(d.hunks)-1)
 		if d.sel.side == 1 {
 			d.sel.a, d.sel.b = d.clampPos(d.sel.a), d.clampPos(d.sel.b)
 		}
 	} else {
 		d.open = map[int]Reveal{}
-		d.states = [2][]uint64{}
+		d.states, d.depths = [2][]uint64{}, [2][]int{}
 		d.layouts = nil
 		d.widest = [2]float32{}
 		d.cur = -1
@@ -696,18 +706,79 @@ func (d *Diff) stateAt(side, line int) uint64 {
 	if d.lang == nil || d.lang.Tokenizer == nil {
 		return 0
 	}
-	st := d.states[side]
+	st, dp := d.states[side], d.depths[side]
 	if len(st) == 0 {
-		st = append(st, 0)
+		st, dp = append(st, 0), append(dp[:0], 0)
 	}
 	for len(st) <= line {
 		i := len(st) - 1
 		var next uint64
-		d.toks, next = d.lang.Tokenizer.Tokenize(clean(d.lines[side][i]), st[i], d.toks[:0])
+		src := clean(d.lines[side][i])
+		d.toks, next = d.lang.Tokenizer.Tokenize(src, st[i], d.toks[:0])
 		st = append(st, next)
+		dp = append(dp, d.walkBrackets(src, d.toks, dp[i], nil))
 	}
-	d.states[side] = st
+	d.states[side], d.depths[side] = st, dp
 	return st[line]
+}
+
+// depthAt 是第 line 行开头括号套了几层。
+func (d *Diff) depthAt(side, line int) int {
+	if d.lang == nil || d.lang.Tokenizer == nil {
+		return 0
+	}
+	d.stateAt(side, line)
+	return d.depths[side][line]
+}
+
+// codeToken 报这种词里的括号算不算数：字符串、注释、正则里的不算。
+func codeToken(k editor.TokenKind) bool {
+	switch k {
+	case editor.TokenString, editor.TokenEscape, editor.TokenComment, editor.TokenRegexp:
+		return false
+	}
+	return true
+}
+
+// walkBrackets 从 depth 层起走一遍 src 里算数的括号（单个字节的那几种），每个调 fn(在哪、第几层)，返回走完是几层。
+// 左括号的层是进去之前的，右括号是出来之后的（一对一样）；多出来的右括号不让层数变负。
+func (d *Diff) walkBrackets(src string, toks []editor.Token, depth int, fn func(off, level int)) int {
+	var open, close [128]bool
+	any := false
+	for _, b := range d.brackets() {
+		if len(b.Open) == 1 && len(b.Close) == 1 && b.Open[0] < 128 && b.Close[0] < 128 {
+			open[b.Open[0]], close[b.Close[0]], any = true, true, true
+		}
+	}
+	if !any {
+		return depth
+	}
+	at, ti := 0, 0
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		if c >= 128 || !open[c] && !close[c] {
+			continue
+		}
+		for ti < len(toks) && toks[ti].End <= i {
+			at = toks[ti].End
+			ti++
+		}
+		if ti < len(toks) && i >= at && !codeToken(toks[ti].Kind) {
+			continue
+		}
+		if open[c] {
+			if fn != nil {
+				fn(i, depth)
+			}
+			depth++
+		} else {
+			depth = max(0, depth-1)
+			if fn != nil {
+				fn(i, depth)
+			}
+		}
+	}
+	return depth
 }
 
 // lineMax 是一行最多排多少字节：再长的（压缩过的 JS）后面看不到也没关系，排它太慢。
@@ -742,26 +813,47 @@ func (d *Diff) layout(side, line int, s *Style) *lineLayout {
 	}
 	ct := s.Code
 	type seg struct {
-		end  int
-		kind editor.TokenKind
-		tok  bool
+		end   int
+		kind  editor.TokenKind
+		tok   bool
+		level int // 括号的层（上色用），不是括号是 -1
 	}
 	var segs []seg
 	if d.lang != nil && d.lang.Tokenizer != nil {
 		var toks []editor.Token
 		toks, _ = d.lang.Tokenizer.Tokenize(src, d.stateAt(side, line), d.toks[:0])
 		d.toks = toks
+		var marks []int // 括号：在哪、第几层，一对一对
+		if len(s.Brackets) > 0 {
+			d.walkBrackets(src, toks, d.depthAt(side, line), func(off, level int) { marks = append(marks, off, level) })
+		}
 		at := 0
 		for _, t := range toks {
 			if t.End <= at || t.End > len(src) {
 				continue
 			}
-			segs = append(segs, seg{t.End, t.Kind, true})
+			for len(marks) > 0 && marks[0] < t.End { // 这个词里的括号单独一段
+				if marks[0] > at {
+					segs = append(segs, seg{marks[0], t.Kind, true, -1})
+				}
+				segs = append(segs, seg{marks[0] + 1, t.Kind, true, marks[1]})
+				at, marks = marks[0]+1, marks[2:]
+			}
+			if t.End > at {
+				segs = append(segs, seg{t.End, t.Kind, true, -1})
+			}
 			at = t.End
+		}
+		for len(marks) > 0 { // 词后面没分到词的括号
+			if marks[0] > at {
+				segs = append(segs, seg{end: marks[0], level: -1})
+			}
+			segs = append(segs, seg{end: marks[0] + 1, level: marks[1]})
+			at, marks = marks[0]+1, marks[2:]
 		}
 	}
 	if len(segs) == 0 || segs[len(segs)-1].end < len(src) {
-		segs = append(segs, seg{end: len(src)})
+		segs = append(segs, seg{end: len(src), level: -1})
 	}
 	tab := s.Tab
 	if tab <= 0 {
@@ -796,6 +888,9 @@ func (d *Diff) layout(side, line int, s *Style) *lineLayout {
 			if ts.Bold {
 				sp.Weight = 600
 			}
+		}
+		if sg.level >= 0 && len(s.Brackets) > 0 {
+			sp.Color = s.Brackets[sg.level%len(s.Brackets)]
 		}
 		spans = append(spans, sp)
 		at = sg.end
@@ -847,6 +942,8 @@ type geom struct {
 	textX   float32 // 正文从格子里的哪开始
 	content float32 // 全部行多高
 	ruler   wui.Rect
+	mm      wui.Rect // 小地图（没有时 W 为 0），在概览条左边
+	right   float32  // 右边让出多宽：概览条，有小地图时再加它
 	asc     float32
 	desc    float32
 	cw      float32 // 一个数字多宽
@@ -899,6 +996,11 @@ func (d *Diff) geom(s *Style, w, h, scale float32) geom {
 		g.paneX[1] = g.paneW[0] + 1
 		g.paneW[1] = w - g.paneX[1]
 	}
+	g.right = rulerW
+	if d.plain && s.Minimap && w >= minimapMinW {
+		g.mm = wui.Rect{X: w - rulerW - minimapW, W: minimapW, H: h}
+		g.right += minimapW
+	}
 	if d.wrap {
 		d.setWrapWidth(g)
 	}
@@ -931,13 +1033,13 @@ func (d *Diff) clamp(g geom) {
 		return
 	}
 	if d.unified { // 一栏横着一起滚：两边的数一样（按上次动的那边），按宽的那边算能滚多远
-		room := g.paneW[1] - g.textX - rulerW
+		room := g.paneW[1] - g.textX - g.right
 		x := max(0, min(d.scrollX[d.side], max(d.widest[0], d.widest[1])-room+g.lh))
 		d.scrollX = [2]float32{x, x}
 		return
 	}
 	for side := range 2 {
-		room := g.paneW[side] - g.textX - rulerW
+		room := g.paneW[side] - g.textX - g.right
 		d.scrollX[side] = max(0, min(d.scrollX[side], d.widest[side]-room+g.lh))
 	}
 }
@@ -989,10 +1091,12 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	if _, ok := d.caret(&s); ok { // 就地编辑、有光标：收字和输入法（候选框在光标处）
 		el.TextCaret(d.caretBox)
 	}
-	if !el.Hovered() && !d.drag && !d.splitting { // 指针走了（没有“离开”事件，问 Hovered）
-		d.hover, d.onBar, d.onSplit = -1, false, false
+	if !el.Hovered() && !d.drag && !d.splitting && !d.mm.drag { // 指针走了（没有“离开”事件，问 Hovered）
+		d.hover, d.onBar, d.onSplit, d.mm.on = -1, false, false, false
 	}
 	switch {
+	case d.mm.on || d.mm.drag:
+		el.Cursor(wui.CursorDefault)
 	case d.onSplit || d.splitting:
 		el.Cursor(wui.CursorResizeEW)
 	case d.hover >= 0 && d.rows[d.hover].Kind == Fold && !d.onBar:
@@ -1133,6 +1237,9 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 	g := d.geomNow(s)
 	inBar := ev.X >= g.ruler.X && g.content+d.tail(g) > g.h
 	if took, handled := d.splitInput(ev, g, inBar); handled {
+		return took
+	}
+	if took, handled := d.minimapInput(ev, g); handled {
 		return took
 	}
 	if ev.Kind != wui.InputScroll && !d.drag && (d.barBox.W > 0 && d.barBox.Contains(ev.X, ev.Y) ||
@@ -1536,8 +1643,9 @@ func (d *Diff) wordAt(side int, p pos) selection {
 }
 
 func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
-	if d.font != s.Font || d.theme != *s.Code { // 换了字体、深浅色：排好的字作废
-		d.layouts, d.font, d.theme = nil, s.Font, *s.Code
+	if d.font != s.Font || d.theme != *s.Code || !slices.Equal(d.brackColors, s.Brackets) { // 换了字体、深浅色、括号的颜色：排好的字作废
+		d.layouts, d.font, d.theme, d.brackColors = nil, s.Font, *s.Code, slices.Clone(s.Brackets)
+		d.mm.lines = nil
 		d.topsDirty = true
 	}
 	d.occ = d.occurText()
@@ -1595,6 +1703,7 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 		}
 	}
 	d.paintSticky(p, r, g, s)
+	d.paintMinimap(p, r, g, s)
 	if !d.unified { // 中间的线
 		p.Fill(wui.Rect{X: r.X + g.paneW[0], Y: r.Y, W: 1, H: r.H}, s.Divider, 0)
 	}
@@ -1619,7 +1728,7 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 	if changed {
 		p.Fill(cell, lineBg, 0)
 	}
-	caretLine := side == 1 && d.editable && d.focused && d.sel.side == 1 && line == d.sel.b.line && d.sel.empty()
+	caretLine := side == 1 && d.editable && (d.focused || d.plain) && d.sel.side == 1 && line == d.sel.b.line && d.sel.empty()
 	if caretLine { // 光标那一行：垫一层（VS Code 的 current line highlight），行号亮一点
 		p.Fill(cell, s.Code.ActiveLine, 0)
 	}
@@ -1919,7 +2028,7 @@ func (d *Diff) paintFold(p *wui.Painter, r wui.Rect, g geom, s *Style, i int, y 
 			continue
 		}
 		x0 := r.X + g.paneX[side]
-		clip := wui.Rect{X: x0, Y: y, W: g.paneW[side] - rulerW*float32(side), H: g.lh} // 右边那格让出概览条
+		clip := wui.Rect{X: x0, Y: y, W: g.paneW[side] - g.right*float32(side), H: g.lh} // 右边那格让出概览条（和小地图）
 		p.Clip(clip, 0, func() {
 			for _, a := range d.foldArrows(i, g) {
 				ax := x0 + a.x

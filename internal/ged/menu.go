@@ -25,7 +25,7 @@ func (d *Diff) menuInput(ev wui.InputEvent, g geom, s *Style) (took, handled boo
 	}
 	switch ev.Kind {
 	case wui.InputPointerDown:
-		if !(ev.Button == 1 || ev.Button == 0 && ev.Mods&wui.Ctrl != 0) || ev.X >= g.ruler.X {
+		if !(ev.Button == 1 || ev.Button == 0 && ev.Mods&wui.Ctrl != 0) || ev.X >= g.w-g.right {
 			return false, false
 		}
 		d.menuAt(ev, g, s)

@@ -402,7 +402,7 @@ func (d *Diff) revealCaret(g geom, s *Style) {
 		return
 	}
 	x := l.l.Caret(l.u16[min(c.off, len(l.u16)-1)]).X
-	room := g.paneW[1] - g.textX - rulerW
+	room := g.paneW[1] - g.textX - g.right
 	if x < d.scrollX[1] {
 		d.scrollX[1] = max(0, x-4*g.cw)
 	} else if x > d.scrollX[1]+room-g.cw {

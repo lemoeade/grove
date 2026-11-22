@@ -1444,6 +1444,7 @@
   "更多 git 操作": "More Git actions",
   "更多工作树操作": "More worktree actions",
   "更多：完整哈希、邮箱、时间、父提交和提交的操作": "More: full hash, email, time, parents and commit actions",
+  "更改所有匹配项": "Change All Occurrences",
   "更新": "Update",
   "更新到父仓库记录的提交…": "Update to the Recorded Commit…",
   "更新子模块": "Update submodules",

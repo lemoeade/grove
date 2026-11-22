@@ -72,7 +72,7 @@ func (d *Diff) paintSticky(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 			pane = 0
 		}
 		x0 := r.X + g.paneX[pane]
-		pw := min(g.paneW[pane], g.ruler.X-g.paneX[pane]) // 不盖右边的概览条
+		pw := min(g.paneW[pane], g.w-g.right-g.paneX[pane]) // 不盖右边的概览条和小地图
 		h := float32(len(rows)) * g.lh
 		p.Fill(wui.Rect{X: x0, Y: r.Y, W: pw, H: h}, s.Code.Background, 0)
 		for k, line := range rows {
@@ -109,7 +109,7 @@ type stickyHit struct {
 
 // stickyAt 是视图里 (x, y) 在不在吸着的行上。
 func (d *Diff) stickyAt(x, y float32, g geom) stickyHit {
-	if g.lh <= 0 || y < 0 || x >= g.ruler.X {
+	if g.lh <= 0 || y < 0 || x >= g.w-g.right {
 		return stickyHit{}
 	}
 	side := d.stickyPane(x, g)

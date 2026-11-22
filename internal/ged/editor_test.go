@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	wui "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 )
 
@@ -142,5 +143,96 @@ func TestEditorFolding(t *testing.T) {
 	d.SetText(3, func() []string { return gone }, d.lang)
 	if d.IsFolded(16) {
 		t.Errorf("不能折了的还折着")
+	}
+}
+
+// 括号按层上色：跨行接着数，字符串、注释里的括号不算，多出来的右括号不让层数变负。
+func TestBracketLevels(t *testing.T) {
+	d := NewEditor()
+	lines := []string{"func f() {", "\ts := \"(\" // )", "\tg(a[0])", "}", "}"}
+	d.SetText(1, func() []string { return lines }, editor.LanguageFor("main.go"))
+	type mark struct{ off, level int }
+	got := func(line int) []mark {
+		var out []mark
+		src := lines[line]
+		toks, _ := d.lang.Tokenizer.Tokenize(src, d.stateAt(1, line), nil)
+		d.walkBrackets(src, toks, d.depthAt(1, line), func(off, level int) { out = append(out, mark{off, level}) })
+		return out
+	}
+	if m := got(0); !slices.Equal(m, []mark{{6, 0}, {7, 0}, {9, 0}}) {
+		t.Errorf("第 1 行 %v", m)
+	}
+	if m := got(1); len(m) != 0 {
+		t.Errorf("字符串、注释里的括号也算了：%v", m)
+	}
+	if m := got(2); !slices.Equal(m, []mark{{2, 1}, {4, 2}, {6, 2}, {7, 1}}) {
+		t.Errorf("第 3 行 %v", m)
+	}
+	if d.depthAt(1, 3) != 1 || d.depthAt(1, 4) != 0 || d.walkBrackets("}", nil, 0, nil) != 0 {
+		t.Errorf("层数 %d %d", d.depthAt(1, 3), d.depthAt(1, 4))
+	}
+}
+
+// 小地图：只有单栏 + Minimap + 够宽时有，在概览条左边、正文让出它；行按词的颜色成条（空白不画），
+// 按在滑块外把滑块挪到指针下、拖着滚，滚到底时小地图也到底。
+func TestMinimap(t *testing.T) {
+	var lines []string
+	for i := range 2000 {
+		lines = append(lines, "\tfmt.Println(\"x\", "+strings.Repeat("a", i%50)+")")
+	}
+	d := plainEd(t, lines)
+	s := &Style{Code: editor.DefaultTheme(wui.LightTheme()), Font: wui.Font{Family: "monospace", Size: 13}}
+	if g := d.geom(s, 800, 600, 1); g.mm.W != 0 || g.right != rulerW {
+		t.Fatalf("没开 Minimap 也有小地图：%+v", g.mm)
+	}
+	s.Minimap = true
+	if g := d.geom(s, 300, 600, 1); g.mm.W != 0 {
+		t.Fatal("太窄也画了小地图")
+	}
+	g := d.geom(s, 800, 600, 1)
+	if g.mm.W != minimapW || g.mm.X != 800-rulerW-minimapW || g.right != rulerW+minimapW {
+		t.Fatalf("小地图的位置 %+v right %v", g.mm, g.right)
+	}
+	d.style, d.w, d.h, d.lh = s, 800, 600, g.lh
+
+	runs := d.mmRuns(0, s)
+	if len(runs) < 2 || runs[0].c0 != 4 { // Tab 展开成 4 格，后面有不同颜色的词
+		t.Fatalf("第 1 行的条：%+v", runs)
+	}
+	for i := 1; i < len(runs); i++ {
+		if runs[i].c0 < runs[i-1].c1 {
+			t.Fatalf("条叠在一起：%+v", runs)
+		}
+	}
+
+	// 按在小地图中间（滑块外）：滑块挪到指针下，接着拖
+	y := float32(300)
+	d.input(wui.InputEvent{Kind: wui.InputPointerDown, X: g.mm.X + 10, Y: y, Clicks: 1}, s)
+	if !d.mm.drag || d.ScrollY <= 0 {
+		t.Fatalf("按下后 drag=%v ScrollY=%v", d.mm.drag, d.ScrollY)
+	}
+	top, h := d.mmSlider(g)
+	if y < top || y > top+h {
+		t.Fatalf("按下的点 %v 不在滑块 [%v, %v] 里", y, top, top+h)
+	}
+	before := d.ScrollY
+	d.input(wui.InputEvent{Kind: wui.InputPointerMove, X: g.mm.X + 10, Y: y + 50}, s)
+	if d.ScrollY <= before {
+		t.Fatalf("往下拖没往下滚：%v → %v", before, d.ScrollY)
+	}
+	d.input(wui.InputEvent{Kind: wui.InputPointerMove, X: g.mm.X + 10, Y: 10000}, s)
+	d.input(wui.InputEvent{Kind: wui.InputPointerUp, X: g.mm.X + 10, Y: 10000}, s)
+	if d.mm.drag {
+		t.Fatal("松开后还在拖")
+	}
+	most := g.content - g.h + d.tail(g)
+	if d.ScrollY < most-1 {
+		t.Fatalf("拖到底没滚到底：%v（应 %v）", d.ScrollY, most)
+	}
+	if sc, total := d.mmScroll(g), g.content*mmLH/g.lh; sc < total-g.h-1 {
+		t.Fatalf("编辑器到底了小地图没到底：%v（应 %v）", sc, total-g.h)
+	}
+	if !d.sel.empty() {
+		t.Fatal("在小地图上按、拖动了选择")
 	}
 }

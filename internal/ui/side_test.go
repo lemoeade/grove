@@ -100,9 +100,9 @@ func TestOpenToSide(t *testing.T) {
 	wait("都读好", func() bool { return !slices.ContainsFunc(a.AllDocs(), func(d *docs.Doc) bool { return d.Buf == nil }) })
 	tt.Frame()
 
-	// 编辑器右键：d.txt 向右分出去
-	mustRightClickRow(t, tt, "编辑 d.txt", "拆分", "向右拆分")
-	expect("编辑器右键向右拆分", []string{"README.md"}, []string{"a.txt", "b.txt", "c.txt"}, []string{"d.txt"})
+	// 标签右键：d.txt 向右分出去（编辑器右键照 VS Code 没有拆分）
+	mustRightClickRow(t, tt, "标签 d.txt", "拆分", "向右拆分")
+	expect("标签右键向右拆分", []string{"README.md"}, []string{"a.txt", "b.txt", "c.txt"}, []string{"d.txt"})
 	// 标签右键："拆分"和"在另一组里再开一份"在"固定标签"上面；这组太窄，向左灰；向下分
 	if err := rightClickRow(tt, "标签 c.txt"); err != nil {
 		t.Fatal(err)

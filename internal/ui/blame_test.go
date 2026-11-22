@@ -197,7 +197,7 @@ func TestInlineBlame(t *testing.T) {
 		t.Fatalf("分屏后左边那组还放着 %q", d.BlameInlay.Text)
 	}
 
-	// 编辑器右键（右边那组的编辑器中间）：两种 blame 并排；右键开装订线
+	// 编辑器右键（右边那组的编辑器中间）照 VS Code 没有 blame（放光标）；两种 blame 走菜单栏的命令
 	st, ok := tt.Find("行 1，列 2")
 	if !ok {
 		t.Fatalf("状态栏没有行列：%q", tt.Texts())
@@ -206,18 +206,17 @@ func TestInlineBlame(t *testing.T) {
 		t.Helper()
 		tt.RightClickAt(st.X-300, 400)
 		tt.Frame()
-		m := shownMenu(t, tt)
-		if i := slices.Index(m, "显示 blame 装订线"); i < 0 || m[i+1] != "显示行内 blame" {
+		if m := shownMenu(t, tt); slices.Contains(m, "显示 blame 装订线") || m[len(m)-1] != "命令面板…" {
 			t.Fatalf("编辑器右键 %q", m)
 		}
-		if err := chooseMenu(t, tt, item); err != nil {
-			t.Fatal(err)
-		}
+		tt.Key(0, wui.KeyEscape)
+		tt.Frame()
+		a.Exec(map[string]string{"显示 blame 装订线": "view.blame", "显示行内 blame": "view.inlineBlame"}[item])
 		tt.Frame()
 	}
 	choose("显示 blame 装订线")
 	if !b.ShowBlame || !tt.HasText("blame · 1 次提交") {
-		t.Fatal("右键没开 b.txt 的装订线")
+		t.Fatal("没开 b.txt 的装订线")
 	}
 
 	// 关掉行内的：没开装订线的 a.txt 扔掉 blame，b.txt 的留着；行尾都拿掉
@@ -236,6 +235,6 @@ func TestInlineBlame(t *testing.T) {
 	wait("再开", func() bool { return b.BlameInlay.Text != "" })
 	choose("显示行内 blame")
 	if a.St.Settings.InlineBlame || b.Blame != nil || b.BlameInlay.Text != "" {
-		t.Fatalf("右键关行内 blame：%v %v %q", a.St.Settings.InlineBlame, b.Blame != nil, b.BlameInlay.Text)
+		t.Fatalf("关行内 blame：%v %v %q", a.St.Settings.InlineBlame, b.Blame != nil, b.BlameInlay.Text)
 	}
 }

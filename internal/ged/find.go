@@ -293,7 +293,7 @@ func (d *Diff) revealFind(g geom, s *Style) {
 	}
 	x0 := l.l.Caret(l.u16[min(m.start, len(l.u16)-1)]).X
 	x1 := l.l.Caret(l.u16[min(m.end, len(l.u16)-1)]).X
-	room := g.paneW[m.side] - g.textX - rulerW
+	room := g.paneW[m.side] - g.textX - g.right
 	if x0 < d.scrollX[side] || x1 > d.scrollX[side]+room {
 		x := max(0, x0-room/3)
 		if d.unified {

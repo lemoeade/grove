@@ -44,7 +44,7 @@ func TestProblemsPanel(t *testing.T) {
 	tt.Frame()
 	mustText(t, tt, "正在检查 printf…")
 	wait("lib 检查完", idle)
-	mustRightClick(t, tt, "编辑 util.go", "检查") // util.go 是当前标签；问题还是那一条
+	a.Exec("lint.run") // util.go 是当前标签；问题还是那一条（编辑器右键照 VS Code 没有“检查”）
 	wait("又检查完", idle)
 	a.Lint(main)
 	wait("shop 检查完", idle)

@@ -257,7 +257,21 @@ func gedEditorStyle(a *app.App, t *wui.Theme) ged.Style {
 	ct := fullCodeTheme(t)
 	s := gedStyleBase(t, ct, a.EditorFont())
 	s.PlainNumbers = vscode()
+	s.Brackets = bracketColors(t)
+	s.Minimap = vscode() // 小地图：VS Code 默认开着
 	return s
+}
+
+// bracketColors 是 VS Code 风格里括号按层轮着用的三种颜色（editorBracketHighlight.foreground1–3，Light+ / Dark+ 的），
+// Grove 风格不上色（nil）。
+func bracketColors(t *wui.Theme) []wui.Color {
+	if !vscode() {
+		return nil
+	}
+	if t.Dark {
+		return []wui.Color{wui.Hex("#FFD700"), wui.Hex("#DA70D6"), wui.Hex("#179FFF")}
+	}
+	return []wui.Color{wui.Hex("#0431FA"), wui.Hex("#319331"), wui.Hex("#7B3814")}
 }
 
 // edMulti 是多光标时的事件：交给 St 做（ged 只画结果）。键按键位表查成命令，St 执行；打字、粘贴插到每个光标处；
@@ -657,37 +671,70 @@ func edTipCard(a *app.App, c *wui.Context, d *docs.Doc, row wui.Element) {
 	}
 }
 
-// gedFileMenu 是 ged 文件编辑器的右键菜单：撤销 / 重做、剪切 / 复制 / 粘贴、跳到定义，文件标签追加的几项（docMenu），全选。
+// edBindingOf 是编辑器命令 cmd 的键：先看改过的（app.EditorBindings），再看 mygo 默认的；只要一下的、不要和弦。
+func edBindingOf(cmd editor.Command) (editor.Binding, bool) {
+	for _, bs := range [][]editor.Binding{app.EditorBindings(), editor.DefaultBindings()} {
+		for _, b := range bs {
+			if b.Command == cmd && b.ThenKey == 0 && b.Key != 0 {
+				return b, true
+			}
+		}
+	}
+	return editor.Binding{}, false
+}
+
+// gedFileMenu 是 ged 的文件编辑器的右键菜单，照 VS Code 编辑器的右键菜单排：跳到定义、查找引用；更改所有匹配项、
+// 格式化文档；剪切、复制、粘贴；命令面板，到这为止。Grove 自己的（拆分、本地历史、Finder、复制路径）和 VS Code 一样在标签的右键菜单里，
+// 保存、检查、blame 在菜单栏和命令面板里；撤销、重做、全选 VS Code 的右键菜单里也没有（菜单栏“编辑”里有）。
 func gedFileMenu(a *app.App, m menu, d *docs.Doc) {
 	g := d.Ed
 	if g == nil {
 		return
 	}
-	if m.Item(i18n.T("撤销")).Shortcut(wui.Super, wui.KeyZ).Chosen() {
-		g.Run("undo")
+	cur := a.CurrentDoc() == d
+	key := func(it menuItem, id string) menuItem {
+		if cur {
+			shortcut(it, id)
+		}
+		return it
 	}
-	if m.Item(i18n.T("重做")).Shortcut(wui.Super|wui.Shift, wui.KeyZ).Chosen() {
-		g.Run("redo")
+	edKey := func(it menuItem, cmd editor.Command) menuItem { // 编辑器自己的键（改过的照改后的，不归菜单栏）
+		if cur {
+			if b, ok := edBindingOf(cmd); ok {
+				it.Shortcut(b.Mods, b.Key)
+			}
+		}
+		return it
 	}
-	m.Separator()
-	if m.Item(i18n.T("剪切")).Shortcut(wui.Super, wui.KeyX).Disabled(!g.HasSelection()).Chosen() {
+	mergeMenu(a, m, d)
+	if app.CanGoToDefinition(d) {
+		if edKey(m.Item(i18n.T("跳到定义")), editor.GoToDefinition).Chosen() {
+			a.GoToDefinition(d, d.St.Cursor())
+		}
+		if key(m.Item(i18n.T("查找引用")), "editor.findReferences").Chosen() {
+			a.FindReferences(d, d.St.Cursor())
+		}
+		m.Separator()
+	}
+	if d.Editable() {
+		all := m.Item(i18n.T("更改所有匹配项")).Disabled(d.Buf.Len() > app.MaxWholeTextBytes)
+		if edKey(all, editor.SelectAllMatches).Chosen() {
+			d.Run(editor.SelectAllMatches)
+		}
+		formatItem(a, m, d)
+		m.Separator()
+	}
+	if m.Item(i18n.T("剪切")).Shortcut(wui.Super, wui.KeyX).Disabled(!g.HasSelection() || !d.Editable()).Chosen() {
 		g.Run("cut")
 	}
 	if m.Item(i18n.T("复制")).Shortcut(wui.Super, wui.KeyC).Disabled(!g.HasSelection()).Chosen() {
 		g.Run("copy")
 	}
-	if m.Item(i18n.T("粘贴")).Shortcut(wui.Super, wui.KeyV).Chosen() {
+	if m.Item(i18n.T("粘贴")).Shortcut(wui.Super, wui.KeyV).Disabled(!d.Editable()).Chosen() {
 		g.Run("paste")
 	}
-	if app.CanGoToDefinition(d) {
-		m.Separator()
-		if m.Item(i18n.T("跳到定义")).Chosen() {
-			a.GoToDefinition(d, d.St.Cursor())
-		}
-	}
-	docMenu(a, m, d)
 	m.Separator()
-	if m.Item(i18n.T("全选")).Shortcut(wui.Super, wui.KeyA).Chosen() {
-		g.Run("selectAll")
+	if key(m.Item(i18n.T("命令面板…")), "palette.commands").Chosen() {
+		a.Exec("palette.commands")
 	}
 }

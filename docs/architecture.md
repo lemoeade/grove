@@ -328,7 +328,12 @@ ged 自己不做的命令（跳行、补全、跳到定义、显示悬停……�
 ↑ ↓ 回车 Tab Esc 在 Intercept 里接，接受是 `St.Select` + `St.Insert`（片段照旧由 `SnipTick` 认）；指针停稳 `Style.Hover` → `edHover`：`a.HoverAt` 的声明加上盖住那处的诊断（`edDiagnosticsAt`），指针在卡上时不关（`Doc.EdOut`）。
 行号右边的改动竖条是 `Style.Changes`（`edChanges` 从 `app.DocHunks`：加的绿、改的蓝、删的在下一行顶上一个红三角，`ged/marks.go`），点那一行的行号 `Style.GutterClick` → `a.TogglePeek`，
 卡是和 mygo 编辑器共用的 `peekCardAt`（`edPeekCard` 按 `CharBox` 算卡顶）。诊断（`St.Diagnostics`，`SyncProblems` 照旧设）画成 `Style.Squiggles` 的波浪线；行内 blame（`Doc.BlameInlay`）是 `Style.Notes` 的行尾淡字。
-单栏时 ged 和 mygo 的编辑器一样把键、字、按下先给 `Style.Keys`（`docKeys`：片段跳位的 Tab、⇧⌥F 和它跟着送来的 ⌥ 字），再自己处理；右键菜单是 Grove 画的（`gedFileMenu`，测试用 `shownMenu` / `chooseMenu`）。
+单栏时 ged 和 mygo 的编辑器一样把键、字、按下先给 `Style.Keys`（`docKeys`：片段跳位的 Tab、⇧⌥F 和它跟着送来的 ⌥ 字），再自己处理；右键菜单是 Grove 画的（`gedFileMenu`，测试用 `shownMenu` / `chooseMenu`），照 VS Code 编辑器的右键菜单只到命令面板：跳到定义、查找引用；更改所有匹配项、格式化文档；剪切、复制、粘贴；命令面板。
+拆分、本地历史、Finder、复制路径和 VS Code 一样在标签的右键菜单（`tabMenu`），保存、检查、blame 在菜单栏和命令面板；mygo 编辑器的菜单照旧接 `docFileItems`。
+编辑器自己的命令（跳到定义、更改所有匹配项）不在菜单栏的注册表里，键按 `edBindingOf` 从 `app.EditorBindings()` 再 `editor.DefaultBindings()` 找（只要一下的，不要和弦）。
+括号按层上色（`Style.Brackets`，只在 VS Code 风格里给，Light+ / Dark+ 的三种色）：每行开头的括号层数和分词状态一起缓存（`depths` / `stateAt`），`walkBrackets` 跳过字符串、注释里的括号。
+小地图（`ged/minimap.go`，`Style.Minimap`，也只在 VS Code 风格里开）：概览条左边 100 pt，一行 2 pt、一个字 1 pt，按词的颜色画细条（每行按字和分词状态缓存），
+比编辑器高时按比例跟着滚（编辑器滚到底它也到底）；`geom.right` 是右边让出的宽，正文、粘性滚动、横滚、软换行的宽都按它算。指针在上面时出滑块，按滑块外把滑块挪到指针下再拖。`ged` 包里 `TestMinimap`。
 最后一行下面能滚出来多少（`Diff.tail`）：Diff 三行，单栏照 VS Code 的 scrollBeyondLastLine 能把最后一行滚到顶上（一屏放得下的不滚），恢复的标签才滚得回原来的顶；
 同一帧里既有恢复的顶（`wantTop`）又有要露出来的光标（`want`），光标在滚好的视野里就不再为它挪。测的是 mygo 编辑器自己的东西（它的 FindBar、`LineTop` / `ScrollY`、
 `TextBackgrounds`、它画的粘性滚动行）的测试钉在 `gedEditor(t, false)` 上。

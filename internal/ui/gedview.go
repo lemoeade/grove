@@ -289,6 +289,7 @@ func gedStyle(a *app.App, t *wui.Theme) ged.Style {
 		s.Filler = pick(t, wui.Hex("#222222").Alpha(0.2), wui.Hex("#cccccc").Alpha(0.2))
 		s.FoldBack = pick(t, wui.Hex("#f8f8f8"), wui.Hex("#181818"))
 		s.PlainNumbers = true
+		s.Brackets = bracketColors(t)
 		return s
 	}
 	return gedStyleBase(t, ct, font)

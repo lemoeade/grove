@@ -1024,18 +1024,16 @@ func docMenu(a *app.App, m menu, d *docs.Doc) {
 		}
 		m.Separator()
 	}
+	docFileItems(a, m, d)
+}
+
+// docFileItems 是 mygo 编辑器右键菜单后半截：保存、格式化文档、检查、两种 blame、本地历史、拆分、路径
+// （ged 的照 VS Code 只到命令面板，见 gedFileMenu）。
+func docFileItems(a *app.App, m menu, d *docs.Doc) {
 	if m.Item(i18n.T("保存")).Disabled(!d.Modified()).Chosen() {
 		a.Save(d)
 	}
-	if d.Kind == docs.File && d.Editable() { // 这种语言没有命令时照样能点，提示里说为什么
-		it := m.Item(i18n.T("格式化文档")).Disabled(!app.CanFormat(d) || d.Formatting)
-		if a.CurrentDoc() == d {
-			shortcut(it, "editor.format")
-		}
-		if it.Chosen() {
-			a.Format(d)
-		}
-	}
+	formatItem(a, m, d)
 	if d.Kind == docs.File && d.Abs != "" { // 检查：没有命令时照样能点，提示里说
 		it := m.Item(i18n.T("检查")).Disabled(!app.CanLint(d) || a.Linting(d))
 		if a.CurrentDoc() == d {
@@ -1063,6 +1061,20 @@ func docMenu(a *app.App, m menu, d *docs.Doc) {
 	}
 	splitItems(a, m, d)
 	pathItems(a, m, d)
+}
+
+// formatItem 是“格式化文档”（能改的文件才有；这种语言没有命令时照样能点，提示里说为什么）。
+func formatItem(a *app.App, m menu, d *docs.Doc) {
+	if d.Kind != docs.File || !d.Editable() {
+		return
+	}
+	it := m.Item(i18n.T("格式化文档")).Disabled(!app.CanFormat(d) || d.Formatting)
+	if a.CurrentDoc() == d {
+		shortcut(it, "editor.format")
+	}
+	if it.Chosen() {
+		a.Format(d)
+	}
 }
 
 // splitItems 是标签和编辑器右键菜单里的"拆分"子菜单：把 d 搬进它那组某一边新分出的一组，键盘跟过去。

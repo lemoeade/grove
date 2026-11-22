@@ -37,7 +37,7 @@ func (d *Diff) setWrapWidth(g geom) {
 	for side := range 2 {
 		room := g.paneW[side] - g.textX - 8
 		if side == 1 || d.unified { // 右边那格让出概览条
-			room = g.paneW[side] - g.textX - rulerW - 4
+			room = g.paneW[side] - g.textX - g.right - 4
 		}
 		ww[side] = max(room, 10*g.cw)
 	}
