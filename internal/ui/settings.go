@@ -147,6 +147,20 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 					done()
 				})
 			}},
+			{0, "并排预览跟着编辑器滚", "滚源文件时并排的 Markdown 预览滚到对应的地方（VS Code 的 scrollPreviewWithEditor）", func(c *wui.Context, l, d string) {
+				on := !s.NoPreviewSync
+				toggle(c, l, d, &on, func() {
+					s.NoPreviewSync = !on
+					done()
+				})
+			}},
+			{0, "编辑器跟着并排预览滚", "在并排的 Markdown 预览上滚时源文件跟过去（VS Code 的 scrollEditorWithPreview）", func(c *wui.Context, l, d string) {
+				on := !s.NoEditorSync
+				toggle(c, l, d, &on, func() {
+					s.NoEditorSync = !on
+					done()
+				})
+			}},
 			{1, "字体", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.EditorFont, mono(), nil, done, fontName) }},
 			{1, "字号", "", func(c *wui.Context, l, d string) { number(c, l, d, &s.EditorSize, 12.5, 9, 32, 0.5, done) }},
 			{1, "缩进", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Indent, workspace.Indents, indentNames, done) }},

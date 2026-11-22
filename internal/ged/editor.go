@@ -2,6 +2,7 @@ package ged
 
 import (
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -571,10 +572,86 @@ func (d *Diff) VisibleLines() (first, last int) {
 }
 
 // ScrollToLine 把第 line 行（新的一边，从 0 起）滚到顶上（下一帧画的时候生效）。
-func (d *Diff) ScrollToLine(line int) {
-	if i := d.rowOfLine(1, min(max(line, 0), max(len(d.lines[1])-1, 0))); i >= 0 {
-		d.wantTop = i + 1
+func (d *Diff) ScrollToLine(line int) { d.ScrollToLineFrac(float64(line)) }
+
+// ScrollToLineFrac 和 ScrollToLine 一样，line 可以带小数：2.5 是第 2 行滚上去一半（折行的行按它占的屏幕行算）。
+func (d *Diff) ScrollToLineFrac(line float64) {
+	l := min(max(int(line), 0), max(len(d.lines[1])-1, 0))
+	if i := d.rowOfLine(1, l); i >= 0 {
+		d.wantTop, d.wantFrac = i+1, float32(min(max(line-float64(l), 0), 1))
 	}
+}
+
+// TopLine 是上一帧顶上那一行（新的一边，从 0 起）带小数：2.5 是第 2 行滚上去了一半；还没画过 ok 为 false。
+// 并排的 Markdown 预览按它在块里按比例对齐，不是整块整块地跳。
+func (d *Diff) TopLine() (line float64, ok bool) {
+	if d.lh <= 0 || d.h <= 0 || len(d.rows) == 0 {
+		return 0, false
+	}
+	return d.lineAtRow(float64(d.ScrollY/d.lh), d.top, d.rowIndex), true
+}
+
+// RowOf 是第 line 行（新的一边，从 0 起，可带小数，小数同 TopLine 按它占的屏幕行算）从第几个屏幕行起（带小数）：
+// 折行的行占几个屏幕行，折起来藏着的行不占。并排的 Markdown 预览按屏幕行和编辑器对齐：只按行数对齐的话，
+// 折成三行的一段和它后面一个空行各算一行，编辑器匀速滚时预览一下快一下慢。
+// 折成几行按估的算（只看字数和宽，不看排没排过）：排出来的数是滚到眼前才有的，用它的话一块里的屏幕行数
+// 会随着往下滚一帧一帧地变，预览跟着一跳一跳。只读，不展开折叠；还没排过时原样返回 line。
+func (d *Diff) RowOf(line float64) float64 {
+	if len(d.rows) == 0 {
+		return line
+	}
+	l := max(int(line), 0)
+	frac := max(line-float64(l), 0)
+	i := len(d.rows)
+	if d.plain {
+		i, _ = slices.BinarySearchFunc(d.rows, l, func(r Row, l int) int { return r.New - l })
+	} else {
+		for k, r := range d.rows {
+			if r.New >= l {
+				i = k
+				break
+			}
+		}
+	}
+	if i >= len(d.rows) || d.rows[i].New != l {
+		frac = 0 // 藏着的行、过了最后一行：算到下一个看得见的行的开头
+	}
+	t0, t1 := d.etop(i), d.etop(min(i+1, len(d.rows)))
+	return float64(t0) + min(frac, 1)*float64(t1-t0)
+}
+
+// LineAtRow 是 RowOf 反过来：第 v 个屏幕行（带小数，同 RowOf 按估的折行数）对着新的一边的第几行（带小数）；
+// 还没排过时原样返回 v。
+func (d *Diff) LineAtRow(v float64) float64 {
+	if len(d.rows) == 0 {
+		return v
+	}
+	return d.lineAtRow(v, d.etop, func(v int) int {
+		if !d.wrap {
+			return d.rowIndex(v)
+		}
+		d.ensureETops()
+		return sort.Search(len(d.rows), func(k int) bool { return d.etops[k+1] > v })
+	})
+}
+
+// lineAtRow 是第 v 个屏幕行对着第几行（带小数）：top / index 是排出来的（TopLine）或估的（LineAtRow）。
+func (d *Diff) lineAtRow(v float64, top, index func(int) int) float64 {
+	v = max(v, 0)
+	i := min(index(int(v)), len(d.rows)-1)
+	frac := 0.0
+	if t0, t1 := top(i), top(i+1); t1 > t0 {
+		frac = min(max((v-float64(t0))/float64(t1-t0), 0), 1)
+	}
+	for k := i; k >= 0; k-- {
+		if l := d.rows[k].New; l >= 0 {
+			if k != i {
+				frac = 0 // 那里是旧的一边才有的行：算到它上面那一行的开头
+			}
+			return float64(l) + frac
+		}
+	}
+	return 0
 }
 
 // PointAt 是视图里 (x, y)（本地坐标）对着第几行第几个字节（新的一边）；不在正文上时 ok 为 false。

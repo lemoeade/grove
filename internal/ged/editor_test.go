@@ -236,3 +236,43 @@ func TestMinimap(t *testing.T) {
 		t.Fatal("在小地图上按、拖动了选择")
 	}
 }
+
+// RowOf / LineAtRow 在源码行和屏幕行之间换（并排的 Markdown 预览按屏幕行对齐）：折起来藏着的行不占屏幕行，
+// 折成几行的行占几行，小数按它占的屏幕行摊；两个互为反函数，也不展开折叠。
+func TestEditorRowOf(t *testing.T) {
+	d := plainEd(t, goSrc)
+	d.Fold(7) // 藏起 8–11
+	for _, c := range []struct{ line, row float64 }{{0, 0}, {7, 7}, {9, 8}, {12, 8}, {12.5, 8.5}} {
+		if got := d.RowOf(c.line); got != c.row {
+			t.Errorf("折起后 RowOf(%v) = %v，应为 %v", c.line, got, c.row)
+		}
+	}
+	if got := d.LineAtRow(8.5); got != 12.5 {
+		t.Errorf("折起后 LineAtRow(8.5) = %v，应为 12.5", got)
+	}
+	if !d.IsFolded(7) {
+		t.Error("RowOf 不该展开折叠")
+	}
+	d.UnfoldAll()
+	// 第 0 行估的折成三个屏幕行；排出来是两行（tops）也不改 RowOf：排出来的数是滚到眼前才有的，
+	// 拿它算的话往下滚时一块里的屏幕行数一帧一帧地变，预览一跳一跳
+	d.wrap, d.topsDirty, d.etopsDirty = true, false, false
+	d.tops, d.etops = d.tops[:0], d.etops[:0]
+	for i := range len(d.rows) + 1 {
+		d.etops = append(d.etops, i+min(i, 1)*2)
+		d.tops = append(d.tops, i+min(i, 1))
+	}
+	for _, c := range []struct{ line, row float64 }{{0, 0}, {0.5, 1.5}, {1, 3}, {2.25, 4.25}} {
+		if got := d.RowOf(c.line); got != c.row {
+			t.Errorf("折行后 RowOf(%v) = %v，应为 %v", c.line, got, c.row)
+		}
+		if got := d.LineAtRow(c.row); got != c.line {
+			t.Errorf("折行后 LineAtRow(%v) = %v，应为 %v", c.row, got, c.line)
+		}
+	}
+	// TopLine 还是按排出来的：ScrollY 是真的屏幕行
+	d.lh, d.h, d.ScrollY = 10, 100, 10
+	if got, _ := d.TopLine(); got != 0.5 {
+		t.Errorf("排出来两行时滚了一行 TopLine = %v，应为 0.5", got)
+	}
+}

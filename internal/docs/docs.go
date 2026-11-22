@@ -188,6 +188,8 @@ type Doc struct {
 	MDView any
 	// MDSource 是并排预览（Kind == MDPreview）跟着的 Markdown 标签
 	MDSource *Doc
+	// MDLocked 是并排预览锁定了：不跟着换到别的 Markdown 标签（照 VS Code 的“锁定的预览”）
+	MDLocked bool
 	mdText   string
 	mdVer    uint64
 	mdOK     bool

@@ -238,7 +238,15 @@ func tabBar(a *app.App, c *wui.Context, g *app.Group, d *docs.Doc, rows bool) {
 			return
 		}
 		r := a.RepoOf(d)
-		if d.CanPreview() {
+		if d.Kind == docs.File && !d.Preview && d.CanPreview() && docs.IsMarkdown(d.Name()) { // VS Code 标题栏的“在旁边打开预览”
+			tip := i18n.T("在旁边打开预览（左右并排，跟着编辑器滚）")
+			if a.SidePreviewOf(d) != nil {
+				tip = i18n.T("关掉旁边的预览")
+			}
+			iconButton(c, iconColumns, app.Tip(tip, "view.markdownSidePreview"), in(a.ToggleSidePreview))
+		}
+		// 照 VS Code 的编辑器标题栏：Markdown 只放“在旁边打开预览”，就地预览（⇧⌘V）走快捷键和菜单；已经在就地预览里时留一个回源码的按钮。SVG 照旧
+		if d.CanPreview() && (d.Preview || !docs.IsMarkdown(d.Name())) {
 			ic, tip := iconEye, i18n.T("Markdown 预览")
 			if docs.IsSVG(d.Name()) {
 				tip = i18n.T("SVG 预览")

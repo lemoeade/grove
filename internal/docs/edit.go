@@ -20,6 +20,40 @@ func (d *Doc) VisibleLines() (first, last int) {
 	return d.St.VisibleLines()
 }
 
+// TopLine 是上一帧顶上那一行（从 0 起），ged 带小数（滚上去了几分之几），mygo 的编辑器是整数；还没画过 ok 为 false。
+func (d *Doc) TopLine() (float64, bool) {
+	if d.UsingEd() {
+		return d.Ed.TopLine()
+	}
+	first, last := d.St.VisibleLines()
+	return float64(first), last > 0
+}
+
+// RowOf 是第 line 行（可带小数）从编辑器的第几个屏幕行起（折行的行占几行、折起来的不占）；mygo 的编辑器一行一个屏幕行。
+func (d *Doc) RowOf(line float64) float64 {
+	if d.UsingEd() {
+		return d.Ed.RowOf(line)
+	}
+	return line
+}
+
+// LineAtRow 是 RowOf 反过来：编辑器的第 v 个屏幕行（带小数）对着第几行（带小数）。
+func (d *Doc) LineAtRow(v float64) float64 {
+	if d.UsingEd() {
+		return d.Ed.LineAtRow(v)
+	}
+	return v
+}
+
+// ScrollToFrac 把第 line 行（可带小数）滚到顶上；mygo 的编辑器只认整行。
+func (d *Doc) ScrollToFrac(line float64) {
+	if d.UsingEd() {
+		d.Ed.ScrollToLineFrac(line)
+		return
+	}
+	d.St.ScrollTo(int(line))
+}
+
 // ScrollTo 把第 line 行滚到顶上。
 func (d *Doc) ScrollTo(line int) {
 	if d.UsingEd() {

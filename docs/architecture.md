@@ -847,7 +847,8 @@ Markdown 预览由 mygo 画，Grove 补充 mygo 无法绘制的三类内容：Me
 - HTML：`HTML` 钩子（`ui/mdhtml.go`）用 `x/net/html` 解析，块级标签各自成块，连着的行内节点转成 Markdown 排成一段，只有图片的画成一排按 `width` / `height` 的图片，`<picture>` 按主题挑 `<source media>`。不认识的标签只显示字，`<script>`、`<style>`、注释不显示。
 - 图片：`app/mdimages.go` 的 `ImageLoader`，本地相对文档目录读，https 的经 `FetchImage`（只 GET、不带 Cookie、8 MB 上限，测试换成桩）在后台取；SVG 用 mygo 画（徽章的字画不出来时只剩色块）。
   缓存按字节算（48 MB），`ForgetImages` 清空。设置 `NoRemoteImages` 关掉网上的，只显示说明文字。
-- 主题：`ui/mdtheme.go` 的 `mdTheme` 在 mygo 默认主题上调字号、行距、标题和块的间距，代码用编辑器的字体；按（界面主题、字体）缓存。
+- 主题：`ui/mdtheme.go` 的 `mdTheme` 在 mygo 默认主题上调字号、行距、标题和块的间距，代码用编辑器的字体；VS Code 风格照它的 `markdown.preview.fontSize` 14 / `lineHeight` 1.6；按（界面主题、字体、风格）缓存。
+- emoji 短代码：`mdprep.Prepare` 最后经 `internal/emoji` 把 `:tada:` 换成 emoji（表是 GitHub gemoji 的别名，围栏代码块、行内代码里的不换，行数不变）。
 - 链接：`LinkMenu`（`ui/mdlinks.go`）在 mygo 的选区菜单前加打开链接、复制链接，本地文件再加复制路径、在访达中显示；`Preview` 是停在链接上时显示的仓库内路径。
   `CodeLink` 把行内代码里像路径、而且在文档目录或仓库根下 `os.Stat` 得到的变成链接（结果按代码缓存在 `mdEnv.links`）。这几处在主线程只 stat、不读内容。
 
@@ -858,8 +859,16 @@ Markdown 预览由 mygo 画，Grove 补充 mygo 无法绘制的三类内容：Me
 跳到还没排出来的地方时先 `ListState.ScrollTo` 那一段（`seekChunk`），下一帧那段排出来了再放记号，最多试几帧。每段最后一块的行号范围到下一段第一行为止。
 `mdView`（存在 `docs.Doc.MD` 旁边、按文档留着）记着整理结果、分段和列表位置：在源码和预览之间切换不重新整理；打字时源码变了等停下 150 ms 再重排（`mdSettle`），刚切过来（500 ms 没画过）就马上排。
 
-并排预览（`app/mdside.go`，⌥⇧⌘V `view.markdownSidePreview`）是一个 `docs.MDPreview` 标签：`MDSource` 指向源文件的 Doc，Key 是 `(MDPreview, Root, Rel)`，放在旁边一组（只有一组时 `splitOff` 向右分出一组），键盘还给源文件。
-它不读盘，每帧拿 `MDSource` 的缓冲区；源文件编辑器最上面那一行（`St.VisibleLines`）变了就设 `AnchorLine` 跟过去。源文件关了（`RemoveDoc` → `closeSidePreviews`）改跟同一个文件的另一份，没有就一起关。这种标签不进会话（state.json 不变）。
+并排预览（`app/mdside.go`，⌥⇧⌘V `view.markdownSidePreview`，Markdown 标签条上的分栏按钮；那里照 VS Code 不放就地预览的眼睛）是一个 `docs.MDPreview` 标签：`MDSource` 指向源文件的 Doc，Key 是 `(MDPreview, Root, Rel)`，放在旁边一组（只有一组时 `splitOff` 向右分出一组），键盘还给源文件。
+它不读盘，每帧拿 `MDSource` 的缓冲区。照 VS Code 的 markdown 预览，和源码的对应都在 `ui/mdsync.go`：
+- 每个顶层块里一个看不见、铺满它的探针（`mdEnv.topBlock`），把这块的行号范围和上一帧的框记进 `mdView.blocks`；`lineAt(y)` 按块里的位置比例换算出带小数的行号。照 VS Code，一块的顶到下一块的顶（连着中间的空当）对着这块的第一行到下一块的第一行，但中间按源文件编辑器的屏幕行摊（`Doc.RowOf` / `LineAtRow`，ged 的折行和折叠都算上；mygo 的编辑器一行一个屏幕行），不按源码行数：按行数的话折成三行的一段和它后面一个空行各算一行，编辑器匀速滚时预览一帧快一帧慢。放跳转记号时这块和下一块的框都取上一帧的 `mdView.prev`（同一次排版量的，滚着时差才不带一帧的滚动）。`RowOf` / `LineAtRow` 用的是 ged 只按估的折行数算的 `etops`（`TopLine` 还用真排出来的 `tops`）：滚动时新排出来的行和估的不一样，`tops` 会变、块里比例的分母跟着变，预览就一跳一跳；`etops` 只在行、宽、字体变了时重算，滚着时不动。分块的预览（`seekChunk`）要放记号的那块上一帧已经排着时不先 `ScrollTo` 到块首，直接放记号，不然一帧块首一帧原处地来回闪。
+- 编辑器 → 预览：`Doc.TopLine()`（ged 是 `Editor.TopLine`，带小数：顶上那一行滚过了几分之几）变了就设 `AnchorLine`，小数记在 `mdView.frac`，放记号时按比例往块里挪（`scrollPreviewWithEditor`，设置 `noPreviewScrollSync` 关）。
+- 预览 → 编辑器：指针在预览上、预览顶上对着的行变了，`Doc.ScrollToFrac`（ged 的 `ScrollToLineFrac` 按小数停在那一行中间）滚编辑器（`scrollEditorWithPreview`，`noEditorScrollSync` 关）。
+  一边拖着另一边走之后 `mdSyncQuiet`（200 ms）里另一边的变化只更新基准、不往回传，免得两边来回拉。
+- 源文件光标所在的块左边一道竖条（`markEditorSelection`）；双击预览（滚动容器的 `HandleInput`，`Clicks == 2`）下一帧 `RevealSource` 回到那一行；
+  标题左边悬停出 🔗（`headingLink`），点了复制 `仓库内路径#slug` 并滚到它。
+- 跟着当前标签：键盘换到另一组里的另一个 Markdown 文件（它自己没开并排预览）时 `FollowSidePreview` 把这个预览改指向它；源文件的标签没了（预览标签被 `addDoc` 顶掉不经 `RemoveDoc`）的预览也跟，所以先跟再看源文件在不在；`view.markdownLockPreview`（标签右键菜单里也有）锁定了就不跟，标题写成 `[预览] x`。
+源文件关了（`RemoveDoc` → `closeSidePreviews`）改跟同一个文件的另一份，没有就一起关。这种标签不进会话（state.json 不变）。
 
 ## 开发约定
 

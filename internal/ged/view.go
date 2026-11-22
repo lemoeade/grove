@@ -223,12 +223,14 @@ type Diff struct {
 	redoGroups   []int
 
 	// 自动换行（wrap.go）
-	wrap      bool       // 这一帧 Style.Wrap
-	wrapW     [2]float32 // 两边折行的宽（layouts 是按它排的）
-	tops      []int      // rows 的每一行从第几个“屏幕行”开始（多一个，最后是总数）；不换行时不用
-	topsDirty bool       // 行变了、宽变了、新排的行和估的行数不一样：tops 要重算
-	wrapAt    int        // 开关换行前顶上的那行（rows 的下标），下一帧滚回它；-1 没有
-	style     *Style     // 上一次 View 的样子（估折几行用）
+	wrap       bool       // 这一帧 Style.Wrap
+	wrapW      [2]float32 // 两边折行的宽（layouts 是按它排的）
+	tops       []int      // rows 的每一行从第几个“屏幕行”开始（多一个，最后是总数）；不换行时不用
+	etops      []int      // 同 tops，但每行都按估的折行数（RowOf / LineAtRow 用）：滚动时新排出来的行不会让它变
+	etopsDirty bool       // 行、宽、字体变了：etops 要重算（新排的行和估的不一样时不算）
+	topsDirty  bool       // 行变了、宽变了、新排的行和估的行数不一样：tops 要重算
+	wrapAt     int        // 开关换行前顶上的那行（rows 的下标），下一帧滚回它；-1 没有
+	style      *Style     // 上一次 View 的样子（估折几行用）
 
 	// 查找（find.go）
 	Find       Find
@@ -248,6 +250,7 @@ type Diff struct {
 	chord     editor.Binding // 按了和弦的第一个键（chordOn 时）
 	chordOn   bool
 	wantTop   int       // 下一帧滚到顶上的那行（rows 的下标 + 1），0 没有
+	wantFrac  float32   // 和 wantTop 一起：那一行再往下滚过它自己高度的几分之几（0–1，并排预览拖着编辑器走时用）
 	hoverPos  pos       // 指针停在哪个字上（hoverOn 时）
 	hoverOn   bool      // 指针在字上
 	hoverAt   time.Time // 指针停到 hoverPos 的时候
@@ -451,7 +454,7 @@ func (d *Diff) Unified() bool { return d.unified }
 func (d *Diff) refold() {
 	if d.plain {
 		d.rows = d.plainRows()
-		d.topsDirty = true
+		d.topsDirty, d.etopsDirty = true, true
 		d.rowHunk = make([]int, len(d.rows))
 		for i := range d.rowHunk {
 			d.rowHunk[i] = -1
@@ -467,7 +470,7 @@ func (d *Diff) refold() {
 	if d.unified {
 		d.rows = Unified(d.rows)
 	}
-	d.topsDirty = true
+	d.topsDirty, d.etopsDirty = true, true
 	// 改了的行折不起来，按改动的顺序挨着：第 k 个改了的行属于哪处改动按个数数（并排时一处占 Row1 - Row0 行，
 	// 统一时占两边的行数之和）
 	d.rowHunk = make([]int, len(d.rows))
@@ -1166,7 +1169,9 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 func (d *Diff) applyWant(g geom) {
 	topped := false
 	if d.wantTop > 0 && g.lh > 0 {
-		d.ScrollY, d.wantTop, topped = float32(d.top(d.wantTop-1))*g.lh, 0, true
+		i := d.wantTop - 1
+		top := float32(d.top(i)) + d.wantFrac*float32(d.top(i+1)-d.top(i))
+		d.ScrollY, d.wantTop, d.wantFrac, topped = top*g.lh, 0, 0, true
 	}
 	if d.wrapAt >= 0 && g.lh > 0 {
 		d.ScrollY, d.wrapAt = float32(d.top(d.wrapAt))*g.lh, -1
@@ -1646,7 +1651,7 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 	if d.font != s.Font || d.theme != *s.Code || !slices.Equal(d.brackColors, s.Brackets) { // 换了字体、深浅色、括号的颜色：排好的字作废
 		d.layouts, d.font, d.theme, d.brackColors = nil, s.Font, *s.Code, slices.Clone(s.Brackets)
 		d.mm.lines = nil
-		d.topsDirty = true
+		d.topsDirty, d.etopsDirty = true, true
 	}
 	d.occ = d.occurText()
 	d.brkOK = false

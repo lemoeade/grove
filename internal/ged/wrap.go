@@ -24,7 +24,7 @@ func (d *Diff) setWrap(on bool) {
 	}
 	d.wrap = on
 	d.layouts, d.widest, d.wrapW = nil, [2]float32{}, [2]float32{}
-	d.topsDirty = true
+	d.topsDirty, d.etopsDirty = true, true
 	d.scrollX = [2]float32{}
 	if at >= 0 && at < len(d.rows) && d.want < 0 {
 		d.wrapAt = at // 知道宽了再滚过去（applyWant）
@@ -44,7 +44,7 @@ func (d *Diff) setWrapWidth(g geom) {
 	if ww != d.wrapW {
 		d.wrapW = ww
 		d.layouts, d.widest = nil, [2]float32{}
-		d.topsDirty = true
+		d.topsDirty, d.etopsDirty = true, true
 	}
 }
 
@@ -88,8 +88,8 @@ func (d *Diff) lineCount(side, line int, s *Style) int {
 	return d.estimate(side, line, s)
 }
 
-// rowLines 是 row 占几个屏幕行。
-func (d *Diff) rowLines(r Row, s *Style) int {
+// rowLines 是 row 占几个屏幕行；est 时排过的行也按估的算。
+func (d *Diff) rowLines(r Row, s *Style, est bool) int {
 	if r.Kind == Fold {
 		return 1
 	}
@@ -99,7 +99,11 @@ func (d *Diff) rowLines(r Row, s *Style) int {
 			continue
 		}
 		if l := lineOf(r, side); l >= 0 && l < len(d.lines[side]) {
-			n = max(n, d.lineCount(side, l, s))
+			if est {
+				n = max(n, d.estimate(side, l, s))
+			} else {
+				n = max(n, d.lineCount(side, l, s))
+			}
 		}
 	}
 	return n
@@ -111,7 +115,7 @@ func (d *Diff) buildTops(s *Style) {
 	t := 0
 	for _, r := range d.rows {
 		d.tops = append(d.tops, t)
-		t += d.rowLines(r, s)
+		t += d.rowLines(r, s, false)
 	}
 	d.tops = append(d.tops, t)
 	d.topsDirty = false
@@ -124,6 +128,33 @@ func (d *Diff) top(i int) int {
 	}
 	d.ensureTops()
 	return d.tops[max(0, min(i, len(d.tops)-1))]
+}
+
+// etop 同 top，但每行都按估的折行数算：只看字和宽，不看排没排过，所以滚动时不变（RowOf / LineAtRow 用）。
+func (d *Diff) etop(i int) int {
+	if !d.wrap {
+		return i
+	}
+	d.ensureETops()
+	return d.etops[max(0, min(i, len(d.etops)-1))]
+}
+
+func (d *Diff) ensureETops() {
+	if !d.etopsDirty && len(d.etops) == len(d.rows)+1 {
+		return
+	}
+	s := d.style
+	if s == nil {
+		s = &Style{}
+	}
+	d.etops = d.etops[:0]
+	t := 0
+	for _, r := range d.rows {
+		d.etops = append(d.etops, t)
+		t += d.rowLines(r, s, true)
+	}
+	d.etops = append(d.etops, t)
+	d.etopsDirty = false
 }
 
 // rowIndex 是第 v 个屏幕行在哪个 Row 里；过了最后一行是 len(rows)。

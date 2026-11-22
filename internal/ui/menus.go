@@ -987,6 +987,12 @@ func tabMenu(a *app.App, m menu, d *docs.Doc) {
 			a.CopyPaneOutput(p)
 		}
 	}
+	if d.Kind == docs.MDPreview { // 并排的 Markdown 预览：锁定了就不跟着换到别的 Markdown 标签
+		m.Separator()
+		if shortcut(m.Item(i18n.T("锁定预览")).Checked(d.MDLocked), "view.markdownLockPreview").Chosen() {
+			a.LockPreview(d)
+		}
+	}
 	m.Separator()
 	splitItems(a, m, d)
 	if m.Item(i18n.T("固定标签")).Disabled(d.Pinned).Chosen() {

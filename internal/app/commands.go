@@ -337,6 +337,9 @@ func buildCommands() []*Command {
 		{ID: "view.markdownSidePreview", Title: "在旁边预览 Markdown", Group: "视图", Mods: alt | shift | cmd, Key: ui.KeyV,
 			Enabled: func(a *App) bool { return a.CanSidePreview() },
 			Checked: (*App).sidePreviewOn, Run: (*App).ToggleSidePreview},
+		{ID: "view.markdownLockPreview", Title: "锁定 Markdown 预览", Group: "视图", // 锁定的并排预览不跟着换到别的 Markdown 标签
+			Enabled: func(a *App) bool { return a.lockTarget() != nil },
+			Checked: func(a *App) bool { pv := a.lockTarget(); return pv != nil && pv.MDLocked }, Run: (*App).ToggleLockPreview},
 		{ID: "view.hex", Title: "以十六进制查看", Group: "视图",
 			Enabled: func(a *App) bool { return a.CanHex(a.CurrentDoc()) }, Checked: (*App).hexOn, Run: (*App).ToggleHex},
 		{ID: "view.blame", Title: "显示 blame 装订线", Group: "视图", Mods: ctrl | cmd, Key: ui.KeyB,

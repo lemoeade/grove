@@ -1,6 +1,7 @@
 // Package mdprep 在 Markdown 交给 mygo 解析之前先整理一遍源码，处理 mygo 不认、README 里又常见的几种写法：
 //
 //   - 文件开头的 front matter（--- YAML --- 或 +++ TOML +++）：mygo 会把它读成一条分隔线加一个 setext 标题。
+//   - GitHub 的 emoji 短代码（:tada:）：换成 emoji 字符（internal/emoji），代码里的不换。
 //   - 跨了几个块的 HTML 容器：<details> … </details>、<div align="center"> … </div>、<p align>、<center>。
 //     开标签和闭标签之间隔着空行写 Markdown 时，CommonMark 把开、闭标签各读成一个 HTML 块，中间的照常是 Markdown，
 //     容器的效果（折叠、居中）就没了。
@@ -13,6 +14,8 @@ package mdprep
 import (
 	"strconv"
 	"strings"
+
+	"github.com/lemoeade/grove/internal/emoji"
 )
 
 // Lang 是整理出来的围栏代码块的语言。
@@ -76,6 +79,12 @@ var containerTags = []string{"details", "div", "center", "p", "section", "articl
 
 // Prepare 整理 src。没有要整理的地方时 Src 就是 src 本身（同一个字符串）。
 func Prepare(src string) *Doc {
+	d := prepare(src)
+	d.Src = emoji.Replace(d.Src) // 整理出来的围栏块（front matter、容器）里的不换：容器里的 Markdown 另外整理时再换
+	return d
+}
+
+func prepare(src string) *Doc {
 	d := &Doc{Src: src}
 	if !strings.Contains(src, "---") && !strings.Contains(src, "+++") && !strings.Contains(src, "<") && !strings.Contains(src, "]:") {
 		return d

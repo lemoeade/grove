@@ -285,6 +285,7 @@ func (a *App) ResetSettings() {
 var settingLabels = map[string]string{
 	"theme": "外观", "look": "风格", "backdrop": "窗口底", "material": "材质", "accent": "强调色", "solidSelection": "选中行用淡底", "zoom": "界面缩放", "frostOpacity": "浮层不透明度",
 	"noDiagrams": "Markdown 预览里渲染 Mermaid 图和公式", "noRemoteImages": "Markdown 预览里显示网上的图片",
+	"noPreviewScrollSync": "并排预览跟着编辑器滚", "noEditorScrollSync": "编辑器跟着并排预览滚",
 	"editorFont": "编辑器字体", "editorSize": "编辑器字号", "indent": "缩进", "wrap": "软换行", "whitespace": "显示空白字符",
 	"autoSave": "自动保存", "trimTrailing": "保存时去掉行尾空白", "finalNewline": "保存时补上末尾换行", "noStickyScroll": "粘性滚动", "noWordComplete": "敲字时提示补全", "noHoverDefinition": "悬停时显示定义",
 	"noLocalHistory": "本地历史", "historyDays": "本地历史保留",

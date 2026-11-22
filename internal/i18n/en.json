@@ -2327,5 +2327,18 @@
   "黑": "Black",
   "浮层不透明度": "Overlay Opacity",
   "浮层不透明度（%）": "Overlay opacity (%)",
-  "菜单、命令面板、对话框、悬停提示的底色盖多少：越小越透，底下的内容糊开透出来；100 是不透明的。系统开了“减少透明度”时总是不透明": "How opaque menus, the Command Palette, dialogs and hovers are: lower lets the content underneath show through, blurred; 100 is solid. Always solid when Reduce Transparency is on in System Settings."
+  "菜单、命令面板、对话框、悬停提示的底色盖多少：越小越透，底下的内容糊开透出来；100 是不透明的。系统开了“减少透明度”时总是不透明": "How opaque menus, the Command Palette, dialogs and hovers are: lower lets the content underneath show through, blurred; 100 is solid. Always solid when Reduce Transparency is on in System Settings.",
+  "[预览] %s": "[Preview] %s",
+  "在并排的 Markdown 预览上滚时源文件跟过去（VS Code 的 scrollEditorWithPreview）": "Scrolling the side-by-side Markdown preview scrolls the source file too (VS Code's scrollEditorWithPreview)",
+  "复制标题链接": "Copy Heading Link",
+  "复制这个标题的链接，并滚到它": "Copy a link to this heading and scroll to it",
+  "已复制标题链接": "Heading link copied",
+  "并排预览跟着编辑器滚": "Scroll Preview with Editor",
+  "滚源文件时并排的 Markdown 预览滚到对应的地方（VS Code 的 scrollPreviewWithEditor）": "Scrolling the source file scrolls the side-by-side Markdown preview to the matching place (VS Code's scrollPreviewWithEditor)",
+  "编辑器跟着并排预览滚": "Scroll Editor with Preview",
+  "锁定 Markdown 预览": "Lock Markdown Preview",
+  "锁定预览": "Lock Preview",
+  "在旁边打开预览（左右并排，跟着编辑器滚）": "Open Preview to the Side (scrolls with the editor)",
+  "关掉旁边的预览": "Close Preview to the Side",
+  "打开一个 Markdown 文件，预览就跟过去": "Open a Markdown file and the preview will follow it"
 }

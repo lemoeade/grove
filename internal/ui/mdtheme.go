@@ -13,6 +13,7 @@ import (
 type mdThemeKey struct {
 	t    wui.Theme
 	font string
+	vs   bool // VS Code 风格：照 markdown.preview.fontSize 14 / lineHeight 1.6
 }
 
 var mdThemes = map[mdThemeKey]*markdown.Theme{}
@@ -20,7 +21,7 @@ var mdThemes = map[mdThemeKey]*markdown.Theme{}
 // mdTheme 是预览的排版主题；同一个主题、字体给同一个指针（mygo 按值比，指针稳定省得每帧分配）。
 func mdTheme(a *app.App, c *wui.Context) *markdown.Theme {
 	t := c.Theme()
-	k := mdThemeKey{*t, a.EditorFont().Family}
+	k := mdThemeKey{*t, a.EditorFont().Family, vscode()}
 	if th, ok := mdThemes[k]; ok {
 		return th
 	}
@@ -34,6 +35,10 @@ func mdTheme(a *app.App, c *wui.Context) *markdown.Theme {
 	}
 	th.FontSize = base * 15 / 13
 	th.LineHeight = 1.65
+	if k.vs { // VS Code 的预览：14px 的字、1.6 倍行高（界面 13 的时候）
+		th.FontSize = base * 14 / 13
+		th.LineHeight = 1.6
+	}
 	th.CodeLineHeight = 1.45
 	th.BlockSpacing = 1
 	th.ItemSpacing = 0.3

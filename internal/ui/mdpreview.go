@@ -45,9 +45,31 @@ type mdView struct {
 	remoteOff bool // 选项建的时候设置里关没关网上的图片
 	seek      int  // 跳转（#标题、行）滚到了第几段还没放上记号的帧数
 	env       mdEnv
-	srcTop    int  // 并排预览：上一帧源文件编辑器最上面那一行；变了预览跟过去
-	srcSeen   bool // srcTop 记过了
+	// 并排同步（照 VS Code 的 scroll-sync：按源码行在块里按比例对齐，两边谁被滚了另一边跟过去）
+	srcTop   float64   // 上一帧源文件编辑器顶上那一行（带小数）；变了预览跟过去
+	srcSeen  bool      // srcTop 记过了
+	pvTop    float64   // 上一帧预览顶上对着源码的哪一行（带小数）；指针在预览上、它变了编辑器跟过去
+	pvSeen   bool      //
+	edQuiet  time.Time // 编辑器是预览拖过去的：到这时之前编辑器的变化不往回传（不然两边来回拉）
+	pvQuiet  time.Time // 预览是编辑器拖过去的：到这时之前预览的变化不往回传
+	frac     float64   // AnchorLine 的小数部分（编辑器顶上那一行滚上去了几分之几），只对 fracLine 那个 AnchorLine 算
+	fracLine int       //
+	blocks   []mdBlock // 这一帧排到的顶层块（源码行的范围、上一帧在窗口里的位置）：同步、双击、光标标记看它
+	prev     []mdBlock // 上一帧的 blocks：放跳转记号时找下一块的位置
+	src      *docs.Doc // 并排预览的源文件（就地预览为空）：按它编辑器的屏幕行对齐
+	ptr      wui.Point // 指针在预览上的位置（窗口坐标）；ptrOK 为 false 是不在
+	ptrOK    bool      //
+	dblY     float32   // 双击的地方（窗口坐标的 Y），下一帧回到源码那一行
+	dblOK    bool      //
 }
+
+// mdBlock 是预览里一个顶层块：源码的第 line 行到第 next 行之前（从 0 起），r 是它上一帧在窗口里的框（还没排过是空的）。
+type mdBlock struct {
+	line, next int
+	r          wui.Rect
+}
+
+const mdSyncQuiet = 200 * time.Millisecond // 一边拖着另一边走之后，多久之内另一边的变化不往回传
 
 // mdChunk 是大文件的一段：几个相连的顶层块。
 type mdChunk struct {
@@ -110,25 +132,49 @@ func mdPreviewSource(a *app.App, d *docs.Doc) (string, bool) {
 // 点了 #标题 的链接（d.Anchor）、大纲里点了一项或旁边的编辑器滚了（d.AnchorLine）后，在那一块上放一个看不见、
 // 比窗口还高的记号，让它出现在视图里——视图只滚到刚好露出它，记号比视图高，那一块就到了最上面；没有这个标题就提示。
 func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
+	if d.Kind == docs.MDPreview {
+		// 没锁定的跟着换到当前的 Markdown 标签；源文件的标签没了（关了、被预览标签顶掉了）的也是，换到下一个 Markdown 文件就又有内容
+		a.FollowSidePreview(d)
+	}
 	src, ok := mdPreviewSource(a, d)
 	if !ok {
-		message(c, iconEye, i18n.T("源文件的标签关了"), app.KeyHint("view.markdownSidePreview", "在源文件上按 %s 再开旁边的预览", "在源文件上再开旁边的预览"), c.Theme().TextMuted)
+		hint := i18n.T("打开一个 Markdown 文件，预览就跟过去")
+		if d.MDLocked {
+			hint = app.KeyHint("view.markdownSidePreview", "在源文件上按 %s 再开旁边的预览", "在源文件上再开旁边的预览")
+		}
+		message(c, iconEye, i18n.T("源文件的标签关了"), hint, c.Theme().TextMuted)
 		return
 	}
 	v := mdViewOf(d)
-	if d.Kind == docs.MDPreview { // 跟着源文件的编辑器滚：最上面那一行变了，预览把那一行所在的块滚到最上面
-		if first, last := d.MDSource.VisibleLines(); last > 0 {
-			if v.srcSeen && first != v.srcTop {
-				d.AnchorLine = first + 1
-			}
-			v.srcTop, v.srcSeen = first, true
+	v.src = nil
+	if d.Kind == docs.MDPreview {
+		v.src = d.MDSource
+	}
+	now := c.Now()
+	if v.dblOK { // 上一帧双击了：回到源码那一行
+		v.dblOK = false
+		if L, ok := v.lineAt(v.dblY); ok {
+			a.RevealSource(d, int(L))
 		}
 	}
+	if d.Kind == docs.MDPreview { // 跟着源文件的编辑器滚：顶上那一行变了，预览把它在块里按比例滚到顶上
+		if L, ok := d.MDSource.TopLine(); ok {
+			if v.srcSeen && abs64(L-v.srcTop) > 1e-3 && now.After(v.edQuiet) && !a.St.Settings.NoPreviewSync {
+				d.AnchorLine = int(L) + 1
+				v.frac, v.fracLine = L-float64(int(L)), d.AnchorLine
+				v.pvQuiet = now.Add(mdSyncQuiet)
+			}
+			v.srcTop, v.srcSeen = L, true
+		}
+	}
+	if mdPassHook != nil {
+		mdPassHook(v)
+	}
+	v.prev, v.blocks = v.blocks, v.prev[:0]
 	label := i18n.Tf("预览 %s", d.Title)
 	if d.Kind == docs.MDPreview {
 		label = d.Title // 标题已经是“预览 guide.md”
 	}
-	now := c.Now()
 	switch {
 	case v.prep == nil || now.Sub(v.drawn) > mdIdle:
 		v.adopt(src)
@@ -188,13 +234,18 @@ func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
 			})
 		})
 		list.Grow(1).MinHeight(0).Selectable().Label(label)
+		v.track(list)
+		v.sync(a, c, d, list)
 	} else {
-		wui.Scroll(c.Key(previewKey{d})).Grow(1).MinHeight(0).Label(label).Children(func() {
+		sc := wui.Scroll(c.Key(previewKey{d})).Grow(1).MinHeight(0).Label(label)
+		v.track(sc)
+		sc.Children(func() {
 			wui.Column(c.Key(previewGen{d, gen})).FillWidth().MaxWidth(860).AlignSelf(wui.Center).Padding(20, 32, 48).Children(func() {
 				e.base, e.cur, e.end = 0, v.prep.Src, -1
 				markdown.View(c, v.prep.Src, o)
 			})
 		})
+		v.sync(a, c, d, sc)
 	}
 	switch {
 	case v.chunks != nil && (d.Anchor != "" || d.AnchorLine > 0) && v.seek > 0 && v.seek < 4:
@@ -310,9 +361,25 @@ func (v *mdView) seekChunk(c *wui.Context) {
 		return
 	}
 	if v.seek == 0 {
+		if d.AnchorLine > 0 && v.laidOut(d.AnchorLine-1) {
+			// 那一块上一帧就排着（那一段在眼前，跟着编辑器滚时总是这样）：这一帧直接放记号。先 ScrollTo 到段首的话
+			// 这一帧滚到段首、下一帧记号才滚回来，预览一帧段首一帧原处地来回闪
+			v.seek = 2
+			return
+		}
 		v.list.ScrollTo(k, wui.Start)
 	}
 	v.seek++
+}
+
+// laidOut 是第 line 行所在的顶层块上一帧排着没有。
+func (v *mdView) laidOut(line int) bool {
+	for _, b := range v.prev {
+		if b.r.H > 0 && b.line <= line && line < b.next {
+			return true
+		}
+	}
+	return false
 }
 
 // setup 给 o 挂上这个预览的钩子，返回行内公式的代数（见 mdRender）。
@@ -337,26 +404,14 @@ func (e *mdEnv) block(c *wui.Context, doc *parser.Document, i int) bool {
 	// 分段的预览：seekChunk 这一帧才 ScrollTo 的话等下一帧（列表还没滚过去，这一帧放的记号白放）
 	ready := e.v == nil || e.v.chunks == nil || e.v.seek >= 2
 	if ready && e.anchor != "" && d.Anchor == e.anchor && b.Kind == parser.Heading && markdown.Slug(parser.PlainText(doc.Inlines(i))) == e.anchor {
-		mdMarker(c)
+		mdMarker(c, 0)
 		d.Anchor = ""
 		if e.v != nil {
 			e.v.seek = 0
 		}
 	}
-	if ready && e.line > 0 && d.AnchorLine == e.line && e.v != nil && b.Parent == 0 && doc.Source() == e.cur {
-		L := e.line - 1
-		start := e.v.lineOf(e.base + b.Start)
-		next := int(^uint(0) >> 1)
-		switch {
-		case b.Next < doc.Len():
-			next = e.v.lineOf(e.base + doc.Block(b.Next).Start)
-		case e.end >= 0: // 这一段的最后一块：到下一段的第一行为止，不是文末
-			next = e.v.lineOf(e.end)
-		}
-		if L < next && (start <= L || i == 1) {
-			mdMarker(c)
-			d.AnchorLine, e.v.seek = 0, 0
-		}
+	if e.v != nil && b.Parent == 0 && doc.Source() == e.cur {
+		e.topBlock(c, doc, i, ready)
 	}
 	switch b.Kind {
 	case parser.Paragraph:
@@ -391,9 +446,13 @@ func (e *mdEnv) options() *markdown.Options {
 	return o
 }
 
-// mdMarker 是跳转记号：看不见、比窗口高，让它所在的块滚到视图最上面。
-func mdMarker(c *wui.Context) {
-	wui.Box(c).Absolute().Top(0).Left(0).Width(1).Height(1e4).ScrollIntoView()
+// mdPassHook 是测试用的：每一帧排预览之前看一眼上一帧排出来的块（跟着滚时每一帧都不能往回跳，
+// Tester 一次 Frame 会连着跑完几帧，只看最后一帧看不出中间闪了一下）。
+var mdPassHook func(v *mdView)
+
+// mdMarker 是跳转记号：看不见、比窗口高，让它所在的块往下 off 那里滚到视图最上面。
+func mdMarker(c *wui.Context, off float32) {
+	wui.Box(c).Absolute().Top(off).Left(0).Width(1).Height(1e4).ScrollIntoView()
 }
 
 // nested 在 el 里画一段嵌套的 Markdown（<details> 的正文、HTML 里的段落）：选项、整理结果留在 el 上，和外面共用选区。

@@ -19,8 +19,10 @@ type Settings struct {
 	Zoom           int    `json:"zoom,omitempty"`           // 界面缩放，百分数（⌘= / ⌘- / ⌘0，所有窗口一起）；0 为 100
 	Frost          int    `json:"frostOpacity,omitempty"`   // 浮层（菜单、命令面板、对话框、悬停提示）磨砂时底色盖多少，百分数 50–100（100 不透）；0 为 DefaultFrost
 	// 默认开，存反面
-	NoDiagrams     bool `json:"noDiagrams,omitempty"`     // Markdown 预览里不渲染 Mermaid 图和公式（默认渲染：看不见的 WebView 画成位图，internal/render）
-	NoRemoteImages bool `json:"noRemoteImages,omitempty"` // Markdown 预览里不读网上的图片（https 的徽章、截图；默认读）
+	NoDiagrams     bool `json:"noDiagrams,omitempty"`          // Markdown 预览里不渲染 Mermaid 图和公式（默认渲染：看不见的 WebView 画成位图，internal/render）
+	NoRemoteImages bool `json:"noRemoteImages,omitempty"`      // Markdown 预览里不读网上的图片（https 的徽章、截图；默认读）
+	NoPreviewSync  bool `json:"noPreviewScrollSync,omitempty"` // 并排的 Markdown 预览不跟着编辑器滚（默认跟：VS Code 的 markdown.preview.scrollPreviewWithEditor）
+	NoEditorSync   bool `json:"noEditorScrollSync,omitempty"`  // 滚并排的 Markdown 预览时编辑器不跟着滚（默认跟：scrollEditorWithPreview）
 
 	// 编辑器
 	EditorFont   string  `json:"editorFont,omitempty"`   // "" 为内置的等宽字体
