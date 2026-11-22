@@ -26,7 +26,12 @@ const (
 func statusBar(a *app.App, c *wui.Context) {
 	t := c.Theme()
 	muted := t.TextMuted
-	wui.Row(c).Height(statusHeight+cardGap).Padding(0, statusPadR, 0, statusPadL).Gap(12).AlignItems(wui.Center).Shrink(0).Children(func() {
+	bar := wui.Row(c).Height(statusHeight+cardGap).Padding(0, statusPadR, 0, statusPadL).Gap(12).AlignItems(wui.Center).Shrink(0)
+	if vscode() { // VS Code：状态栏顶上一道线，不带卡片底下的缝
+		line := vsLine(t)
+		bar.Height(statusHeight).Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, line, 0) })
+	}
+	bar.Children(func() {
 		r := a.Current()
 		wui.Row(c).Gap(12).AlignItems(wui.Center).Grow(1).MinWidth(0).Children(func() {
 			if b := a.Batch; b != nil {

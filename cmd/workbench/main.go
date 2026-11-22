@@ -437,7 +437,7 @@ func cascade(r mygo.Rectangle) mygo.Rectangle {
 // vibrancy 是主窗口的材质：设置里"窗口底"选了通透才透出桌面，用设置里"材质"选的那种（默认侧栏）；
 // 柔和（默认）、纯色没有材质，界面自己画底。调试：WORKBENCH_MATERIAL=hud 之类压过设置里的材质（不是通透时照样不透）。
 func vibrancy(s *workspace.Settings) mygo.Vibrancy {
-	if s.Backdrop != "vibrancy" {
+	if s.Backdrop != "vibrancy" || s.Look == "" { // VS Code 风格不透
 		return mygo.VibrancyNone
 	}
 	if m := os.Getenv("WORKBENCH_MATERIAL"); m != "" {

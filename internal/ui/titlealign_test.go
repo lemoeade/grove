@@ -102,6 +102,7 @@ func rowRuns(img *image.RGBA, strip wui.Rect, scale float32, bg color.RGBA, mid,
 func TestTitleBarAlign(t *testing.T) {
 	_, ws := testutil.TempRepo(t)
 	a, tt, wait := newUI(t, ws, "")
+	a.St.Settings.Look = "grove" // 卡片之间的缝是 Grove 风格的
 	r := a.Repos[0]
 	a.RefreshRepo(r, app.WhyManual)
 	wait("git status", idle(r))
@@ -192,6 +193,7 @@ func TestTitleBarAlign(t *testing.T) {
 func TestStatusBarEdges(t *testing.T) {
 	_, ws := testutil.TempRepo(t)
 	a, tt, wait := newUI(t, ws, "")
+	a.St.Settings.Look = "grove" // 卡片之间的缝是 Grove 风格的
 	r := a.Repos[0]
 	a.RefreshRepo(r, app.WhyManual)
 	wait("git status", idle(r))

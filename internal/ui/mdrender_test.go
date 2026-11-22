@@ -187,7 +187,7 @@ func TestRenderVectorTheme(t *testing.T) {
 			for x := int((rc.X + 4) * s); x < int((rc.X+rc.W-4)*s); x++ {
 				c := img.RGBAAt(x, y)
 				switch l := int(c.R) + int(c.G) + int(c.B); {
-				case l < 150:
+				case l < 240: // VS Code 风格的正文 #3B3B3B 是 177
 					dark++
 				case l > 600:
 					light++

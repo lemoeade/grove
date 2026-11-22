@@ -18,8 +18,13 @@ var (
 	diffDeletedLine = wui.RGBA(255, 0, 0, 0.2)
 )
 
-// diffBase 是 Diff 视图里没改的行的底色（mygo 编辑器的默认底色），涂在包着它的盒子上。
-func diffBase(t *wui.Theme) wui.Color { return editor.DefaultTheme(t).Background }
+// diffBase 是 Diff 视图里没改的行的底色（mygo 编辑器的默认底色；VS Code 风格是编辑器的底），涂在包着它的盒子上。
+func diffBase(t *wui.Theme) wui.Color {
+	if vscode() {
+		return vsEditor(t)
+	}
+	return editor.DefaultTheme(t).Background
+}
 
 // clearDiffBackground 让 mygo 不涂 Diff 的底：改了的行不涂（NoBackground），没改的也不涂（Background 的 A 是 0；
 // RGB 留着编辑器底色，mygo 拿它判断深浅色，全零的颜色 mygo 当成没设、会补成不透明的默认值）。

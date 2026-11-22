@@ -33,7 +33,7 @@ func TestSidebarFits(t *testing.T) {
 	r := a.Repos[0]
 	a.RefreshRepo(r, app.WhyManual)
 	wait("git status", idle(r))
-	status := float32(h - statusHeight - cardGap) // 状态栏连着卡片底下的缝
+	status := float32(h - statusHeight) // VS Code 风格（默认）卡片贴着状态栏，Grove 风格中间还隔一道缝
 	fits := func(what, s string) {
 		t.Helper()
 		rc, ok := tt.Find(s)

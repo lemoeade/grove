@@ -21,7 +21,6 @@ const (
 	graphLeft   = 4   // 左边距
 	graphRight  = 2   // 右边距
 	graphMax    = 6   // 图格最多这么多条泳道宽；再多的照样画，被图格裁掉
-	graphNodeY  = 15  // 节点圆心离行顶（一行 30 高的正中）
 	graphNodeR  = 3.2 // 节点半径
 	graphRingR  = 5.5 // HEAD 外面那圈的半径
 	graphRingW  = 1.4 // 圈（HEAD、合并提交）的线宽
@@ -43,6 +42,9 @@ func graphWidth(lanes int) float32 {
 }
 
 // graphX 是泳道 lane 的中线离图格左边多远。
+// graphNodeY 是节点圆心离行顶：一个提交一行（histRowH）的正中，展开成卡片的行也照它。
+func graphNodeY() float32 { return histRowH() / 2 }
+
 func graphX(lane int) float32 {
 	return graphLeft + float32(lane)*graphLane + graphLane/2
 }
@@ -310,7 +312,7 @@ func cutGraph(c *wui.Context, h *app.History, ci int, head string, dirty [2]int,
 	}
 	wui.Box(c).Width(cut.w).Shrink(0).Draw(func(p *wui.Painter, r wui.Rect) {
 		t := p.Theme()
-		ny, bottom := r.Y+graphNodeY, r.Y+r.H
+		ny, bottom := r.Y+graphNodeY(), r.Y+r.H
 		gap := nodeGap(isHead, thin)
 		p.Clip(r, 0, func() {
 			// 上半截：上一行的每条线落到这一行的泳道，竖着下来；落到节点的到节点边上为止
@@ -375,7 +377,7 @@ func dotGraph(c *wui.Context, cm git.Commit, head string, up, down bool, w float
 	isHead, merge := cm.Hash == head && head != "", len(cm.Parents) > 1
 	wui.Box(c).Width(w).Shrink(0).Draw(func(p *wui.Painter, r wui.Rect) {
 		col := laneColor(p.Theme(), 0, sel)
-		x, ny := r.X+graphX(0), r.Y+graphNodeY
+		x, ny := r.X+graphX(0), r.Y+graphNodeY()
 		gap := nodeGap(isHead, true)
 		p.Clip(r, 0, func() {
 			if up {

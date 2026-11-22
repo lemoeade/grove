@@ -1313,3 +1313,62 @@ func TestGedEditKeys(t *testing.T) {
 		tt.Frame()
 	}
 }
+
+// ged 的粘性滚动：滚到 second() 中间，两边顶上都吸着 func second() 那一行；点它滚回那一行。关了设置不吸。
+// 缩进参考线照编辑器的颜色画在正文开头（Tab 一级）。
+func TestGedSticky(t *testing.T) {
+	saved := gedOn
+	gedOn = true
+	t.Cleanup(func() { gedOn = saved })
+	var o strings.Builder
+	o.WriteString("package demo\n\nfunc first() int {\n\treturn 0\n}\n\nfunc second() int {\n")
+	for i := range 80 {
+		o.WriteString("\tm := " + strconv.Itoa(i) + "\n")
+	}
+	o.WriteString("\treturn 1\n}\n")
+	old := o.String()
+	new := strings.Replace(old, "\tm := 40\n", "\tm := 40 * 2\n", 1)
+	repo := testutil.NewRepo(t, "gedsticky")
+	repo.Write("demo.go", old)
+	repo.Commit("初始提交")
+	repo.Write("demo.go", new)
+	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	a.St.FullDiff, a.St.Unified = true, false
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	wait("git status", idle(r))
+	a.OpenDiff(r, git.Change{Kind: git.Unstaged, Code: 'M', Path: "demo.go"}, true)
+	wait("demo.go 的 ged diff", func() bool { d := diffDoc(a, ""); return d != nil && !d.Loading && d.Ged != nil })
+	tt.Frame()
+	d := diffDoc(a, "")
+	g := d.Ged
+	lh := g.RowHeight()
+	g.ScrollY = 30 * lh // 第 31 行在 second() 里面（func second 是第 7 行）
+	tt.Frame()
+	for side := range 2 {
+		if st := g.Stuck(side); len(st) != 1 || st[0] != 6 {
+			t.Errorf("第 %d 边吸着 %v，应是 func second 那一行（6）", side, st)
+		}
+	}
+	// 点吸着的那一行：滚到 func second 露出来
+	b := g.Bounds()
+	tt.ClickAt(b.X+b.W*0.75, b.Y+lh/2)
+	tt.Frame()
+	if top := int(g.ScrollY / lh); top > 6 {
+		t.Errorf("点了吸着的行，顶上是第 %d 行，func second（第 7 行）没露出来", top+1)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		g.ScrollY = 30 * lh
+		tt.SetScale(2)
+		tt.SetTitleBar(shotBar)
+		a.St.BottomBar = false
+		tt.Frame()
+		writeShot(t, tt, dir, "ged-sticky.png")
+	}
+	a.St.Settings.NoStickyScroll = true
+	g.ScrollY = 30 * lh
+	tt.Frame()
+	if st := g.Stuck(1); len(st) != 0 {
+		t.Errorf("关了粘性滚动还吸着 %v", st)
+	}
+}

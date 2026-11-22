@@ -21,12 +21,13 @@ func TestVibrancy(t *testing.T) {
 		{workspace.Settings{Material: "menu"}, "", mygo.VibrancyNone},
 		{workspace.Settings{}, "menu", mygo.VibrancyNone},
 		{workspace.Settings{Backdrop: "flat"}, "menu", mygo.VibrancyNone},
-		{workspace.Settings{Backdrop: "vibrancy"}, "", mygo.VibrancySidebar},
-		{workspace.Settings{Backdrop: "vibrancy", Material: "menu"}, "", mygo.VibrancyMenu},
-		{workspace.Settings{Backdrop: "vibrancy", Material: "glass"}, "", mygo.VibrancyGlass},
-		{workspace.Settings{Backdrop: "vibrancy", Material: "menu"}, "popover", mygo.VibrancyPopover},
-		{workspace.Settings{Backdrop: "vibrancy"}, "under-window", mygo.VibrancyUnderWindow},
-		{workspace.Settings{Backdrop: "vibrancy"}, "hud", mygo.VibrancyHUD}, // 设置里没有了，开发开关照样能试
+		{workspace.Settings{Look: "grove", Backdrop: "vibrancy"}, "", mygo.VibrancySidebar},
+		{workspace.Settings{Look: "grove", Backdrop: "vibrancy", Material: "menu"}, "", mygo.VibrancyMenu},
+		{workspace.Settings{Look: "grove", Backdrop: "vibrancy", Material: "glass"}, "", mygo.VibrancyGlass},
+		{workspace.Settings{Look: "grove", Backdrop: "vibrancy", Material: "menu"}, "popover", mygo.VibrancyPopover},
+		{workspace.Settings{Look: "grove", Backdrop: "vibrancy"}, "under-window", mygo.VibrancyUnderWindow},
+		{workspace.Settings{Look: "grove", Backdrop: "vibrancy"}, "hud", mygo.VibrancyHUD},     // 设置里没有了，开发开关照样能试
+		{workspace.Settings{Backdrop: "vibrancy", Material: "menu"}, "hud", mygo.VibrancyNone}, // VS Code 风格不透
 	} {
 		t.Setenv("WORKBENCH_MATERIAL", c.env)
 		if got := vibrancy(&c.s); got != c.want {
@@ -36,7 +37,7 @@ func TestVibrancy(t *testing.T) {
 	// 设置里能选的都是 mygo 认的材质名
 	t.Setenv("WORKBENCH_MATERIAL", "")
 	for _, m := range workspace.Materials[1:] {
-		if v := vibrancy(&workspace.Settings{Backdrop: "vibrancy", Material: m}); string(v) != m {
+		if v := vibrancy(&workspace.Settings{Look: "grove", Backdrop: "vibrancy", Material: m}); string(v) != m {
 			t.Errorf("材质 %q 成了 %q", m, v)
 		}
 	}

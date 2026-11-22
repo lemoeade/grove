@@ -35,7 +35,7 @@ func bottomBar(a *app.App, c *wui.Context) {
 			pane = tab.Active
 		}
 	}
-	card(c, panel, func() {
+	panelCard(c, panel, func() {
 		t := c.Theme()
 		cardHeader(c).Padding(0, 6, 0, 0).Gap(2).Children(func() { // 左边 0：第一个标签贴着卡片左边
 			// 终端标签多了横向滚动（同编辑器的标签条），标签少时「+」紧跟着最后一个；输出、问题固定在后面，标题行右边的按钮总在。

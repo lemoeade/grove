@@ -46,7 +46,7 @@ func openEditors(a *app.App, c *wui.Context, tools bool) {
 	}
 	rowH := a.TreeRowH // 和文件树的行一样高（树还没画过的第一帧用估计的）
 	if rowH <= 0 {
-		rowH = treeRowH
+		rowH = treeRowH()
 	}
 	indent := treeIndent(0)
 	if rows[0].Head() { // 拆分了：标签比“第 N 组”再缩一级
@@ -96,7 +96,7 @@ func openEditorRow(a *app.App, c *wui.Context, r app.OpenEditorRow, indent float
 			wui.Box(c.Key("bar")).Absolute().Left(0).Top(softBarInset).Bottom(softBarInset).Width(2).Radius(1).Background(t.Accent)
 		}
 		docGlyph(a, c, d, on)
-		title := wui.Text(c, d.Title).FontSize(sideFont).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+		title := wui.Text(c, d.Title).FontSize(sideFont()).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		if !d.Pinned {
 			title.Italic()
 		}

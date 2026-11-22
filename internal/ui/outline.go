@@ -179,7 +179,7 @@ func outlineRow(c *wui.Context, f *outline.Flat, sel bool) bool {
 	clicked := el.Clicked()
 	el.Children(func() {
 		wui.Text(c, symbolGlyph(f.Kind)).FontSize(sideSub).FontWeight(600).TextColor(glyph).Width(13).Shrink(0)
-		wui.Text(c, f.Name).FontSize(sideFont).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0)
+		wui.Text(c, f.Name).FontSize(sideFont()).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0)
 		if f.Detail != "" {
 			wui.Text(c, f.Detail).FontSize(sideSub).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0)
 		}

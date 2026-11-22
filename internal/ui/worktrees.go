@@ -97,7 +97,7 @@ func worktreeRow(a *app.App, row wui.ListRow, r *app.Repo, w app.Worktree, g *gi
 		wui.Box(c).Size(16, 16).AlignItems(wui.Center).Justify(wui.Center).Shrink(0).Children(func() {
 			wtMark(c, st)
 		})
-		name := wui.Text(c, wtTitle(w)).FontSize(sideFont).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+		name := wui.Text(c, wtTitle(w)).FontSize(sideFont()).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		if st == app.WtWaiting {
 			name.FontWeight(600)
 		}

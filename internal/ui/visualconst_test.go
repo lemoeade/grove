@@ -122,7 +122,7 @@ var namedLits = map[string]map[string]string{
 	"FontSize": {
 		"12":   "sideSub / barFont / noteFont",
 		"12.5": "bodyFont / sideMono",
-		"14.5": "repoFont",
+		"14.5": "repoFont()",
 	},
 	"Radius": {
 		"5": "rowRadius / ctlRadius",
@@ -131,7 +131,7 @@ var namedLits = map[string]map[string]string{
 
 // TestVisualConsts 扫源码：FontSize(12) / FontSize(12.5) / FontSize(14.5) / Radius(5) 不写数字，用 widgets.go、sidebar.go 里的常量。
 func TestVisualConsts(t *testing.T) {
-	if sideSub != 12 || barFont != 12 || noteFont != 12 || bodyFont != 12.5 || sideMono != 12.5 || repoFont != 14.5 ||
+	if sideSub != 12 || barFont != 12 || noteFont != 12 || bodyFont != 12.5 || sideMono != 12.5 || repoFontGrove != 14.5 ||
 		rowRadius != 5 || ctlRadius != 5 {
 		t.Error("字号、圆角常量的值变了：改外观的话把这个测试和 namedLits 一起改")
 	}

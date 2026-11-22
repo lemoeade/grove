@@ -11,6 +11,7 @@ import (
 type Settings struct {
 	// 外观
 	Theme          string `json:"theme,omitempty"`          // "" 跟随系统、"light"、"dark"
+	Look           string `json:"look,omitempty"`           // 风格："" VS Code（不透明的平面：侧栏、标题栏 #F8F8F8，编辑器白底，VS Code 的代码配色）、"grove" Grove（柔和底上的圆角卡片）
 	Backdrop       string `json:"backdrop,omitempty"`       // 窗口底："" 柔和（纯色底上几团淡淡的颜色）、"flat" 纯色、"vibrancy" 通透（透出桌面的系统材质）
 	Material       string `json:"material,omitempty"`       // 通透时用的系统材质："" 侧栏，或 Materials 里别的（mygo.Vibrancy 的值）
 	Accent         string `json:"accent,omitempty"`         // 强调色："" 是默认的那个（DefaultAccent），或 Accents 里别的
@@ -167,6 +168,7 @@ func (s *Settings) WebKindFor(host string) string {
 // 设置里各项可选的值（第一个是默认，存成 ""）。
 var (
 	Themes      = []string{"", "light", "dark"}
+	Looks       = []string{"", "grove"}
 	Backdrops   = []string{"", "flat", "vibrancy"}                         // 以前的 "opaque" 键不认了（读进来忽略），开没开通透的都成柔和
 	Materials   = []string{"", "under-window", "popover", "menu", "glass"} // "" 是 sidebar；hud、glass-clear 去掉了（HUD 把侧栏的字洗淡），存过的读回来是空
 	Accents     = accents()
@@ -180,14 +182,14 @@ var (
 	Langs       = []string{"", "en"}
 )
 
-// DefaultAccent 是 Accent 存成 "" 时的强调色："forest" 森绿（之前是 "steel" 钢蓝，再之前是 "system" 跟随系统，
+// DefaultAccent 是 Accent 存成 "" 时的强调色："blue" VS Code 蓝（之前是 "forest" 森绿，再之前是 "steel" 钢蓝、"system" 跟随系统，
 // mygo 跟着系统设置里的强调色）。
 // 换默认只改这一行：Accents 里它存成 ""，存过的这个值读回来也成 ""；别的（包括跟随系统）存实名，换默认时不跟着变。
 // 以前选“跟随系统”存的也是 ""，和没选过分不开，所以那些都成了默认色。
-const DefaultAccent = "forest"
+const DefaultAccent = "blue"
 
 // AccentKeys 是所有的强调色，设置下拉里就是这个顺序。
-var AccentKeys = []string{"system", "forest", "steel", "ink", "graphite", "teal", "indigo"}
+var AccentKeys = []string{"system", "blue", "forest", "steel", "ink", "graphite", "teal", "indigo"}
 
 // accents 是设置里强调色可选的值：AccentKeys 的顺序，默认的那个存成 ""。
 func accents() []string {
@@ -226,7 +228,7 @@ func (s *Settings) Clamp() {
 		v  *string
 		ok []string
 	}{
-		{&s.Theme, Themes}, {&s.Backdrop, Backdrops}, {&s.Material, Materials}, {&s.Accent, Accents}, {&s.Indent, Indents}, {&s.Wrap, Wraps}, {&s.Whitespace, Whitespaces}, {&s.AutoSave, AutoSaves},
+		{&s.Theme, Themes}, {&s.Look, Looks}, {&s.Backdrop, Backdrops}, {&s.Material, Materials}, {&s.Accent, Accents}, {&s.Indent, Indents}, {&s.Wrap, Wraps}, {&s.Whitespace, Whitespaces}, {&s.AutoSave, AutoSaves},
 		{&s.TermDock, TermDocks}, {&s.PullMode, PullModes}, {&s.Lang, Langs},
 	} {
 		if !slices.Contains(f.ok, *f.v) {

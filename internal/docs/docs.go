@@ -210,10 +210,10 @@ type Doc struct {
 	olSeen uint64        // 粘性滚动（StickyOutline）见过的最新版本
 	olEdit time.Time     // 和它第一次见到的时间
 	olCost time.Duration // 上一次解析花了多久：超过 StickySlow 的，粘性滚动停手了再重新解析
-	// Diff 旧的一边的大纲（DiffOutline）：折叠条上写“所在函数”用，旧的一边换了缓冲区或版本才重新解析
-	dolTree *outline.Tree
-	dolBuf  *editor.Buffer
-	dolVer  uint64
+	// Diff 两边的大纲（DiffOutlineOf，0 旧 1 新）：折叠条上写“所在函数”、ged 的粘性滚动用，那一边换了缓冲区或版本才重新解析
+	dolTree [2]*outline.Tree
+	dolBuf  [2]*editor.Buffer
+	dolVer  [2]uint64
 	// 侧栏大纲的展开和选中，按标签记（键是 outline.Flat.Key）；OutlineSeen 是见过的有子项的符号（新出现的默认展开），
 	// OutlineSyms 是展开状态对过的那棵树，OutlineCur 是上一帧光标所在的符号（变了才跟着选中、滚到）
 	OutlineSt   ui.OutlineState[string]
@@ -774,16 +774,25 @@ func (d *Doc) Outline() *outline.Tree {
 // DiffOutline 是 Diff 旧的一边（DiffSt.Old）的大纲：折叠条上写藏着的行之后那段在哪个函数里（像 GitHub 块头 @@ 后面那段）。
 // 折起来的行两边一样，旧的一边就够了；按文件名认语言，没有大纲的语言、太大的、一边是空的为 nil。
 // 旧的一边不随打字变（就地编辑改的是新的一边），所以一个 Diff 一般只解析一次。
-func (d *Doc) DiffOutline() *outline.Tree {
-	if d.DiffSt == nil || d.DiffSt.Old == nil || d.DiffSt.Old.Len() == 0 || d.DiffSt.Old.Len() > outline.MaxBytes || !outline.Supported(d.outlineName()) {
+func (d *Doc) DiffOutline() *outline.Tree { return d.DiffOutlineOf(0) }
+
+// DiffOutlineOf 是 Diff 一边（0 旧、1 新）的大纲，规则同 DiffOutline。新的一边就地编辑时跟着打字变，换了版本才重新解析。
+func (d *Doc) DiffOutlineOf(side int) *outline.Tree {
+	if d.DiffSt == nil || side < 0 || side > 1 {
 		return nil
 	}
-	old := d.DiffSt.Old
-	if v := old.Version(); old != d.dolBuf || v != d.dolVer {
-		d.dolTree, d.dolBuf, d.dolVer = outline.Build(outline.Parse(d.outlineName(), old.String())), old, v
+	b := d.DiffSt.Old
+	if side == 1 {
+		b = d.DiffSt.New
+	}
+	if b == nil || b.Len() == 0 || b.Len() > outline.MaxBytes || !outline.Supported(d.outlineName()) {
+		return nil
+	}
+	if v := b.Version(); b != d.dolBuf[side] || v != d.dolVer[side] {
+		d.dolTree[side], d.dolBuf[side], d.dolVer[side] = outline.Build(outline.Parse(d.outlineName(), b.String())), b, v
 		outlineParses.Add(1)
 	}
-	return d.dolTree
+	return d.dolTree[side]
 }
 
 // LastOutline 是上次解析出的大纲（可能比内容旧一点），从没解析过为 nil；不解析（打字时每个键都要的地方用，比如补全的种类）。

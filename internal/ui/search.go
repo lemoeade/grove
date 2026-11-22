@@ -590,7 +590,7 @@ func searchRow(a *app.App, row wui.ListRow, sr app.SearchRow, do func(func())) {
 				ic.Rotate(90)
 			}
 			fileGlyph(a, c, m.Path, sel).Shrink(0)
-			wui.Text(c, path.Base(m.Path)).FontSize(sideFont).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+			wui.Text(c, path.Base(m.Path)).FontSize(sideFont()).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 			where := m.Repo
 			if dir := path.Dir(m.Path); dir != "." {
 				where += " · " + dir

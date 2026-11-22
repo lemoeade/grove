@@ -16,8 +16,7 @@ import (
 // 右栏历史的几何，单位 DIP。
 const (
 	histHeadH = 46 // 头部一行
-	histRowH  = 30 // 一个提交一行
-	histDayH  = 26 // 日期段头
+	histDayH  = 26 // 日期段头（一个提交一行的高见 histRowH）
 	histFileH = 24 // 卡片里的一个文件
 	histDotD  = 7  // "所有仓库"每行左边的仓库圆点
 
@@ -31,7 +30,7 @@ const (
 // 选中的提交展开成一张卡片：标题读全、作者 / agent / 时间、分支、正文、短哈希、几个按钮，和它改的文件（点文件在主区开 Diff 标签）。
 func rightBar(a *app.App, c *wui.Context) {
 	r := a.Current()
-	card(c, wui.Column(c).Width(a.St.RightW).Shrink(0), func() {
+	panelCard(c, wui.Column(c).Width(a.St.RightW).Shrink(0), func() {
 		t := c.Theme()
 		histHeader(a, c, r)
 		if a.LocalHistPath == "" {
@@ -99,11 +98,11 @@ func histHeader(a *app.App, c *wui.Context, r *app.Repo) {
 	})
 }
 
-// histTitle 是头部左边：仓库名（repoFont 半粗）加灰色的分支图标和分支名；看工作树 / 标签时是它们；"所有仓库"是层叠图标和"全部仓库"。
+// histTitle 是头部左边：仓库名（repoFont() 半粗）加灰色的分支图标和分支名；看工作树 / 标签时是它们；"所有仓库"是层叠图标和"全部仓库"。
 func histTitle(a *app.App, c *wui.Context, r *app.Repo) {
 	t := c.Theme()
 	name := func(s string) {
-		wui.Text(c, s).FontSize(repoFont).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+		wui.Text(c, s).FontSize(repoFont()).FontWeight(600).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 	}
 	sub := func(ic *wui.SVG, s, tip string) {
 		if a.St.RightW < histNarrow { // 看工作树 / 标签时下面的胶囊里还写着
@@ -522,9 +521,9 @@ func histCommitRow(a *app.App, l *listLook, row wui.ListRow, r *app.Repo, ci int
 func commitRowBox(c *wui.Context, open bool) wui.Element {
 	el := wui.Row(c).AlignItems(wui.Stretch)
 	if open {
-		return el.MinHeight(histRowH)
+		return el.MinHeight(histRowH())
 	}
-	return el.Height(histRowH)
+	return el.Height(histRowH())
 }
 
 // commitTitle 是展开的提交的标题：卡片的第一行，读全。在选中的行里建，字色要写明（实心的选中默认是强调色上的字）。
@@ -965,7 +964,7 @@ func uncommittedRow(a *app.App, row wui.ListRow, r *app.Repo) {
 	t := c.Theme()
 	sel := onAccent(a, row.Selected())
 	g := a.HistGraph(r)
-	el := wui.Row(c).Height(histRowH).Tooltip(app.Tip(i18n.T("未提交的改动：在侧栏的 Git 栏里看"), "view.git"))
+	el := wui.Row(c).Height(histRowH()).Tooltip(app.Tip(i18n.T("未提交的改动：在侧栏的 Git 栏里看"), "view.git"))
 	body := func() {
 		_, n := histHead(r)
 		ref := r.Hist.RefKind != app.RefNone
@@ -1102,7 +1101,7 @@ func allHistRow(a *app.App, l *listLook, row wui.ListRow, rows []app.AllHistRow)
 		l.row(c, row.Selected(), row.ListFocused(), func() {
 			t := c.Theme()
 			sel := onAccent(a, row.Selected())
-			repoRow := wui.Row(c).Height(histRowH).Padding(0, 8).Gap(6).AlignItems(wui.Center).Tooltip(i18n.T("在侧栏的 Git 栏里看这个仓库"))
+			repoRow := wui.Row(c).Height(histRowH()).Padding(0, 8).Gap(6).AlignItems(wui.Center).Tooltip(i18n.T("在侧栏的 Git 栏里看这个仓库"))
 			ctxMenuRow(a, c, row, repoRow, menuOwner{"histRepo", r.Root}, func(m menu) { repoMenu(a, m, r, false) })
 			repoRow.Children(func() {
 				repoDot(a, c, r, sel)

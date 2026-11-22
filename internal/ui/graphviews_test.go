@@ -164,7 +164,7 @@ func TestAllHistGraphRows(t *testing.T) {
 	}
 	for _, s := range order {
 		rc := g.find(repoOf(s).Name + " " + s)
-		y := rc.Y + histRowH/2
+		y := rc.Y + histRowH()/2
 		want := rgba(repoColor(a, th, repoOf(s)))
 		if c := g.at(rc.X+8+histDotD/2, y); !nearRGBA(c, want) {
 			t.Errorf("%s 的仓库圆点是 %v，应接近 %v", s, c, want)
@@ -227,7 +227,7 @@ func TestSearchGraphLinks(t *testing.T) {
 	// 单线的历史：HEAD 是强调色的圈，别的是淡灰的点
 	bg := rgba(cardBg(lightTheme()))
 	for i, s := range subjects() {
-		c := g.at(x0+graphX(0), row(s).Y+graphNodeY)
+		c := g.at(x0+graphX(0), row(s).Y+graphNodeY())
 		if i == 0 && !nearRGBA(c, accent) {
 			t.Errorf("%s（HEAD）的点是 %v，应接近强调色", s, c)
 		}
@@ -237,7 +237,7 @@ func TestSearchGraphLinks(t *testing.T) {
 	}
 	// 两个点之间：登录校验 → 登录页 有线，登录按钮 → 登录校验 没有
 	gapHas := func(above, below string) bool {
-		y0, y1 := row(above).Y+graphNodeY+graphRingR+1, row(below).Y+graphNodeY-graphRingR-1
+		y0, y1 := row(above).Y+graphNodeY()+graphRingR+1, row(below).Y+graphNodeY()-graphRingR-1
 		return g.count(x0+graphX(0)-1, y0, x0+graphX(0)+1, y1, bg) < int(2*(y1-y0)*graphScale*graphScale)*3/4
 	}
 	if !gapHas("甲 登录校验", "甲 登录页") {

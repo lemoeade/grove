@@ -18,7 +18,8 @@ import (
 // accentColors 是能选的强调色（跟随系统的 "system" 不在这里）：浅色、深色主题各一个；
 // darkText 是深色主题里强调色上的字，零值是白色（石墨的深色太浅，白字看不清）。
 var accentColors = map[string]struct{ light, dark, darkText wui.Color }{
-	"forest":   {wui.Hex("#2B7A57"), wui.Hex("#5DBB8C"), wui.Hex("#0E1A14")}, // 默认：白字 5.2:1；深色的白字只有 2.3:1，换墨绿的深字（7.6:1）
+	"blue":     {wui.Hex("#005FB8"), wui.Hex("#0078D4"), wui.Color{}},        // 默认：VS Code Modern 的蓝，白字 6.4:1、深色 4.5:1
+	"forest":   {wui.Hex("#2B7A57"), wui.Hex("#5DBB8C"), wui.Hex("#0E1A14")}, // 白字 5.2:1；深色的白字只有 2.3:1，换墨绿的深字（7.6:1）
 	"steel":    {wui.Hex("#4E6E8E"), wui.Hex("#8FA9C6"), wui.Hex("#18181B")}, // 白字 5.3:1；深色的太亮，白字只有 2.4:1，换深字
 	"ink":      {wui.Hex("#3B5B84"), wui.Hex("#7A9CC6"), wui.Color{}},
 	"graphite": {wui.Hex("#6E7075"), wui.Hex("#9A9CA3"), wui.Hex("#18181B")},
@@ -30,6 +31,8 @@ var accentColors = map[string]struct{ light, dark, darkText wui.Color }{
 // 悬停 / 按下浅色主题里深 8% / 16%，深色主题里亮 8% / 16%；选中的字和焦点环的透明度和 mygo 跟系统时一样，
 // 高对比度时焦点环照旧不透明。
 func applyAccent(a *app.App, t *wui.Theme) {
+	setLook(a) // 风格（look.go）也在每帧开头这里套
+	applyLook(t)
 	k, ok := accentColors[workspace.AccentOf(a.St.Settings.Accent)]
 	if !ok {
 		return

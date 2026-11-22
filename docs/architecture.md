@@ -184,7 +184,7 @@ cmd/workbench ─► internal/ui ─► internal/app ─► 逻辑包 internal/{
   - 去重、截到上限：`recentWs` 10、`recent` 50、`commitMsgs` 30（空的丢掉）、`searchHistory` 20（没有字的丢掉）、`taskHistory` 20（带换行的命令丢掉）、`windows` 100、会话的 `tabs` 50（行列、滚动为负的丢掉）、每个仓库的终端标签 20；分屏树不成形或超过 8 格的整棵不要，比例不对的换成一半，`hist` 不是 `.vt` 文件名的清掉。
   - 越界下标：会话的 `active` 越界回到 -1，终端的 `active` 回到 0。
   - 布局：不认识的侧栏模式回到文件，宽高超出范围的回到默认（`clampPanels`）。
-  - 设置（`Settings.Clamp`，设置文档保存、导入时也走它）：选项不在可选列表里的（主题、窗口底、材质、强调色、缩进、换行、空白、自动保存、终端位置、拉取方式、语言）回到默认，强调色写成默认那个的存成 `""`；带控制字符或超长的终端主题名清空；字号、回滚、缩放、本地历史天数超出范围的回到默认；用不了的终端配置（`Profiles`）、风格不认识的网页主机丢掉。
+  - 设置（`Settings.Clamp`，设置文档保存、导入时也走它）：选项不在可选列表里的（主题、风格、窗口底、材质、强调色、缩进、换行、空白、自动保存、终端位置、拉取方式、语言）回到默认，强调色写成默认那个的存成 `""`；带控制字符或超长的终端主题名清空；字号、回滚、缩放、本地历史天数超出范围的回到默认；用不了的终端配置（`Profiles`）、风格不认识的网页主机丢掉。
 - 格式版本号仅在字段含义变化时递增。当前为 4，最近一次变更是会话中 `groups` 的含义：以前记录“收起的组”，现在记录“用户点击后，与默认状态相反的组”。冲突 / 已暂存 / 未暂存默认展开，贮藏默认收起（`groupOpenByDefault`），因此包含 `"stash"` 表示“贮藏已展开”。读 3 的文件时把 `groups` 里的 `"stash"` 去掉。
   以前未跟踪单独一组（键 `"untracked"`），现在并进未暂存（`GroupKey(git.Untracked)` 是 `"unstaged"`）；旧文件里的 `"untracked"` 读的时候扔掉（`groupKeys` 不认），不升版本。
 - 更早的格式由 `workspace.migratePanels` 兼容：1 的 `panels` 表、更早的四元 bool 数组、更早的 `repos.json`；顶层的 `added` / `hidden` 归给第一个打开的工作区。下次保存就是 4。
@@ -298,6 +298,11 @@ Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`�
 折叠条分步展开：`Diff.open` 按那段没改的行在旧的一边的第一行记 `Reveal`（`Top` 接着上面的改动往下露几行、`Bottom` 接着下面的往上露、`All` 整段），`foldRows` 折的时候让出这些行，
 顺便按 `Fold` 行的 `Old` 记 `foldInfo`（这段的键、上 / 下挨不挨着改动）。`ExpandMore(i, dir)` 一次露 `FoldStep`（20）行，剩的不比它多就整段；箭头（`foldArrows`）画在行号那格里，
 `foldZone` 认点在哪个上，悬停的那个垫一层底（`hoverZ`）。右键记 `Spot.Fold`，菜单按 `FoldDirs` 给“往下 / 往上展开 20 行”。
+缩进参考线（`ged/guides.go`，`Style.Guides`）：`prepGuides` 每帧按 `indentUnit` 定一级几格、就地编辑时找光标那一块（光标那一行最里面那道线、上下缩进比它深的连续行），
+`paintGuides` 在每个格子的正文第 0 格起每级画一道 1 pt 的线（`Code.IndentGuide`，那一块的是 `ActiveIndentGuide`）；空行看上下 `guideScan` 行内最近的有字的行（取浅的再深一级，不超过深的）。
+粘性滚动（`ged/sticky.go`，`Style.Sticky`）：`prepSticky` 每帧问调用方每一边（统一视图只问新的一边）顶上吸 k 行时下面那一行是第几行（`rowLine`，对面留空的往下找），
+界面那边 `gedStyle` 用 `Doc.DiffOutlineOf(side)`（两边各解析一份，换了缓冲区或版本才重来）的 `outline.Tree.Sticky` 给；`paintSticky` 在那一栏顶上盖编辑器的底、行号、
+排好的那一行（只画第一行）和 3 px 渐淡的阴影，`stickyInput` 悬停垫一层、按下滚到那一行刚好露在还吸着的几行下面。整个 `paint` 裁在视图里（最后一行露一半时不画到底栏上）。
 忽略行首行尾空白：`State.DiffTrim`（`diff.ignoreTrim` / `ToggleDiffTrim`）每帧经 `SetIgnoreTrim` 给 ged，`AlignTrim` 拿去掉首尾空白的行去配；只改了空白的行是 `Same` 但两边的字不一样，
 画的时候各画各的，查找按 `sameText` 决定旧的一边借不借新的一边的结果。改动、补丁都按看到的 `Hunks` 走，补丁的上下文取自要套的那一份，所以藏起来的空白改动不碍事。mygo 那个 Diff 不认这个开关（命令在没用 ged 时灰着）。
 跳到行：`edit.goToLine` 在 `gedFind` 时开命令面板的 ":"（`goToLine`），`lineItems` 按 `Ged.LineCount` 写共几行，`JumpHere` 交给 `Diff.GoToLine`（新的一边，空的时旧的一边；`rowOfLine` 展开折叠，`want` 滚过去）。
@@ -754,11 +759,13 @@ shell 按需启动：首次需要显示（底栏开着、当前仓库是它、�
 
 ### 窗口底和颜色
 
-窗口底（`Settings.Backdrop`）三种：柔和（默认）、纯色（`flat`）、通透（`vibrancy`，再选系统材质 `material`）。柔和是纯色底上用 `Draw` 画几团很淡的色斑（`paintBackdrop`，Shadow 的模糊；左上那团的颜色从强调色推出来，`blobColor`），不依赖桌面壁纸；通透在默认壁纸上看起来是平的、HUD 一类材质会把字冲淡，所以不是默认。
+风格（`Settings.Look`，`ui/look.go`）两种：默认 `""` 是 VS Code，`grove` 是下面说的圆角卡片。取颜色的小函数（`cardBg` / `windowBg` / `headerBg` / `cardLine` / `diffBase`）只拿得到主题，所以每帧 `applyAccent` 开头 `setLook` 把风格记在包级的 `vsLook`，`applyLook` 换字色、线色、弹出层的底；VS Code 风格下 `card` 不要圆角和阴影，`panelCard`（底栏、右栏）是侧栏色的底、不描边，`center` 的缝是 0（拖条还是 `cardGap` 宽，底色就是侧栏色），根的中间一行顶上、状态栏顶上各一道 `vsLine`，`panelTab` 当前那页顶上一道强调色线，`focusBar` 不画。代码配色走 `vsCodeTheme`（`fullCodeTheme` / `softTheme` 里换），ged 的 Diff 颜色走 `gedStyle` 里的 VS Code 分支（`PlainNumbers` 让改了的行号不变色）。`applyLook` 还把主题的 `ScrollbarStyle` 换成 VS Code 的（`vsScrollbar`：10 宽、方、贴两头、半透明灰，ged 的概览条 14 宽）。侧栏正文字号、仓库名字号、文件树行高、右栏历史行高跟着风格（`sideFont()` / `repoFont()` / `treeRowH()` / `histRowH()`，Grove 14 / 14.5 / 24 / 30，VS Code 13 / 13 / 22 / 22），提交图的节点在行高的正中（`graphNodeY()`）。VS Code 风格不透（`cmd/workbench` 的 `vibrancy`）。
+
+窗口底（`Settings.Backdrop`，只在 Grove 风格里用）三种：柔和（默认）、纯色（`flat`）、通透（`vibrancy`，再选系统材质 `material`）。柔和是纯色底上用 `Draw` 画几团很淡的色斑（`paintBackdrop`，Shadow 的模糊；左上那团的颜色从强调色推出来，`blobColor`），不依赖桌面壁纸；通透在默认壁纸上看起来是平的、HUD 一类材质会把字冲淡，所以不是默认。
 
 各区域是圆角卡片（`ui/widgets.go` 的 `card`），卡片之间 6 pt 的缝就是拖条（`resizer`）。标题栏 38 pt 高，按红绿灯的位置排（`TitleBarInset`）。
 
-强调色在 `ui/accent.go`：默认 `forest` 森绿（`DefaultAccent`），`applyAccent` 换整套；列表选中默认是强调色淡淡的一层加左边一道竖条，列表没有键盘时换成中性的灰、不加竖条，悬停更淡（`listLook` / `softFills`：建列表的主题里 Accent 透明，选中块的底由行自己按 `ListFocused` 在 `Draw` 里画，上下相邻的行也选中时那一边不留圆角、竖条通到行边，连着多选的几行接成一整块；`SolidSelection` 换成实心块），`onAccent` 是强调色上的字色。尽量减少视觉装饰：横幅、悬停这些用很淡的填充（`quietFill` / `bannerFill`），不加边框。
+强调色在 `ui/accent.go`：默认 `blue` 蓝（`DefaultAccent`，VS Code 的 #005FB8 / #0078D4），`applyAccent` 换整套；列表选中默认是强调色淡淡的一层加左边一道竖条，列表没有键盘时换成中性的灰、不加竖条，悬停更淡（`listLook` / `softFills`：建列表的主题里 Accent 透明，选中块的底由行自己按 `ListFocused` 在 `Draw` 里画，上下相邻的行也选中时那一边不留圆角、竖条通到行边，连着多选的几行接成一整块；`SolidSelection` 换成实心块），`onAccent` 是强调色上的字色。尽量减少视觉装饰：横幅、悬停这些用很淡的填充（`quietFill` / `bannerFill`），不加边框。
 
 界面缩放（`Settings.Zoom`，按 `ZoomSteps` 一档档走）是每个窗口每帧 `c.SetZoom`，设置窗口、关于窗口也跟着。终端自带的字号键（⌘= ⇧⌘= ⌘- ⌘0）让给界面缩放（`termZoomKeyFor`），终端字号只在设置里改。
 

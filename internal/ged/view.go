@@ -22,6 +22,7 @@ type Style struct {
 	AddedLine, DeletedLine wui.Color // 改了的整行的底
 	AddedWord, DeletedWord wui.Color // 行里改了的字的底，叠在整行的底上
 	AddedMark, DeletedMark wui.Color // 改了的行的行号和 + −
+	PlainNumbers           bool      // 改了的行的行号也用 Code.LineNumber（VS Code 那样只有 + − 带颜色）
 	Filler                 wui.Color // 对面多出的行在这边留的空：斜线
 	FoldBack, FoldText     wui.Color // 折起来的一段
 	FoldHover              wui.Color
@@ -70,6 +71,12 @@ type Style struct {
 	Indent string
 	// Whitespace 是画不画空白（空格画点、Tab 画箭头）：""（选中的字里）、"all"、"trailing"（行尾的）、"none"。
 	Whitespace string
+	// Sticky 是粘性滚动（见 sticky.go）：side 那边顶上吸了 k 行时紧挨着它们下面的是第 rowLine(k) 行，返回该吸的行
+	// （从外到里，最多 max 行，像 VS Code 那样一行吸着、下一行再看它下面的）。nil 不吸。
+	Sticky       func(side int, rowLine func(k int) int, max int) []int
+	StickyShadow wui.Color // 吸着的行下面那道阴影（三像素渐淡）
+	// Guides 是画缩进参考线（颜色是 Code.IndentGuide，就地编辑时光标那一块的是 ActiveIndentGuide，见 guides.go）。
+	Guides bool
 }
 
 // Context 是改动上下各留几行不折。
@@ -77,29 +84,32 @@ const Context = 3
 
 // Diff 是一个 Diff 视图的状态，跨帧留着（调用方按标签存）：两边的行、对齐的结果、折叠、滚动、排好的字。
 type Diff struct {
-	key     any
-	lines   [2][]string
-	lang    *editor.Language
-	aligned []Row
-	rows    []Row
-	open    map[int]Reveal   // 展开了的折叠段（按那段没改的行在旧的一边的第一行）
-	folds   map[int]foldInfo // 现在的 Fold 行（按 Old）的来历
-	full    bool             // 不折
-	trim    bool             // 忽略行首行尾空白（SetIgnoreTrim）
-	unified bool             // 统一的一栏（不是并排）
-	hunks   []Hunk
-	pairs   [2]map[int]int    // 配成对（Changed）的行：旧行号 → 新行号、新行号 → 旧行号（统一视图里找行里改了的字）
-	hunkRow []int             // 每处改动的第一行在 rows 里是第几行
-	hunkEnd []int             // 每处改动最后一行的下一行在 rows 里是第几行
-	rowHunk []int             // rows 的每一行是第几处改动的，-1 不是
-	cur     int               // 上次跳到、点过的那处改动，-1 没有
-	want    int               // 下一帧要滚到的那行（rows 的下标），-1 没有
-	words   map[int][2][]Span // Changed 行按旧行号
-	states  [2][]uint64       // 每行开头的分词状态（块注释、多行字符串跨行）
-	toks    []editor.Token
-	layouts map[lineKey]*lineLayout
-	font    wui.Font // layouts 是按这个字体、这套颜色排的
-	theme   editor.Theme
+	key         any
+	guide       guides   // 这一帧的缩进参考线
+	stuck       [2][]int // 这一帧两边吸在顶上的行（sticky.go）
+	stickyHover stickyHit
+	lines       [2][]string
+	lang        *editor.Language
+	aligned     []Row
+	rows        []Row
+	open        map[int]Reveal   // 展开了的折叠段（按那段没改的行在旧的一边的第一行）
+	folds       map[int]foldInfo // 现在的 Fold 行（按 Old）的来历
+	full        bool             // 不折
+	trim        bool             // 忽略行首行尾空白（SetIgnoreTrim）
+	unified     bool             // 统一的一栏（不是并排）
+	hunks       []Hunk
+	pairs       [2]map[int]int    // 配成对（Changed）的行：旧行号 → 新行号、新行号 → 旧行号（统一视图里找行里改了的字）
+	hunkRow     []int             // 每处改动的第一行在 rows 里是第几行
+	hunkEnd     []int             // 每处改动最后一行的下一行在 rows 里是第几行
+	rowHunk     []int             // rows 的每一行是第几处改动的，-1 不是
+	cur         int               // 上次跳到、点过的那处改动，-1 没有
+	want        int               // 下一帧要滚到的那行（rows 的下标），-1 没有
+	words       map[int][2][]Span // Changed 行按旧行号
+	states      [2][]uint64       // 每行开头的分词状态（块注释、多行字符串跨行）
+	toks        []editor.Token
+	layouts     map[lineKey]*lineLayout
+	font        wui.Font // layouts 是按这个字体、这套颜色排的
+	theme       editor.Theme
 
 	ScrollY float32
 	scrollX [2]float32
@@ -872,7 +882,7 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 		d.revealCaret(g, &s)
 		d.revealFind(g, &s)
 		d.clamp(g)
-		d.paint(p, r, g, &s)
+		p.Clip(r, 0, func() { d.paint(p, r, g, &s) }) // 最后一行露一半时别画到下面那栏上
 	})
 	el.HandleInput(func(ev wui.InputEvent) bool { return d.input(ev, &s) })
 	size, fsize := d.barBox, d.findBox
@@ -978,6 +988,13 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 	if ev.Kind != wui.InputScroll && !d.drag && (d.barBox.W > 0 && d.barBox.Contains(ev.X, ev.Y) ||
 		d.findBox.W > 0 && d.findBox.Contains(ev.X, ev.Y)) {
 		return false // 在改动上那排按钮上：归按钮，指针下的那处改动不变
+	}
+	if !d.drag && !d.selecting && !d.picking {
+		if took, handled := d.stickyInput(ev, g); handled {
+			return took
+		} else if took {
+			return true
+		}
 	}
 	if took, handled := d.menuInput(ev, g, s); handled {
 		return took
@@ -1351,6 +1368,8 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 		at, m, ok := d.matchBracket(1, d.sel.b)
 		d.brk, d.brkOK = [2]pos{at, m}, ok
 	}
+	d.prepGuides(s)
+	d.prepSticky(g, s)
 	d.lsel = lineSel{}
 	if d.canPick(s) {
 		side, a, b, ok := s.Lines()
@@ -1397,6 +1416,7 @@ func (d *Diff) paint(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 			d.paintCell(p, r, g, s, side, row, w[side], y, h)
 		}
 	}
+	d.paintSticky(p, r, g, s)
 	if !d.unified { // 中间的线
 		p.Fill(wui.Rect{X: r.X + g.paneW[0], Y: r.Y, W: 1, H: r.H}, s.Divider, 0)
 	}
@@ -1432,7 +1452,7 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 	base := y + (g.lh-(g.asc+g.desc))/2 + g.asc
 	nc := s.Code.LineNumber
 	switch {
-	case changed:
+	case changed && !s.PlainNumbers:
 		nc = mark
 	case caretLine:
 		nc = s.Code.ActiveLineNumber
@@ -1462,6 +1482,7 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 	vy := l.rowY(y, g.lh) // 排出来的 y 在第几个折出来的行：那一行的顶
 	sx := tx - d.scrollX[side]
 	p.Clip(clip, 0, func() {
+		d.paintGuides(p, side, line, sx, y, h, g, s)
 		for _, w := range words {
 			a, b := min(w.Start, len(l.u16)-1), min(w.End, len(l.u16)-1)
 			if b <= a {

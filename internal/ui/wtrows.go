@@ -167,7 +167,7 @@ func wtTermRow(a *app.App, row wui.ListRow, cr app.ChangeRow, g *gitFrame) {
 		if ag.Pane != nil {
 			job = ag.Pane.AgentJob()
 		}
-		wui.Text(c, job).FontSize(sideFont).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+		wui.Text(c, job).FontSize(sideFont()).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		switch ag.State {
 		case app.AgentIdle:
 			wui.Icon(c, iconCheck).FontSize(iconInline).TextColor(t.Success).Shrink(0).Label(i18n.T("做完了")).Tooltip(i18n.T("做完了"))

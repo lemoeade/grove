@@ -2319,5 +2319,8 @@
   "展开替换": "Show Replace",
   "收起替换": "Hide Replace",
   "替换": "Replace",
-  "替换（↩）": "Replace (↩)"
+  "替换（↩）": "Replace (↩)",
+  "风格": "Style",
+  "VS Code 是不透明的平面和 VS Code 的代码配色；Grove 是窗口底上的圆角卡片，窗口底和材质只在 Grove 风格里用": "VS Code is flat and opaque with VS Code's code colors; Grove is rounded cards on the window background. Window background and material only apply to the Grove style",
+  "蓝": "Blue"
 }

@@ -27,7 +27,16 @@ const whitespaceAlpha = 0.22
 func codeTheme(st *editor.State, t *wui.Theme) { softTheme(&st.Theme, t) }
 
 // softTheme 把 *th 换成 Grove 改过的那几种颜色（照 t），已经是了就不动；Diff 视图（DiffState.Theme）也用。
+// VS Code 风格时整份换成 VS Code 的配色（vsCodeTheme）。
 func softTheme(th **editor.Theme, t *wui.Theme) {
+	if vscode() {
+		text := pick(t, wui.Hex("#3b3b3b"), wui.Hex("#cccccc"))
+		if ct := *th; ct != nil && ct.Text == text && ct.LineNumber == wui.Hex("#6e7681") {
+			return
+		}
+		*th = fullCodeTheme(t)
+		return
+	}
 	ws := t.TextMuted.Alpha(whitespaceAlpha)
 	if ct := *th; ct != nil && ct.Whitespace == ws && ct.Tokens[editor.TokenOperator].Color == t.TextMuted {
 		return
@@ -41,10 +50,14 @@ func softTheme(th **editor.Theme, t *wui.Theme) {
 	*th = ct
 }
 
-// fullCodeTheme 是 mygo 的默认代码颜色套上 Grove 改的那几种：自己按词上色的地方（吸顶的那几行、改动预览）用，
+// fullCodeTheme 是 mygo 的默认代码颜色套上 Grove 改的那几种（VS Code 风格时是 VS Code 的配色）：自己按词上色的地方（吸顶的那几行、改动预览）用，
 // 和编辑器里一样。
 func fullCodeTheme(t *wui.Theme) *editor.Theme {
 	ct := editor.DefaultTheme(t)
+	if vscode() {
+		vsCodeTheme(ct, t)
+		return ct
+	}
 	ct.Whitespace = t.TextMuted.Alpha(whitespaceAlpha)
 	softTokens(ct, t)
 	return ct

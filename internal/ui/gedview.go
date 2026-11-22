@@ -90,6 +90,23 @@ func gedDiff(a *app.App, c *wui.Context, d *docs.Doc) wui.Element {
 		s.Indent = a.DocIndent(d)
 	}
 	s.Whitespace = a.St.Settings.Whitespace
+	s.Guides = true // 和编辑器一样画缩进参考线
+
+	if !a.St.Settings.NoStickyScroll { // 粘性滚动：两边各按各的大纲吸（和编辑器的一样，outline.Tree.Sticky 定吸哪几个）
+		s.Sticky = func(side int, rowLine func(k int) int, n int) []int {
+			tree := d.DiffOutlineOf(side)
+			if tree == nil {
+				return nil
+			}
+			idx := tree.Sticky(rowLine, n, nil)
+			out := make([]int, len(idx))
+			for i, k := range idx {
+				out[i] = tree.Flat[k].Line
+			}
+			return out
+		}
+		s.StickyShadow = pick(c.Theme(), wui.RGBA(0, 0, 0, 0.12), wui.RGBA(0, 0, 0, 0.5)) // VS Code 的 scrollbar.shadow 那样
+	}
 	s.Wrap = a.WrapOf(d) // ⌥Z：diffLook 给 mygo 那个 Diff 的也是它
 	s.FindBar = func(c *wui.Context, bar wui.Element) { gedFindBar(c, bar, g) }
 	s.Keys = func(ev wui.InputEvent) bool { return gedKeys(a, d, ev) }
@@ -266,6 +283,27 @@ func gedStyle(a *app.App, t *wui.Theme) ged.Style {
 	diffTint(ct, t)
 	font := a.EditorFont()
 	font.Size -= 0.5
+	if vscode() { // VS Code 的 Diff 默认颜色：改了的词 #9ccc2c40（深色 33）/ #ff000033，对面空着的斜线 #22222233（深色 #cccccc33）
+		s := gedStyleBase(t, ct, font)
+		s.AddedWord, s.DeletedWord = wui.Hex("#9ccc2c").Alpha(pickF(t, 0.25, 0.2)), wui.Hex("#ff0000").Alpha(0.2)
+		s.Filler = pick(t, wui.Hex("#222222").Alpha(0.2), wui.Hex("#cccccc").Alpha(0.2))
+		s.FoldBack = pick(t, wui.Hex("#f8f8f8"), wui.Hex("#181818"))
+		s.PlainNumbers = true
+		return s
+	}
+	return gedStyleBase(t, ct, font)
+}
+
+// pickF 是 t 的深浅对应的那个数。
+func pickF(t *wui.Theme, light, dark float32) float32 {
+	if t.Dark {
+		return dark
+	}
+	return light
+}
+
+// gedStyleBase 是 Grove 风格的 ged 样子（VS Code 风格在上面再改几种颜色）。
+func gedStyleBase(t *wui.Theme, ct *editor.Theme, font wui.Font) ged.Style {
 	return ged.Style{
 		Code:        ct,
 		Font:        wui.Font{Family: font.Family, Size: font.Size},

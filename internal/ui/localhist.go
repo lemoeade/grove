@@ -61,7 +61,7 @@ func localGraph(c *wui.Context, pass bool, w float32, sel bool) {
 	wui.Box(c).Width(w).Shrink(0).Draw(func(p *wui.Painter, r wui.Rect) {
 		t := p.Theme()
 		col := thinColor(t, false, sel)
-		x, y := r.X+graphX(0), r.Y+graphNodeY
+		x, y := r.X+graphX(0), r.Y+graphNodeY()
 		const rad = graphRingR - thinStroke/2
 		p.Clip(r, 0, func() {
 			if pass {

@@ -50,7 +50,7 @@ func (p pxClass) run(x, y, dx, dy, n int) string {
 func TestCardGeometry(t *testing.T) {
 	_, ws := testutil.TempRepo(t)
 	a, tt, wait := termUI(t, ws, termState(t, true))
-	a.St.Settings.Backdrop = "flat"
+	a.St.Settings.Look, a.St.Settings.Backdrop = "grove", "flat" // 卡片的圆角、缝是 Grove 风格的
 	r := a.Repos[0]
 	wait("git status", idle(r))
 	a.OpenFile(r, "a.txt", true)

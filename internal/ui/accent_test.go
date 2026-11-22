@@ -12,10 +12,12 @@ import (
 	"github.com/lemoeade/grove/internal/workspace"
 )
 
-// 强调色：跟随系统时主题不动，默认（存成 ""）是森绿；选了的那个浅色、深色主题各换一套，悬停 / 按下往黑（深色往白）调，
+// 强调色：跟随系统时主题不动（Grove 风格；VS Code 风格另换字色、线色），默认（存成 ""）是 VS Code 蓝；选了的那个浅色、深色主题各换一套，悬停 / 按下往黑（深色往白）调，
 // 石墨在深色主题里的字是深的，高对比度时焦点环还是不透明。
 func TestApplyAccent(t *testing.T) {
 	a := &app.App{}
+	a.St.Settings.Look = "grove"
+	defer vsLook.Store(true)
 	base := func(dark bool) wui.Theme {
 		th := wui.Theme{Dark: dark, Accent: wui.Hex("#0a84ff"), AccentText: wui.Hex("#ffffff"), Focus: wui.Hex("#0a84ff").Alpha(0.55)}
 		return th
@@ -34,10 +36,16 @@ func TestApplyAccent(t *testing.T) {
 	a.St.Settings.Accent = workspace.DefaultAccent
 	th := base(false)
 	applyAccent(a, &th)
-	if def.Accent != wui.Hex("#2B7A57") || th != def {
-		t.Errorf("默认的强调色该是森绿：%v，选了森绿 %v", def.Accent, th.Accent)
+	if def.Accent != wui.Hex("#005FB8") || th != def {
+		t.Errorf("默认的强调色该是蓝：%v，选了蓝 %v", def.Accent, th.Accent)
 	}
 	a.St.Settings.Accent = ""
+	def = base(true)
+	applyAccent(a, &def)
+	if def.Accent != wui.Hex("#0078D4") || def.AccentText != wui.Hex("#ffffff") {
+		t.Errorf("深色蓝：%v，字 %v", def.Accent, def.AccentText)
+	}
+	a.St.Settings.Accent = "forest"
 	def = base(true)
 	applyAccent(a, &def)
 	if def.Accent != wui.Hex("#5DBB8C") || def.AccentText != wui.Hex("#0E1A14") {
@@ -141,7 +149,7 @@ func TestSelectedRowLook(t *testing.T) {
 		return m
 	}
 
-	// 实心、跟随系统：系统的强调色；默认（存成 ""）是森绿，不管系统
+	// 实心、跟随系统：系统的强调色；默认（存成 ""）是蓝，不管系统
 	a.St.Settings.SolidSelection = true
 	pink := wui.Hex("#D9366B")
 	tt.SetPreferences(wui.Preferences{Accent: pink})
@@ -150,8 +158,8 @@ func TestSelectedRowLook(t *testing.T) {
 		t.Errorf("跟随系统时选中行是 %v，系统的强调色 %v", sel, pink)
 	}
 	a.St.Settings.Accent = ""
-	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#2B7A57"), 3) {
-		t.Errorf("默认的选中行是 %v，应是森绿", sel)
+	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#005FB8"), 3) {
+		t.Errorf("默认的选中行是 %v，应是蓝", sel)
 	}
 
 	// 青绿实心：字是白的（最深的像素也就是青绿本身）

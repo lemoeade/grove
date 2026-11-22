@@ -50,7 +50,7 @@ const (
 	segIconW      = 30 // segIconTabs 每段的宽（侧栏顶上的四个图标靠左一组）
 )
 
-// 字号（侧栏的 sideFont / sideSub / sideMono / repoFont 在 sidebar.go）。12、12.5 不写数字（TestVisualConsts 扫源码），按用途取：
+// 字号（侧栏的 sideFont() / sideSub / sideMono / repoFont() 在 sidebar.go）。12、12.5 不写数字（TestVisualConsts 扫源码），按用途取：
 const (
 	barFont  = 12   // 标题栏（面包屑、快速打开）、卡片头标签、分段标签里的字，标签上的计数、终端标签的改名框
 	noteFont = 12   // 面板、对话框、设置、关于、起始页里小一号的字：说明、提示、复选框、小标题、问题列表的一行
@@ -364,6 +364,8 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 	b := wui.Row(c).Height(headerHeight).Padding(0, 4, 0, 10).Gap(6).AlignItems(wui.Center).Shrink(0).Cursor(wui.CursorPointer).
 		BorderWidth(0, 1, 0, 0).BorderColor(cardLine(t))
 	switch {
+	case active && vscode(): // VS Code：当前标签顶上一道强调色的线
+		b.Background(t.Background).Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, t.Accent, 0) })
 	case active:
 		b.Background(t.Background)
 	case b.Hovered():
@@ -374,6 +376,9 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 
 // focusBar 是分屏时当前那一格顶上 2 pt 的强调色条。两头让开卡片的圆角：通栏的话，条的平底在圆角那里被裁成一个斜茬。
 func focusBar(c *wui.Context) {
+	if vscode() { // 当前标签自己有一道线
+		return
+	}
 	wui.Box(c.Key("bar")).Absolute().Top(0).Left(cardRadius).Right(cardRadius).Height(2).Radius(1).
 		Background(c.Theme().Accent.Alpha(0.8))
 }
@@ -395,8 +400,11 @@ func panelTabColor(c *wui.Context, b wui.Element, active bool) wui.Color {
 	return t.TextMuted
 }
 
-// cardBg 是卡片的底色：浅色是主题的白底；深色是 #202023（app.CardDark），比窗口的材质亮一档。
+// cardBg 是卡片的底色：浅色是主题的白底；深色是 #202023（app.CardDark），比窗口的材质亮一档。VS Code 风格是编辑器的底。
 func cardBg(t *wui.Theme) wui.Color {
+	if vscode() {
+		return vsEditor(t)
+	}
 	if t.Dark {
 		return app.CardDark
 	}
@@ -405,6 +413,9 @@ func cardBg(t *wui.Theme) wui.Color {
 
 // cardLine 是卡片的描边和卡片头底下的线：浅色是字色 7%，深色是白 8%（一圈亮边）。
 func cardLine(t *wui.Theme) wui.Color {
+	if vscode() {
+		return vsLine(t)
+	}
 	if t.Dark {
 		return wui.RGBA(255, 255, 255, 0.08)
 	}
@@ -413,14 +424,20 @@ func cardLine(t *wui.Theme) wui.Color {
 
 // headerBg 是卡片头的底色：卡片色上浅色盖 3% 的黑、深色盖 3% 的白（混好的不透明色，卡片底透明时也一样）。
 func headerBg(t *wui.Theme) wui.Color {
+	if vscode() { // VS Code 的标签条和侧栏一色
+		return vsSide(t)
+	}
 	if t.Dark {
 		return cardBg(t).Mix(wui.Hex("#ffffff"), 0.03)
 	}
 	return cardBg(t).Mix(wui.Hex("#000000"), 0.03)
 }
 
-// windowBg 是不通透（柔和、纯色，或者系统不给材质）时窗口的底色：浅 #EDEDF0、深 #1F1F22。
+// windowBg 是不通透（柔和、纯色，或者系统不给材质）时窗口的底色：浅 #EDEDF0、深 #1F1F22；VS Code 风格是侧栏色。
 func windowBg(t *wui.Theme) wui.Color {
+	if vscode() {
+		return vsSide(t)
+	}
 	if t.Dark {
 		return wui.Hex("#1f1f22")
 	}
@@ -429,7 +446,7 @@ func windowBg(t *wui.Theme) wui.Color {
 
 // softBackdrop 是这一帧窗口底要不要画柔和底的色斑：设置里是柔和（默认）、窗口没有材质。
 func softBackdrop(a *app.App, c *wui.Context) bool {
-	return !c.Vibrancy() && a.St.Settings.Backdrop == ""
+	return !c.Vibrancy() && a.St.Settings.Backdrop == "" && !vscode()
 }
 
 // blob 是柔和底上的一团颜色：中心在窗口宽高的比例 (x, y)，大小 w×h pt 固定，颜色带着浓淡。
@@ -546,7 +563,7 @@ func sideWheel(a *app.App, c *wui.Context, st *wui.ListState, ev wui.InputEvent)
 	s := sideScroll(a, st)
 	rowH := a.TreeRowH
 	if rowH <= 0 {
-		rowH = treeRowH
+		rowH = treeRowH()
 	}
 	if !s.Wheel(ev.DY, rowH, ev.Time, c.Preferences().ReduceMotion) {
 		return s.S.MaxY > 0 // 到头了：吞掉（不交给 mygo 再缓动一下）
@@ -577,12 +594,30 @@ func withTheme(c *wui.Context, nt *wui.Theme, fn func()) {
 // fn 里建的元素用卡片的主题：底色换成卡片色，编辑器、Diff、浮在上面的小条跟卡片一色。
 func card(c *wui.Context, e wui.Element, fn func()) wui.Element {
 	t := c.Theme()
-	e.Background(cardBg(t)).Radius(cardRadius).Border(1, cardLine(t)).Clip()
-	if !t.Dark {
-		e.Shadow(shadowCard())
+	if vscode() { // 平的：没有圆角、阴影，一道 VS Code 的线
+		e.Background(cardBg(t)).Border(1, cardLine(t)).Clip()
+	} else {
+		e.Background(cardBg(t)).Radius(cardRadius).Border(1, cardLine(t)).Clip()
+		if !t.Dark {
+			e.Shadow(shadowCard())
+		}
 	}
 	ct := *t
 	ct.Background = cardBg(t)
+	withTheme(c, &ct, func() { e.Children(fn) })
+	return e
+}
+
+// panelCard 是底栏、右栏的卡片：Grove 风格同 card；VS Code 风格是侧栏色、不描边，和窗口底连成一片（VS Code 的面板、
+// 辅助侧栏），和编辑器组之间只有编辑器组那一道线。
+func panelCard(c *wui.Context, e wui.Element, fn func()) wui.Element {
+	if !vscode() {
+		return card(c, e, fn)
+	}
+	t := c.Theme()
+	e.Background(vsSide(t)).Clip()
+	ct := *t
+	ct.Background = vsSide(t)
 	withTheme(c, &ct, func() { e.Children(fn) })
 	return e
 }

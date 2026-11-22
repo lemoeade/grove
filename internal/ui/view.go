@@ -38,7 +38,12 @@ func root(a *app.App, c *wui.Context) {
 	a.TermFocused = false // 终端那一格画出来时再写（bottom.go 的 termPane，底栏和编辑器区的）
 	wui.Column(c).Fill().Children(func() {
 		titleBar(a, c.Key("title"))
-		wui.Row(c).Grow(1).MinHeight(0).AlignItems(wui.Stretch).Children(func() {
+		mid := wui.Row(c).Grow(1).MinHeight(0).AlignItems(wui.Stretch)
+		if vscode() { // VS Code：标题栏底下一道线（编辑器组贴着它，自己的上边线和它重合）
+			line := vsLine(t)
+			mid.Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, line, 0) })
+		}
+		mid.Children(func() {
 			if a.St.Sidebar {
 				if a.St.SidebarW == 0 {
 					a.St.SidebarW = defaultSidebarW
@@ -79,11 +84,14 @@ func rootBg(c *wui.Context, t *wui.Theme) wui.Color {
 // center 是侧栏右边的卡片：编辑器组和它下面的底栏，最右是右栏；卡片之间、卡片和窗口边之间是 6 pt 的缝，
 // 侧栏和卡片之间的缝是 root 里那个拖条；卡片底下的缝算在状态栏里（statusBar），底栏文字在卡片底边和窗口底边中间。
 func center(a *app.App, c *wui.Context) {
-	left := float32(0)
-	if !a.St.Sidebar {
-		left = cardGap
+	left, gap := float32(0), float32(cardGap)
+	if vscode() { // VS Code 风格：卡片贴着标题栏、窗口右边，不留缝
+		gap = 0
 	}
-	row := wui.Row(c).Grow(1).MinWidth(0).AlignItems(wui.Stretch).Padding(cardGap, cardGap, 0, left)
+	if !a.St.Sidebar {
+		left = gap
+	}
+	row := wui.Row(c).Grow(1).MinWidth(0).AlignItems(wui.Stretch).Padding(gap, gap, 0, left)
 	// 禅模式：窗口够宽时编辑器组最宽 ZenWidth、放在中间，两边露出窗口底；面板都关着时，连按两下没人接的 Esc 退出
 	// （登记在叠层上：编辑器的取消、查找条、对话框先拿 Esc，见 app.ZenEsc）
 	zen := a.Zen && c.Root().Bounds().W >= app.ZenWidth+2*app.ZenMargin

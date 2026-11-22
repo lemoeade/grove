@@ -135,7 +135,7 @@ func TestStickyWithoutRootRowDrawn(t *testing.T) {
 	if _, ok := u.tt.Find(bigPin); !ok {
 		t.Fatal("仓库行没画过时应该也钉着")
 	}
-	if a.TreeRootH == treeRowH {
+	if a.TreeRootH == treeRowH() {
 		t.Fatalf("仓库行的高还是估计的 %v", a.TreeRootH)
 	}
 }

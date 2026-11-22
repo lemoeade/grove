@@ -314,9 +314,8 @@ func TestCaretMargin(t *testing.T) {
 	st.SetScrollY(st.LineTop(50))
 	frames()
 	y0 := st.ScrollY()
-	target := st.LineTop(50) + viewH - 2.5*lh // 屏幕上离下边两行半，那一行的中间
-	line := 50 + int((viewH-2.5*lh)/lh)
-	tt.ClickAt(700, tab.Y+tab.H+float32(target-y0)+float32(lh/2))
+	line := 50 + int((viewH-2.5*lh)/lh) // 屏幕上离下边两行半的那一行，点它的中间
+	tt.ClickAt(700, tab.Y+tab.H+float32(st.LineTop(line)-y0+lh/2))
 	frames()
 	if got := st.CursorPos().Line; got != line {
 		t.Fatalf("点到了第 %d 行，想点第 %d 行", got+1, line+1)

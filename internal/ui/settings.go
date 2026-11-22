@@ -22,9 +22,10 @@ import (
 // 设置窗口里每一项可选的值（state.json 里存的）对应的名字；显示时过 i18n.T。
 var (
 	themeNames      = map[string]string{"": "跟随系统", "light": "浅色", "dark": "深色"}
+	lookNames       = map[string]string{"": "VS Code", "grove": "Grove"}
 	backdropNames   = map[string]string{"": "柔和", "flat": "纯色", "vibrancy": "通透"}
 	materialNames   = map[string]string{"": "侧栏", "under-window": "窗口下", "popover": "弹出层", "menu": "菜单", "glass": "玻璃"}
-	accentNames     = withDefault(map[string]string{"system": "跟随系统", "forest": "森绿", "steel": "钢蓝", "ink": "墨蓝", "graphite": "石墨", "teal": "青绿", "indigo": "靛紫"}, workspace.DefaultAccent)
+	accentNames     = withDefault(map[string]string{"system": "跟随系统", "blue": "蓝", "forest": "森绿", "steel": "钢蓝", "ink": "墨蓝", "graphite": "石墨", "teal": "青绿", "indigo": "靛紫"}, workspace.DefaultAccent)
 	indentNames     = map[string]string{"": "按语言", "tab": "Tab", "2": "2 个空格", "4": "4 个空格", "8": "8 个空格"}
 	wrapNames       = map[string]string{"": "Markdown 和纯文本", "all": "所有文件", "off": "关"}
 	whitespaceNames = map[string]string{"": "只在选中的文字里", "all": "全部", "trailing": "只在行尾", "none": "不显示"}
@@ -101,6 +102,9 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 		// 存的是反过来的那几个开关（零值 = 默认开）在画的时候翻过来。
 		rows := []settingRow{
 			{0, "外观", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Theme, workspace.Themes, themeNames, done) }},
+			{0, "风格", "VS Code 是不透明的平面和 VS Code 的代码配色；Grove 是窗口底上的圆角卡片，窗口底和材质只在 Grove 风格里用", func(c *wui.Context, l, d string) {
+				choice(c, l, d, &s.Look, workspace.Looks, lookNames, done)
+			}},
 			{0, "窗口底", "柔和是纯色底上几团淡淡的颜色；纯色一色到底；通透透出桌面的系统材质，稍费内存", func(c *wui.Context, l, d string) {
 				choice(c, l, d, &s.Backdrop, workspace.Backdrops, backdropNames, done)
 			}},

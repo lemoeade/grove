@@ -122,7 +122,7 @@ func TestHistoryGraph(t *testing.T) {
 	cellX := func() float32 { return find("修文档").X }
 	nodeY := func(subject string) float32 {
 		t.Helper()
-		return find(subject).Y + graphNodeY
+		return find(subject).Y + graphNodeY()
 	}
 	at := func(x, y float32) color.RGBA { return tt.Image().RGBAAt(int(x*s), int(y*s)) }
 	// count 数 (x0, y0)–(x1, y1) 这块里颜色接近 col 的像素

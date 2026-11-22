@@ -28,6 +28,7 @@ func TestBackdrop(t *testing.T) {
 	beta.Commit("初始提交")
 	a, tt, wait := newUI(t, testutil.Workspace(t, alpha.Root, beta.Root), "")
 	a.St.BottomBar = false
+	a.St.Settings.Look = "grove" // 窗口底只在 Grove 风格里用
 	for _, r := range a.Repos {
 		a.RefreshRepo(r, app.WhyManual)
 	}

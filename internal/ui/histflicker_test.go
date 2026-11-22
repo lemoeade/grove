@@ -25,7 +25,7 @@ func TestHistScrollKeepsWindowBg(t *testing.T) {
 		}
 	}
 	a, tt, _, r := histUI(t, repo, 64)
-	a.St.Settings.Backdrop = "flat" // 纯色窗口底：右栏卡片右边那道缝里就是 windowBg
+	a.St.Settings.Look, a.St.Settings.Backdrop = "grove", "flat" // Grove 风格的纯色窗口底：右栏卡片右边那道缝里就是 windowBg（VS Code 风格没有缝，贴边的是滚动条）
 	tt.SetSize(1100, 500)
 	tt.Frame()
 
