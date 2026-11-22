@@ -177,6 +177,8 @@ type Diff struct {
 	brackColors []wui.Color
 
 	ScrollY float32
+	glide   glide // 滚轮还在路上的那几格（glide.go）
+	still   bool  // 系统开了“减少动态效果”：滚轮一格一下跳过去，不滑
 	scrollX [2]float32
 	widest  [2]float32
 	w, h    float32  // 上一帧的大小（本地坐标），输入按它换算
@@ -1077,6 +1079,8 @@ func View(c *wui.Context, key any, d *Diff, s Style) wui.Element {
 	if !d.editable {
 		d.compose = ""
 	}
+	d.still = c.Preferences().ReduceMotion
+	d.stepGlide(c)
 	if d.w > 0 { // 跳到哪处在建视图时就滚过去：改动上那排按钮按滚好的位置摆（还没画过的等画的时候）
 		g := d.geomNow(&s)
 		d.applyWant(g)
@@ -1296,7 +1300,15 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 		return false
 	case wui.InputScroll:
 		y, x := d.ScrollY, d.scrollX
-		d.ScrollY += ev.DY
+		glided := false
+		switch {
+		case ev.DY == 0:
+		case !ev.Precise && !d.still: // 滚轮一格：滑过去（glide.go），这一帧先不挪
+			glided = d.wheel(ev.DY, g)
+		default:
+			d.glide.on = false
+			d.ScrollY += ev.DY
+		}
 		side := 0
 		if ev.X >= g.paneX[1] {
 			side = 1
@@ -1306,7 +1318,7 @@ func (d *Diff) input(ev wui.InputEvent, s *Style) bool {
 		}
 		d.scrollX[side] += ev.DX
 		d.clamp(g)
-		return d.ScrollY != y || d.scrollX != x
+		return glided || d.ScrollY != y || d.scrollX != x
 	case wui.InputPointerDown:
 		if ev.Button != 0 {
 			return false

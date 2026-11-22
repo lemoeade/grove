@@ -263,7 +263,7 @@ Diff 标签、比较标签和替换预览的样子由 `diffLook`（`ui/tabs.go`�
 Diff（并排、统一）默认用它：`useGed`（`ui/gedview.go`）让 Diff 标签、比较标签、替换预览都走它，Diff 里就地编辑时也是（`Style.Buf` 给了就能改，见下）；`WORKBENCH_GED=off`（`gedOn`）退回 mygo 的 `editor.DiffView`，测 mygo 那条路的测试用 `mygoDiff(t)` 钉住。
 模型在 `ged/diff.go`，不碰界面：`Align` 用 Myers（先去掉头尾一样的；超过 `diffMax` 步就不再配，整段当删加）把两边的行对齐成 `Row`（`Same` / `Changed` / `Deleted` / `Added`，
 一处删 d 行加 a 行时前 min(d, a) 行配成 `Changed`），`Folded` 把离改动 `Context`（3）行外的没改的段折成一行 `Fold`（折叠条上数字后面写 `Style.FoldScope` 给的、下面那处改动所在的函数：`changeAfter` 找那处改动在旧的一边的行，界面那边 `scopeAt` 查 `DiffOutline`，和 mygo 那个 Diff 的 `sepScope` 共用），`Words` 按词比出改了的行里改了哪几段字节（几乎全不一样时整行，去掉缩进）。
-视图在 `ged/view.go`：一个元素，自己管滚动（`ScrollY` 两边一起走，横着两边各滚各的），`Draw` 里只排、只画看得见的行；一行排好的 `TextLayout` 按（哪边，第几行）留着，换字体 / 颜色时作废；
+视图在 `ged/view.go`：一个元素，自己管滚动（`ScrollY` 两边一起走，横着两边各滚各的；鼠标滚轮的一格照 mygo 自己的滚动容器在 150 ms 里缓出地滑过去（`ged/glide.go`：建视图时按起点和曲线算这一帧的 `ScrollY`，连着几格接在一起、反方向立刻掉头，别的挪了 `ScrollY` 就不滑了；触控板照旧跟手，“减少动态效果”时一格一下跳），`Draw` 里只排、只画看得见的行；一行排好的 `TextLayout` 按（哪边，第几行）留着，换字体 / 颜色时作废；
 语法高亮用语言的 `Tokenizer`，每行开头的分词状态按需往下算；改了的字的底按 `TextLayout.SelectionRects` 量位置、涂满行高；对面留空的行画 45° 斜线（`StrokePolyline`，`Painter.Line` 只画横竖）；
 右边 14 pt 的概览条标改动，按住拖动滚。状态 `ged.Diff` 存在 `Doc.Ged`，`Set` 按两边缓冲区和版本认内容变没变。颜色由 `gedStyle` 按 Grove 的主题给，和 mygo 那个 Diff 一样。
 `SetFull` 跟着 `St.FullDiff`（全文时不折）。一处处改动是 `Hunks`（对齐后连着的非 `Same` 行，两边的行范围和 `editor.DiffHunk` 一样从 0 起、半开），
