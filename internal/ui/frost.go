@@ -12,7 +12,7 @@ import (
 
 // 磨砂：照 VS Code 的 workbench.modernUIFrostedGlass。浮在上面的面板（Grove 画的菜单、命令面板、对话框、
 // 编辑器的悬停提示和补全列表）不画纯色的底：先把窗口画在它底下的东西糊开 12（backdrop-filter: blur(12px)），
-// 再盖一层它原来那个底色的一部分（color-mix(in srgb, 底色 65%, transparent)；多少是设置里的“浮层不透明度”，frostAlpha）。糊的是窗口自己画的内容，不是窗口后面的桌面。
+// 再盖一层它原来那个底色的一部分（color-mix(in srgb, 底色 80%, transparent)；多少是设置里的“浮层不透明度”，frostAlpha）。糊的是窗口自己画的内容，不是窗口后面的桌面。
 // 系统开了“减少透明度”或“增强对比度”、或者不透明度设成 100 时退回纯色（canFrost）。
 const frostBlur = 12 // 糊开多少（mygo glass.Blur 的 Radius，同 CSS blur() 的标准差）
 

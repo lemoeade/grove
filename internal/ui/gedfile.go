@@ -608,7 +608,7 @@ func edCompletionList(a *app.App, c *wui.Context, d *docs.Doc, list []editor.Com
 			r := wui.Row(c.Key(i)).Height(rowH).Padding(0, 6).Gap(8).AlignItems(wui.Center).Radius(ctlRadius).
 				Cursor(wui.CursorPointer).Label(it.Label)
 			if i == cl.Sel {
-				r.Background(t.Accent.Alpha(softAlpha(t)))
+				r.Background(accentTint(t).Alpha(softAlpha(t)))
 			} else if r.Hovered() {
 				r.Background(toolFill(t, 0.06))
 			}

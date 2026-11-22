@@ -183,14 +183,15 @@ var (
 	Langs       = []string{"", "en"}
 )
 
-// DefaultAccent 是 Accent 存成 "" 时的强调色："blue" VS Code 蓝（之前是 "forest" 森绿，再之前是 "steel" 钢蓝、"system" 跟随系统，
+// DefaultAccent 是 Accent 存成 "" 时的强调色："black" 中性的黑（主按钮、焦点框、选中都不带颜色；之前是 "blue" VS Code 蓝，
+// 再之前是 "forest" 森绿、"steel" 钢蓝、"system" 跟随系统，
 // mygo 跟着系统设置里的强调色）。
 // 换默认只改这一行：Accents 里它存成 ""，存过的这个值读回来也成 ""；别的（包括跟随系统）存实名，换默认时不跟着变。
 // 以前选“跟随系统”存的也是 ""，和没选过分不开，所以那些都成了默认色。
-const DefaultAccent = "blue"
+const DefaultAccent = "black"
 
 // AccentKeys 是所有的强调色，设置下拉里就是这个顺序。
-var AccentKeys = []string{"system", "blue", "forest", "steel", "ink", "graphite", "teal", "indigo"}
+var AccentKeys = []string{"system", "black", "blue", "forest", "steel", "ink", "graphite", "teal", "indigo"}
 
 // accents 是设置里强调色可选的值：AccentKeys 的顺序，默认的那个存成 ""。
 func accents() []string {
@@ -217,9 +218,9 @@ var HistoryDayOpts = []int{7, 30, 90, 365}
 // LocalHistoryDays 是本地历史留几天。
 func (s Settings) LocalHistoryDays() int { return cmp.Or(s.HistoryDays, DefaultHistoryDays) }
 
-// DefaultFrost 是浮层磨砂时底色默认盖的百分数（Frost 为 0）。VS Code 的 modernUIFrostedGlassOpacity 默认 80，
-// 但 80% 的白盖在 #F8F8F8 的侧栏上几乎看不出透，取 65。
-const DefaultFrost = 65
+// DefaultFrost 是浮层磨砂时底色默认盖的百分数（Frost 为 0），照 VS Code 的 modernUIFrostedGlassOpacity 默认 80。
+// 以前取 65（看得出透），但底下的代码糊开后一团团带颜色（绿的注释、小地图的灰）透上来，命令面板显得脏。
+const DefaultFrost = 80
 
 // FrostPercent 是浮层底色盖的百分数（存的 0 是 DefaultFrost）。
 func (s Settings) FrostPercent() int { return cmp.Or(s.Frost, DefaultFrost) }

@@ -103,8 +103,9 @@ func TestAmendToggle(t *testing.T) {
 	wait("暂存", func() bool { return idle(r)() && r.Status.Staged == 1 })
 	r.CommitMsg = ""
 	tt.Frame()
-	if tt.HasText(i18n.Tf("提交 %s 个文件", "1")) {
-		t.Fatal("没写信息时不该有提交按钮")
+	// Grove 风格没写信息时框里没有提交按钮；VS Code 风格的“✓ 提交”一直在
+	if tt.HasText(i18n.Tf("提交 %s 个文件", "1")) != vscode() {
+		t.Fatalf("没写信息时提交按钮在不在不对（VS Code 风格=%v）", vscode())
 	}
 
 	// 前面排着一条慢命令，提交排在它后面：提交中，▾ 里那一项灰着

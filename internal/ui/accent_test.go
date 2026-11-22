@@ -36,14 +36,26 @@ func TestApplyAccent(t *testing.T) {
 	a.St.Settings.Accent = workspace.DefaultAccent
 	th := base(false)
 	applyAccent(a, &th)
-	if def.Accent != wui.Hex("#0069CC") || th != def {
-		t.Errorf("默认的强调色该是蓝：%v，选了蓝 %v", def.Accent, th.Accent)
+	if def.Accent != wui.Hex("#333333") || def.AccentText != wui.Hex("#ffffff") || th != def {
+		t.Errorf("默认的强调色该是黑：%v，选了黑 %v", def.Accent, th.Accent)
+	}
+	a.St.Settings.Accent = "blue"
+	th = base(false)
+	applyAccent(a, &th)
+	if th.Accent != wui.Hex("#0069CC") {
+		t.Errorf("蓝：%v", th.Accent)
+	}
+	a.St.Settings.Accent = "blue"
+	th = base(true)
+	applyAccent(a, &th)
+	if th.Accent != wui.Hex("#297AA0") || th.AccentText != wui.Hex("#ffffff") {
+		t.Errorf("深色蓝：%v，字 %v", th.Accent, th.AccentText)
 	}
 	a.St.Settings.Accent = ""
 	def = base(true)
 	applyAccent(a, &def)
-	if def.Accent != wui.Hex("#297AA0") || def.AccentText != wui.Hex("#ffffff") {
-		t.Errorf("深色蓝：%v，字 %v", def.Accent, def.AccentText)
+	if def.Accent != wui.Hex("#5C5C61") || def.AccentText != wui.Hex("#ffffff") {
+		t.Errorf("深色黑：%v，字 %v", def.Accent, def.AccentText)
 	}
 	a.St.Settings.Accent = "forest"
 	def = base(true)
@@ -149,7 +161,7 @@ func TestSelectedRowLook(t *testing.T) {
 		return m
 	}
 
-	// 实心、跟随系统：系统的强调色；默认（存成 ""）是蓝，不管系统
+	// 实心、跟随系统：系统的强调色；默认（存成 ""）是黑，不管系统
 	a.St.Settings.SolidSelection = true
 	pink := wui.Hex("#D9366B")
 	tt.SetPreferences(wui.Preferences{Accent: pink})
@@ -158,8 +170,8 @@ func TestSelectedRowLook(t *testing.T) {
 		t.Errorf("跟随系统时选中行是 %v，系统的强调色 %v", sel, pink)
 	}
 	a.St.Settings.Accent = ""
-	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#0069CC"), 3) {
-		t.Errorf("默认的选中行是 %v，应是蓝", sel)
+	if sel, _ := rowBg(frame()); !near(sel, wui.Hex("#333333"), 3) {
+		t.Errorf("默认的选中行是 %v，应是黑", sel)
 	}
 
 	// 青绿实心：字是白的（最深的像素也就是青绿本身）
@@ -242,4 +254,21 @@ func lightTheme() *wui.Theme {
 	th := wui.LightTheme()
 	applyAccent(&app.App{}, th)
 	return th
+}
+
+// 默认的黑强调色在 Grove 风格的列表里：深色时活动选中叠的是浅灰，比非活动选中亮（中灰叠上去反而更暗）。
+func TestSoftFillsNeutral(t *testing.T) {
+	defer vsLook.Store(vsLook.Load())
+	vsLook.Store(false)
+	th := wui.DarkTheme()
+	th.Accent = wui.Hex("#5C5C61")
+	bg := wui.Hex("#1f1f22")
+	f := softFills(th)
+	lum := func(c wui.Color) float32 {
+		m := bg.Mix(wui.RGBA(c.R, c.G, c.B, 1), float32(c.A)/255)
+		return float32(m.R) + float32(m.G) + float32(m.B)
+	}
+	if lum(f.active) <= lum(f.inactive) {
+		t.Errorf("深色黑强调色：活动选中 %v 该比非活动选中 %v 显眼", f.active, f.inactive)
+	}
 }

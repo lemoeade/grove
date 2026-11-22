@@ -153,7 +153,11 @@ func paletteRow(a *app.App, row wui.ListRow, it app.PaletteItem) bool {
 			wui.Spacer(c).Grow(1)
 			wui.Text(c, it.Detail).FontSize(11).TextColor(muted).SingleLine().Shrink(0)
 		case app.ItemSymbol:
-			wui.Text(c, symbolGlyph(it.Sym)).FontSize(noteFont).FontWeight(600).TextColor(muted).Width(14).Shrink(0)
+			glyph := muted
+			if !sel {
+				glyph = symbolColor(t, it.Sym, muted)
+			}
+			wui.Text(c, symbolGlyph(it.Sym)).FontSize(noteFont).FontWeight(600).TextColor(glyph).Width(14).Shrink(0)
 			if it.Loc != "" { // "#"：名字、签名，右边是在哪
 				hitSpans(c, it.Text, it.Hits, 0, 13, text, hl).Shrink(0).MaxWidth(360)
 				wui.Text(c, it.Detail).FontSize(11.5).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
@@ -196,14 +200,10 @@ func hitSpans(c *wui.Context, s string, hits []int, off int, size float32, color
 
 // hitText 和 hitSpans 一样，只是字号、颜色、粗细、删除线都跟着元素（调用方在返回的元素上设，文件树筛选的行用）。
 //
-// VS Code 风格照它的列表：命中的字不加底，换成 list.highlightForeground（#0069CC / #48A0C7）、加粗；在实心的强调色行上（hl 是 AccentText 调出来的）
-// 只加粗、字色跟着行。
+// VS Code 风格照它的列表命中不加底，但不换成它那个蓝（list.highlightForeground）：只加粗，字色跟着行。
 func hitText(c *wui.Context, s string, hits []int, off int, hl wui.Color) wui.Element {
 	var spans []wui.Span
-	vs, vsHit := vscode(), wui.Color{}
-	if t := c.Theme(); vs && (hl.R != t.AccentText.R || hl.G != t.AccentText.G || hl.B != t.AccentText.B) {
-		vsHit = vsHighlight(t)
-	}
+	vs := vscode()
 	plain := func(from, to int) {
 		if from < to {
 			spans = append(spans, wui.Span{Text: s[from:to]})
@@ -218,7 +218,7 @@ func hitText(c *wui.Context, s string, hits []int, off int, hl wui.Color) wui.El
 		plain(at, i)
 		n := search.RuneCeil(s, i+1) - i
 		if vs {
-			spans = append(spans, wui.Span{Text: s[i : i+n], Color: vsHit, Weight: 700})
+			spans = append(spans, wui.Span{Text: s[i : i+n], Weight: 700})
 		} else {
 			spans = append(spans, wui.Span{Text: s[i : i+n], Background: hl, Radius: 2})
 		}

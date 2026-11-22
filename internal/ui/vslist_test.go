@@ -76,7 +76,7 @@ func TestVSListSelection(t *testing.T) {
 	}
 }
 
-// VS Code 风格的筛选命中是 list.highlightForeground 的蓝（浅色 #0069CC）、加粗，不垫底色。
+// VS Code 风格的筛选命中只加粗：不垫底色，也不换成蓝的（行里没有带颜色的像素），和不命中的同名行比，字的墨迹多（粗了）。
 func TestVSHitText(t *testing.T) {
 	repo := testutil.NewRepo(t, "proj")
 	repo.Write("notes/docs.txt", "n\n")
@@ -95,17 +95,103 @@ func TestVSHitText(t *testing.T) {
 	if !ok {
 		t.Fatalf("找不到 docs.txt：%q", tt.Texts())
 	}
-	img := tt.Image()
-	blue := color.RGBA{0x00, 0x69, 0xcc, 255}
-	n := 0
-	for y := int(row.Y * scale); y < int((row.Y+row.H)*scale); y++ {
-		for x := int(row.X * scale); x < int((row.X+row.W)*scale); x++ {
-			if inkDist(img.RGBAAt(x, y), blue) <= 30 {
-				n++
+	ink := func() (dark, tinted int) {
+		img := tt.Image()
+		for y := int(row.Y * scale); y < int((row.Y+row.H)*scale); y++ {
+			for x := int((row.X + 40) * scale); x < int((row.X+row.W)*scale); x++ { // 跳过左边的图标
+				c := img.RGBAAt(x, y)
+				hi, lo := max(c.R, c.G, c.B), min(c.R, c.G, c.B)
+				if hi-lo > 40 {
+					tinted++
+				}
+				if int(c.R)+int(c.G)+int(c.B) < 300 {
+					dark++
+				}
 			}
 		}
+		return
 	}
-	if n < 40 {
-		t.Errorf("命中的字该是蓝的：docs.txt 那行只有 %d 个蓝像素", n)
+	hit, tinted := ink()
+	if tinted > 0 {
+		t.Errorf("命中的字该不换色：docs.txt 那行有 %d 个带颜色的像素", tinted)
+	}
+	a.SetFilter("")
+	wait("不筛选", func() bool { return tt.HasText("main.go") })
+	a.Reveal(a.Repos[0], "notes/docs.txt")
+	tt.Frame()
+	tt.Frame()
+	if row, ok = tt.Find("docs.txt"); !ok {
+		t.Fatalf("找不到 docs.txt：%q", tt.Texts())
+	}
+	if plain, _ := ink(); hit <= plain {
+		t.Errorf("命中的字该加粗：命中时 %d 个深色像素，不命中 %d", hit, plain)
+	}
+}
+
+// VS Code 风格的文件树：悬停块和选中一样满行、方的（左上角那个像素也垫着）；缩进参考线是 tree.indentGuidesStroke
+// （选中行的上一级那条 #A9A9A9，别的 40%），压在选中的灰底上只会更深，不会把底切出一条条浅色的缝。
+func TestVSTreeHoverGuides(t *testing.T) {
+	r0 := testutil.NewRepo(t, "vsguide")
+	for _, name := range []string{"dir/a.txt", "dir/sub/deep.txt", "dir/sub/other.txt", "dir/sub/third.txt"} {
+		r0.Write(name, "x\n")
+	}
+	r0.Commit("初始提交")
+	a, tt, wait := newUI(t, testutil.Workspace(t, r0.Root), "")
+	const scale = 2
+	tt.SetScale(scale)
+	a.St.BottomBar, a.St.RightBar = false, false
+	a.St.Settings.Look = ""
+	r := a.Repos[0]
+	a.RefreshRepo(r, app.WhyManual)
+	a.ShowSidebar(workspace.ModeFiles)
+	a.EnsureFiles(r)
+	wait("文件树", func() bool { return idle(r)() && r.Files.Loaded && tt.HasText("dir") })
+	a.Reveal(r, "dir/sub/deep.txt")
+	wait("选中 deep.txt", func() bool {
+		row, ok := a.TreeRowAt(a.FileSel)
+		return ok && row.Path == "dir/sub/deep.txt" && tt.HasText("third.txt")
+	})
+	a.FocusTree = true
+	find := func(name string) wui.Rect {
+		t.Helper()
+		b, ok := tt.Find(name)
+		if !ok {
+			t.Fatalf("找不到 %s：%q", name, tt.Texts())
+		}
+		return b
+	}
+	other := find("other.txt")
+	tt.Move(other.X+other.W-30, other.Y+other.H/2)
+	tt.Frame()
+	tt.Frame()
+	img := tt.Image()
+	px := func(x, y float32) color.RGBA { return img.RGBAAt(int(x*scale), int(y*scale)) }
+	near := func(c color.RGBA, w wui.Color, tol int) bool {
+		d := func(a, b uint8) int { return max(int(a)-int(b), int(b)-int(a)) }
+		return d(c.R, w.R) <= tol && d(c.G, w.G) <= tol && d(c.B, w.B) <= tol
+	}
+	black := wui.RGBA(0, 0, 0, 1)
+
+	hov := vsSideLight.Mix(black, 0x14/255.0)
+	if c := px(other.X+0.5, other.Y+0.5); !near(c, hov, 3) {
+		t.Errorf("悬停块的左上角是 %v，应是满行、方的悬停色 %v", c, hov)
+	}
+
+	deep, third := find("deep.txt"), find("third.txt")
+	act := vsSideLight.Mix(black, 0x25/255.0)
+	mid := deep.Y + deep.H/2
+	for k := 0; k < 3; k++ {
+		c := px(deep.X+guideX(k), mid)
+		if int(c.R)+int(c.G)+int(c.B) > int(act.R)+int(act.G)+int(act.B)+3 {
+			t.Errorf("选中行第 %d 级参考线那里是 %v，比选中的底 %v 浅：底被切开了", k, c, act)
+		}
+	}
+	guide := wui.Hex("#a9a9a9")
+	tm := third.Y + third.H/2
+	if c := px(third.X+guideX(2), tm); !near(c, guide, 6) {
+		t.Errorf("选中行上一级的参考线是 %v，应是 %v", c, guide)
+	}
+	if c := px(third.X+guideX(0), tm); !near(c, vsSideLight.Mix(guide, 0.4), 6) {
+		t.Errorf("别的参考线是 %v，应是 %v 的 40%%", c, guide)
 	}
 }

@@ -113,9 +113,9 @@ func TestZoomClamp(t *testing.T) {
 	}
 }
 
-// 浮层不透明度：Clamp 把默认值（65）和 50–100 之外的换回 0（存的 0 是 DefaultFrost），范围里的留着。
+// 浮层不透明度：Clamp 把默认值（80）和 50–100 之外的换回 0（存的 0 是 DefaultFrost），范围里的留着。
 func TestFrostClamp(t *testing.T) {
-	for in, want := range map[int]int{0: 0, DefaultFrost: 0, 49: 0, 101: 0, -1: 0, 50: 50, 80: 80, 100: 100} {
+	for in, want := range map[int]int{0: 0, DefaultFrost: 0, 49: 0, 101: 0, -1: 0, 50: 50, 70: 70, 100: 100} {
 		s := Settings{Frost: in}
 		if s.Clamp(); s.Frost != want {
 			t.Errorf("Clamp(frost %d) = %d，要 %d", in, s.Frost, want)

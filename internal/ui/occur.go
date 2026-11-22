@@ -30,7 +30,7 @@ func codeTheme(st *editor.State, t *wui.Theme) { softTheme(&st.Theme, t) }
 // VS Code 风格时整份换成 VS Code 的配色（vsCodeTheme）。
 func softTheme(th **editor.Theme, t *wui.Theme) {
 	if vscode() {
-		if ct := *th; ct != nil && ct.Text == vsCodeText(t) && ct.LineNumber == vsLineNumber(t) && ct.Background == vsEditor(t) {
+		if ct := *th; ct != nil && ct.Text == vsCodeText(t) && ct.LineNumber == vsLineNumber(t) && ct.Background == vsEditor(t) && ct.Selection == vsSelection(t) {
 			return
 		}
 		*th = fullCodeTheme(t)

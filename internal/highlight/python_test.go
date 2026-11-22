@@ -1,6 +1,7 @@
 package highlight
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui/editor"
@@ -172,4 +173,41 @@ func TestPythonDocstringPlace(t *testing.T) {
 			t.Errorf("第 %d 行 %q：%v，应为 %v", c.line+1, c.word, got, c.want)
 		}
 	}
+}
+
+// SetDocComments(false)（VS Code 风格）时 docstring 是字符串，跨行的后面几行也是；状态和画成注释时一样。
+func TestPythonDocstringAsString(t *testing.T) {
+	defer SetDocComments(true)
+	src := "def f():\n    \"\"\"第一行\n    第二行\n    \"\"\"\n    return 1\n"
+	SetDocComments(true)
+	_, _, endComment := tokenizeAll(Python().Tokenizer, src)
+	SetDocComments(false)
+	lines, toks := vueLines(t, Python().Tokenizer, src)
+	for _, c := range []struct {
+		line int
+		word string
+	}{{1, "第一行"}, {2, "第二行"}} {
+		if got := kindOf(t, lines, toks, c.line, c.word, 0); got != editor.TokenString {
+			t.Errorf("第 %d 行 %q：%v，应为字符串", c.line+1, c.word, got)
+		}
+	}
+	if got := kindOf(t, lines, toks, 4, "return", 0); got != editor.TokenKeyword {
+		t.Errorf("docstring 后面的 return：%v", got)
+	}
+	if _, _, end := tokenizeAll(Python().Tokenizer, src); end != endComment {
+		t.Errorf("两种画法的状态不一样：%x / %x", end, endComment)
+	}
+}
+
+// tokenizeAll 一行行分完 src，返回最后的状态。
+func tokenizeAll(tk editor.Tokenizer, src string) ([]string, [][]editor.Token, uint64) {
+	var st uint64
+	var lines []string
+	var all [][]editor.Token
+	for _, l := range strings.Split(src, "\n") {
+		var ts []editor.Token
+		ts, st = tk.Tokenize(l, st, nil)
+		lines, all = append(lines, l), append(all, ts)
+	}
+	return lines, all, st
 }

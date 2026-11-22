@@ -25,9 +25,9 @@ func gitView(a *app.App, c *wui.Context) {
 	}
 	wui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 		wui.Row(c).Padding(0, 8, 2, 14).Gap(2).AlignItems(wui.Center).Shrink(0).Children(func() {
-			wui.Text(c, i18n.T("变更")).FontSize(sideSub).FontWeight(600).TextColor(t.TextMuted)
+			wui.Text(c, i18n.T("变更")).FontSize(sideTitle()).FontWeight(600).TextColor(t.TextMuted)
 			if n := a.TotalChanges(); n > 0 {
-				wui.Text(c, strconv.Itoa(n)).FontSize(sideSub).TextColor(t.TextMuted.Alpha(0.7)).Margin(0, 0, 0, 4)
+				wui.Text(c, strconv.Itoa(n)).FontSize(sideTitle()).TextColor(t.TextMuted.Alpha(0.7)).Margin(0, 0, 0, 4)
 			}
 			wui.Spacer(c).Grow(1)
 			if a.AllGitOpen() {
@@ -861,6 +861,7 @@ const (
 	commitBtnH   = 22
 	commitBtnR   = 6
 	commitInset  = 5
+	vsCommitBtnH = 26 // VS Code 源代码管理里“✓ 提交”按钮的高
 )
 
 // commitRow 是仓库段里的提交框（工作树组头下面、改动分组上面）：一个框管到底。平时只有一行，看着就是输入框；
@@ -868,6 +869,10 @@ const (
 // 撤销上次提交（commitBoxMenu）。没写信息时指针移上来，框右边出一个小 ▾，同一个菜单。
 // ⌘↩ 和按钮一样；信息空着按 Esc 收起来，空着按 ↑ 翻以前写过的。
 func commitRow(a *app.App, row wui.ListRow, r *app.Repo) {
+	if vscode() {
+		vsCommitRow(a, row, r)
+		return
+	}
 	c := row.Context
 	t := c.Theme()
 	shown := r.CommitShown()
@@ -908,6 +913,79 @@ func commitRow(a *app.App, row wui.ListRow, r *app.Repo) {
 				commitFoot(a, c, r)
 			}
 		})
+	})
+}
+
+// vsCommitRow 是 VS Code 风格的提交框，照源代码管理视图：上面一个白底细边的输入框（input.background / input.border，
+// 和标题栏的快速打开一样的框），下面一个满宽的“✓ 提交”主按钮（button.background 是强调色），右边分出 ▾。
+// 按钮一直在：不能提交时画灰，没写信息时点它把键盘给输入框（VS Code 是弹框要信息）。按钮上的字同 commitLabel，
+// 和平常不一样的地方（修改提交、合并、在跑）写在按钮下面一行。
+func vsCommitRow(a *app.App, row wui.ListRow, r *app.Repo) {
+	c := row.Context
+	t := c.Theme()
+	wrap := wui.Column(c).Padding(2, 8, 6, 22).Gap(6)
+	if wrap.Hovered() {
+		a.GitHover = row.Index
+	}
+	wrap.Children(func() {
+		box := wui.Column(c.Key("box")).Radius(ctlRadius).Background(pick(t, wui.Hex("#ffffff"), wui.Hex("#191a1b"))).
+			Border(1, pick(t, wui.Hex("#d8d8d8").Alpha(0xaa/255.0), wui.Hex("#333536")))
+		if box.FocusWithin() {
+			box.BorderColor(t.Accent)
+		}
+		box.Children(func() {
+			if r.CommitShown() {
+				commitInput(a, c, r)
+			} else {
+				commitIdle(a, c, r)
+			}
+		})
+		vsCommitButton(a, c, r)
+		if hint, why := commitHint(r), app.CommitWhy(r); hint != why && hint != "" {
+			wui.Text(c, hint).FontSize(sideSub).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0)
+		}
+	})
+}
+
+// vsCommitButton 是 VS Code 风格提交框下面满宽的分裂按钮：左边“✓ 提交 …”，右边 ▾（commitBoxMenu）。
+func vsCommitButton(a *app.App, c *wui.Context, r *app.Repo) {
+	why := app.CommitWhy(r)
+	label := commitLabel(r)
+	tip := "git commit"
+	switch {
+	case r.Amend:
+		tip = "git commit --amend"
+	case r.CommitsAll():
+		tip = "git add -A && git commit"
+	}
+	full := withWhy(label, why) + "\n" + app.Tip(tip, "commit")
+	wui.Row(c.Key("split")).Height(vsCommitBtnH).Gap(1).Children(func() {
+		b := wui.ButtonBase(c.Key("commit")).Height(vsCommitBtnH).Grow(1).MinWidth(0).Gap(6).Padding(0, 10).AlignItems(wui.Center).Justify(wui.Center).
+			Radius(ctlRadius, 0, 0, ctlRadius).Label(label).Cursor(wui.CursorPointer)
+		tooltip(c, b, full)
+		fg := splitStyle(c, b, why != "")
+		b.Children(func() {
+			wui.Icon(c, iconTick).FontSize(iconRow).TextColor(fg)
+			wui.Text(c, label).FontSize(bodyFont).TextColor(fg).SingleLine().Ellipsis("…").MinWidth(0).Margin(0, 0, textNudge, 0)
+		})
+		if b.Clicked() {
+			switch {
+			case why == "":
+				a.UseRepo(r)
+				a.Commit(r)
+			case strings.TrimSpace(r.CommitMsg) == "" && !r.Committing():
+				a.OpenCommit(r)
+			}
+		}
+		more := i18n.T("更多提交操作")
+		m := wui.ButtonBase(c.Key("more")).Height(vsCommitBtnH).Width(vsCommitBtnH).Shrink(0).AlignItems(wui.Center).Justify(wui.Center).
+			Radius(0, ctlRadius, ctlRadius, 0).Label(more).Cursor(wui.CursorPointer)
+		tooltip(c, m, more)
+		mfg := splitStyle(c, m, why != "")
+		m.Children(func() {
+			wui.Icon(c, iconChevron).FontSize(iconInline).TextColor(mfg)
+		})
+		menuButton(a, c, m, menuOwner{"commit", r.Root}, func(m menu) { commitBoxMenu(a, m, r) })
 	})
 }
 

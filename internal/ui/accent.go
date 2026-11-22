@@ -18,7 +18,8 @@ import (
 // accentColors 是能选的强调色（跟随系统的 "system" 不在这里）：浅色、深色主题各一个；
 // darkText 是深色主题里强调色上的字，零值是白色（石墨的深色太浅，白字看不清）。
 var accentColors = map[string]struct{ light, dark, darkText wui.Color }{
-	"blue":     {wui.Hex("#0069CC"), wui.Hex("#297AA0"), wui.Color{}},        // 默认：VS Code 2026 的强调色（button.background），白字 5.4:1、深色 4.8:1
+	"black":    {wui.Hex("#333333"), wui.Hex("#5C5C61"), wui.Color{}},        // 默认：中性的黑（浅色白字 12.6:1；深色是中灰配白字 6.6:1，开关的白钮看得清），界面里不剩带颜色的强调
+	"blue":     {wui.Hex("#0069CC"), wui.Hex("#297AA0"), wui.Color{}},        // VS Code 2026 的强调色（button.background），白字 5.4:1、深色 4.8:1
 	"forest":   {wui.Hex("#2B7A57"), wui.Hex("#5DBB8C"), wui.Hex("#0E1A14")}, // 白字 5.2:1；深色的白字只有 2.3:1，换墨绿的深字（7.6:1）
 	"steel":    {wui.Hex("#4E6E8E"), wui.Hex("#8FA9C6"), wui.Hex("#18181B")}, // 白字 5.3:1；深色的太亮，白字只有 2.4:1，换深字
 	"ink":      {wui.Hex("#3B5B84"), wui.Hex("#7A9CC6"), wui.Color{}},
@@ -88,6 +89,9 @@ func newListLook(a *app.App, c *wui.Context, radius float32) *listLook {
 		lt := *l.real
 		lt.Accent, lt.AccentText = wui.Color{}, t.Text
 		lt.SurfaceHover = softFills(t).hover
+		if vscode() { // mygo 的列表按这份主题的圆角画悬停块：VS Code 的悬停和选中一样是满行、方的
+			lt.Radius = 0
+		}
 		l.list = &lt
 	}
 	return l
@@ -115,7 +119,7 @@ func softFills(t *wui.Theme) (f struct{ hover, inactive, active wui.Color }) {
 	if t.Dark {
 		f.hover, f.inactive = t.Text.Alpha(0.06), t.Text.Alpha(0.12)
 	}
-	f.active = t.Accent.Alpha(softAlpha(t))
+	f.active = accentTint(t).Alpha(softAlpha(t))
 	return f
 }
 

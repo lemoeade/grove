@@ -457,7 +457,7 @@ func pushMenu(a *app.App, m menu, r *app.Repo) {
 	}
 }
 
-// branchButton 是分支名的胶囊，点开是本地分支和远程分支的菜单，可以切换和新建。
+// branchButton 是分支名的胶囊（VS Code 风格是平放的字），点开是本地分支和远程分支的菜单，可以切换和新建。
 func branchButton(a *app.App, c *wui.Context, r *app.Repo) {
 	t := c.Theme()
 	label := r.Status.Branch
@@ -467,12 +467,20 @@ func branchButton(a *app.App, c *wui.Context, r *app.Repo) {
 	b := wui.ButtonBase(c).Label(i18n.Tf("分支 %s", r.Status.Branch)).Gap(5).AlignItems(wui.Center).Padding(2, 6, 2, 8).Radius(999).
 		Background(quietFill(t)).Cursor(wui.CursorPointer).MinWidth(0).Shrink(1).Margin(0, 4, 0, 0).
 		Tooltip(i18n.Tf("切换 %s 的分支", r.Name))
-	if b.Hovered() {
+	weight := 500
+	switch {
+	case vscode(): // VS Code 的标题栏上没有胶囊：平放的字，方一点的角，悬停才垫底（同标题栏的图标按钮）
+		b.Radius(ctlRadius).Background(wui.Transparent)
+		weight = 400
+		if b.Hovered() {
+			b.Background(toolFill(t, 0.08))
+		}
+	case b.Hovered():
 		b.Background(toolFill(t, 0.12))
 	}
 	b.Children(func() {
 		wui.Icon(c, iconBranch).FontSize(iconInline).TextColor(t.TextMuted)
-		wui.Text(c, label).FontSize(11).FontWeight(500).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Margin(0, 0, textNudge, 0)
+		wui.Text(c, label).FontSize(11).FontWeight(weight).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0).Margin(0, 0, textNudge, 0)
 		wui.Icon(c, iconChevron).FontSize(iconInline).TextColor(t.TextMuted)
 	})
 	if b.Clicked() {

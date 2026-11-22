@@ -91,7 +91,7 @@ func shadowMenu(t *wui.Theme) (x, y, blur, spread float32, c wui.Color) {
 	return 0, 6, 18, 0, wui.RGBA(0, 0, 0, 0.18)
 }
 
-// tipStyle 给提示框 tip 上统一的样子（同 mygo 的 Tooltip）：反色的底和字、圆角、内边距、小一号的字、阴影。
+// tipStyle 给提示框 tip 上统一的样子（同 mygo 的 Tooltip）：主题 Inverse 的底和字（Grove 风格是反色的，VS Code 风格是浮层的浅底加一道框）、圆角、内边距、小一号的字、阴影。
 // tooltip、文件树的行提示、菜单里灰着的项的原因都用它；宽度上限、位置由调用的人定。
 func tipStyle(t *wui.Theme, tip wui.Element) wui.Element {
 	fill, text := t.Inverse, t.InverseText // 同 mygo 的 Theme.inverse
@@ -101,8 +101,12 @@ func tipStyle(t *wui.Theme, tip wui.Element) wui.Element {
 	if text == wui.Transparent {
 		text = t.Background
 	}
-	return tip.Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).Background(fill).TextColor(text).
+	tip.Padding(t.Space(1.25), t.Space(2)).Radius(t.Space(1.25)).Background(fill).TextColor(text).
 		FontSize(t.FontSize - 1).Shadow(shadowTip())
+	if vscode() { // VS Code 的悬停提示是浅底，靠一道细框和底下分开
+		tip.Border(1, vsTipLine(t))
+	}
+	return tip
 }
 
 // raisedBg 是浮起来的一层的不透明底：浅色白，深色 #2C2C30（比卡片亮一档）。展开的提交那张卡片、Grove 画的菜单面板（gmenuBg）。

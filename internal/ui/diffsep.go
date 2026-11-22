@@ -37,7 +37,7 @@ func diffSep(c *wui.Context, sep wui.Element, s *editor.DiffSeparator, scope str
 				f := s.Font()
 				wui.Row(c).Gap(6).AlignItems(wui.Center).MinWidth(0).Shrink(1).Tooltip(i18n.Tf("下面的改动在：%s", scope)).Children(func() {
 					if kind != outline.Heading { // 标题那行自己带着 #
-						wui.Text(c, symbolGlyph(kind)).FontSize(sideSub).FontWeight(600).TextColor(t.TextMuted).Shrink(0)
+						wui.Text(c, symbolGlyph(kind)).FontSize(sideSub).FontWeight(600).TextColor(symbolColor(t, kind, t.TextMuted)).Shrink(0)
 					}
 					wui.Text(c, scope).Font(f.Family).FontSize(f.Size - 0.5).TextColor(ct.Text.Alpha(0.72)).
 						SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)

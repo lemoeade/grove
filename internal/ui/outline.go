@@ -27,7 +27,7 @@ func outlineView(a *app.App, c *wui.Context) {
 	}
 	wui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 		wui.Row(c).Padding(0, 8, 2, 14).Gap(6).AlignItems(wui.Center).Shrink(0).MinHeight(24).Children(func() {
-			wui.Text(c, i18n.T("大纲")).FontSize(sideSub).FontWeight(600).TextColor(t.TextMuted).Shrink(0)
+			wui.Text(c, i18n.T("大纲")).FontSize(sideTitle()).FontWeight(600).TextColor(t.TextMuted).Shrink(0)
 			title := ""
 			if d != nil {
 				title = d.Title
@@ -171,9 +171,11 @@ func visibleSymbol(tree *outline.Tree, st *wui.OutlineState[string], i int) int 
 // outlineRow 画大纲的一行：种类的小字、名字、灰着的 Detail。返回这一行被点了。
 func outlineRow(c *wui.Context, f *outline.Flat, sel bool) bool {
 	t := c.Theme()
-	fg, muted, glyph := t.Text, t.TextMuted, t.TextMuted // 种类的小字都是次级色
+	fg, muted, glyph := t.Text, t.TextMuted, t.TextMuted // 种类的小字是次级色，VS Code 风格按种类上色（symbolColor）
 	if sel {
 		fg, muted, glyph = t.AccentText, t.AccentText.Alpha(0.75), t.AccentText
+	} else {
+		glyph = symbolColor(t, f.Kind, glyph)
 	}
 	el := wui.Row(c).Gap(6).AlignItems(wui.Center).MinWidth(0).Grow(1).Label(symbolLabel(f)).Cursor(wui.CursorPointer)
 	clicked := el.Clicked()
@@ -202,6 +204,23 @@ func symbolGlyph(k outline.Kind) string {
 		return "§"
 	}
 	return "•"
+}
+
+// symbolColor 是种类小字的颜色。VS Code 风格照 VS Code 的符号图标（symbolIcon.*Foreground 的默认）：类橙、函数和方法紫、
+// 变量蓝，标题、类型、常量、一组是灰的（VS Code 里这几样跟着前景色，这里用次级色）；Grove 风格都是 muted。
+func symbolColor(t *wui.Theme, k outline.Kind, muted wui.Color) wui.Color {
+	if !vscode() {
+		return muted
+	}
+	switch k {
+	case outline.Class:
+		return pick(t, wui.Hex("#d67e00"), wui.Hex("#ee9d28"))
+	case outline.Func, outline.Method:
+		return pick(t, wui.Hex("#652d90"), wui.Hex("#b180d7"))
+	case outline.Var:
+		return pick(t, wui.Hex("#007acc"), wui.Hex("#75beff"))
+	}
+	return muted
 }
 
 // symbolLabel 是读屏念的：名字加上 Detail。

@@ -33,6 +33,7 @@ var (
 	iconHome     = icon("house")
 	iconMerge    = icon("git-merge")
 	iconCheck    = icon("check-circle")
+	iconTick     = icon("check") // VS Code 风格提交按钮上的 ✓
 	iconLayers   = icon("stack")
 	iconSparkle  = icon("sparkle")
 	iconCloud    = icon("cloud")

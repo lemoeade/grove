@@ -25,7 +25,7 @@ var (
 	lookNames       = map[string]string{"": "VS Code", "grove": "Grove"}
 	backdropNames   = map[string]string{"": "柔和", "flat": "纯色", "vibrancy": "通透"}
 	materialNames   = map[string]string{"": "侧栏", "under-window": "窗口下", "popover": "弹出层", "menu": "菜单", "glass": "玻璃"}
-	accentNames     = withDefault(map[string]string{"system": "跟随系统", "blue": "蓝", "forest": "森绿", "steel": "钢蓝", "ink": "墨蓝", "graphite": "石墨", "teal": "青绿", "indigo": "靛紫"}, workspace.DefaultAccent)
+	accentNames     = withDefault(map[string]string{"system": "跟随系统", "black": "黑", "blue": "蓝", "forest": "森绿", "steel": "钢蓝", "ink": "墨蓝", "graphite": "石墨", "teal": "青绿", "indigo": "靛紫"}, workspace.DefaultAccent)
 	indentNames     = map[string]string{"": "按语言", "tab": "Tab", "2": "2 个空格", "4": "4 个空格", "8": "8 个空格"}
 	wrapNames       = map[string]string{"": "Markdown 和纯文本", "all": "所有文件", "off": "关"}
 	whitespaceNames = map[string]string{"": "只在选中的文字里", "all": "全部", "trailing": "只在行尾", "none": "不显示"}

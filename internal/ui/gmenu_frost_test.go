@@ -54,7 +54,8 @@ func TestGroveMenuFrosted(t *testing.T) {
 	gamma.Commit("加 menu.txt")
 	k := newTreeKit(t, alpha.Root, beta.Root, gamma.Root)
 	tt := k.tt
-	k.a.St.Settings.Look = "grove" // Grove 风格的底更透，量得出磨砂；VS Code 风格最后量
+	k.a.St.Settings.Look = "grove"  // Grove 风格的底更透，量得出磨砂；VS Code 风格最后量
+	k.a.St.Settings.Accent = "blue" // 柔和窗口底的几团颜色跟着强调色，默认的黑在深色下是一片灰，糊开了和不透的底分不出
 	const winW = 1200
 	tt.SetSize(winW, 800)
 	tt.Frame()
@@ -98,7 +99,7 @@ func TestGroveMenuFrosted(t *testing.T) {
 		}
 	}
 	tt.SetPreferences(wui.Preferences{TextScale: 1})
-	// VS Code 风格也磨砂（底色 menu.background 盖 65%，和底下的侧栏、编辑器颜色差不多，量不出来——frostFill 的磨砂由 TestFrostFill 量）；
+	// VS Code 风格也磨砂（底色 menu.background 盖 80%，和底下的侧栏、编辑器颜色差不多，量不出来——frostFill 的磨砂由 TestFrostFill 量）；
 	// 减少透明度时是不透的 menu.background（#FAFAFD / #202122）
 	k.a.St.Settings.Look = ""
 	tt.SetPreferences(wui.Preferences{TextScale: 1, ReduceTransparency: true})

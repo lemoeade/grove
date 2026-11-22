@@ -85,7 +85,7 @@ func TestFileGlyph(t *testing.T) {
 		}
 		img := tt.Image()
 		bg := img.RGBAAt(int((row.X+row.W-20)*scale), int((row.Y+row.H/2)*scale))
-		runs := inkRuns(img, wui.Rect{X: row.X + 1, Y: row.Y + 1, W: row.W - 30, H: row.H - 2}, scale, bg, 3)
+		runs := dropGuides(inkRuns(img, wui.Rect{X: row.X + 1, Y: row.Y + 1, W: row.W - 30, H: row.H - 2}, scale, bg, 3), scale)
 		if len(runs) != 2 {
 			t.Fatalf("%s 那行的墨迹不是图标、名字两块：%v", name, runs)
 		}
@@ -186,7 +186,7 @@ func TestFolderTint(t *testing.T) {
 				t.Fatalf("%s 那行没画出来", dir)
 			}
 			bg = img.RGBAAt(int((sp.X+sp.W-20)*scale), int((sp.Y+sp.H/2)*scale))
-			runs := inkRuns(img, wui.Rect{X: sp.X + 1, Y: sp.Y + 1, W: sp.W - 30, H: sp.H - 2}, scale, bg, 3)
+			runs := dropGuides(inkRuns(img, wui.Rect{X: sp.X + 1, Y: sp.Y + 1, W: sp.W - 30, H: sp.H - 2}, scale, bg, 3), scale)
 			if len(runs) < 3 {
 				t.Fatalf("%s 那行的墨迹不是箭头、目录、名字：%v", dir, runs)
 			}
@@ -246,4 +246,16 @@ func TestQuietGlyph(t *testing.T) {
 			t.Errorf("dark=%v 选中块上：图形 %v、底块 %v", dark, on.ink, on.tile)
 		}
 	}
+}
+
+// dropGuides 去掉缩进参考线：1 pt 宽、竖着贯穿整行的那几块（VS Code 风格的线是 #A9A9A9 的 40%，够深，会被当成墨迹）。
+func dropGuides(runs []inkRun, scale float32) []inkRun {
+	out := runs[:0]
+	for _, r := range runs {
+		if float32(r.x1+1-r.x0) <= scale {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }

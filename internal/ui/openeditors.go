@@ -29,7 +29,7 @@ func openEditors(a *app.App, c *wui.Context, tools bool) {
 					ic.Rotate(90)
 				}
 			})
-			wui.Text(c, name).FontSize(sideSub).FontWeight(600).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0)
+			wui.Text(c, name).FontSize(sideTitle()).FontWeight(600).TextColor(t.TextMuted).SingleLine().Ellipsis("…").MinWidth(0)
 		})
 		if h.Clicked() {
 			a.ToggleOpenEditorsFolded()
@@ -81,7 +81,7 @@ func openEditorRow(a *app.App, c *wui.Context, r app.OpenEditorRow, indent float
 	case on:
 		el.Background(t.Accent)
 	case cur:
-		el.Background(t.Accent.Alpha(softAlpha(t)))
+		el.Background(accentTint(t).Alpha(softAlpha(t)))
 	case hover:
 		el.Background(toolFill(t, 0.06))
 	}

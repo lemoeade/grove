@@ -3,6 +3,7 @@ package highlight
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/egoist/mygo/ui/editor"
 )
@@ -12,7 +13,8 @@ import (
 //     注解 db: Session、默认值、关键字参数、行尾的 ): else: 全是红的）；
 //   - 点后面的名字（属性链、导入路径 sqlalchemy.orm）是普通变量，不是蓝色的属性；
 //   - self、cls 是斜体（mygo 算成函数，和函数调用一样紫）；
-//   - 文件开头或者以 : 结尾的那行（def、class）下面单独成行的三引号字符串（docstring）画成注释，跨行的一直到字符串结束。
+//   - 文件开头或者以 : 结尾的那行（def、class）下面单独成行的三引号字符串（docstring）画成注释，跨行的一直到字符串结束
+//     （SetDocComments(false) 时还是字符串：VS Code 的 Python 语法把 docstring 算字符串，VS Code 风格照它）。
 
 // 状态的高三位是 Grove 自己的（mygo 的分词器最多用 40 位）：pyDoc 正在一段 docstring 里，pyColon 上一行代码以 : 结尾，
 // pyCode 前面有过代码（不算空行和注释）。
@@ -22,6 +24,14 @@ const (
 	pyCode  = uint64(1) << 61
 	pyBits  = pyDoc | pyColon | pyCode
 )
+
+// docComments 是 docstring 画成注释（默认）还是字符串。只改词的类，不改状态，所以开着的编辑器下一帧就换过来。
+var docComments atomic.Bool
+
+func init() { docComments.Store(true) }
+
+// SetDocComments 设 Python 的 docstring 画成注释（true）还是字符串（false）。界面每帧按风格设。
+func SetDocComments(on bool) { docComments.Store(on) }
 
 type pyLexer struct{ base editor.Tokenizer }
 
@@ -52,6 +62,10 @@ func (p *pyLexer) Tokenize(line string, state uint64, tokens []editor.Token) ([]
 	}
 
 	bits := state & (pyColon | pyCode)
+	docKind := editor.TokenComment
+	if !docComments.Load() {
+		docKind = editor.TokenString
+	}
 	prev = 0
 	for i := range toks {
 		tk := &toks[i]
@@ -59,7 +73,7 @@ func (p *pyLexer) Tokenize(line string, state uint64, tokens []editor.Token) ([]
 		prev = tk.End
 		switch {
 		case doc:
-			tk.Kind = editor.TokenComment
+			tk.Kind = docKind
 		case tk.Kind == editor.TokenOperator && (w == ":" || w == "=" || w == "->"):
 			tk.Kind = editor.TokenPunctuation
 		case tk.Kind == editor.TokenProperty:
@@ -67,7 +81,7 @@ func (p *pyLexer) Tokenize(line string, state uint64, tokens []editor.Token) ([]
 		case tk.Kind == editor.TokenFunction && (w == "self" || w == "cls"):
 			tk.Kind = editor.TokenEmphasis
 		}
-		if w != "" && tk.Kind != editor.TokenComment {
+		if w != "" && tk.Kind != editor.TokenComment && !doc {
 			bits = pyCode
 			if strings.HasSuffix(w, ":") && tk.Kind == editor.TokenPunctuation {
 				bits |= pyColon

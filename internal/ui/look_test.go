@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 
 	"github.com/lemoeade/grove/internal/app"
+	"github.com/lemoeade/grove/internal/outline"
 )
 
 // 风格：默认（存成 ""）是 VS Code——字色、线色、底色、代码配色照 VS Code 的 2026 主题，卡片是平的；
@@ -20,9 +21,9 @@ func TestLook(t *testing.T) {
 			th = *wui.DarkTheme()
 		}
 		applyAccent(a, &th)
-		text, kw, bg := "#202020", "#cf222e", "#ffffff"
+		text, kw, bg := "#202020", "#0000ff", "#ffffff"
 		if dark {
-			text, kw, bg = "#bfbfbf", "#ff7b72", "#121314"
+			text, kw, bg = "#bfbfbf", "#569cd6", "#121314"
 		}
 		if !vscode() || th.Text != wui.Hex(text) || th.Background != wui.Hex(bg) || th.Border != vsLine(&th) {
 			t.Errorf("深色 %v：默认风格的字 %v、底 %v、线 %v", dark, th.Text, th.Background, th.Border)
@@ -43,7 +44,7 @@ func TestLook(t *testing.T) {
 	if vscode() || th.Text != want.Text || th.Background != want.Background || th.Border != want.Border {
 		t.Errorf("Grove 风格不该动字色、底色、线色：%v %v %v", th.Text, th.Background, th.Border)
 	}
-	// VS Code 2026 的代码配色和 mygo 默认的一样是 GitHub 那一套，认底色和正文色
+	// 认底色和正文色（Grove 风格是 mygo 默认的 GitHub 配色）
 	if ct := fullCodeTheme(&th); ct.Background == vsEditorDark || ct.Tokens[editor.TokenText].Color == vsCodeText(&th) {
 		t.Errorf("Grove 风格的代码用的还是 VS Code 配色：底 %v、字 %v", ct.Background, ct.Tokens[editor.TokenText].Color)
 	}
@@ -62,5 +63,46 @@ func TestVSScrollbarClear(t *testing.T) {
 		if s.Thumb.R != s.Thumb.G || s.Thumb.G != s.Thumb.B {
 			t.Errorf("dark=%v：滑块该是灰的：%v", th.Dark, s.Thumb)
 		}
+	}
+}
+
+// 深色里默认的黑强调色是中灰，编辑器选中的底换成浅灰叠上去（中灰叠在深底上看不出）；带颜色的强调色照旧用自己。
+func TestVSSelectionNeutralDark(t *testing.T) {
+	th := wui.DarkTheme()
+	th.Accent = wui.Hex("#5C5C61")
+	if got := vsSelection(th); got.R != 0xd4 || got.G != 0xd4 || got.B != 0xd4 {
+		t.Errorf("深色灰强调色的选中该叠浅灰：%v", got)
+	}
+	th.Accent = wui.Hex("#297AA0")
+	if got := vsSelection(th); got.R != 0x29 || got.B != 0xa0 {
+		t.Errorf("深色蓝强调色的选中该叠蓝：%v", got)
+	}
+	lt := wui.LightTheme()
+	lt.Accent = wui.Hex("#333333")
+	if got := vsSelection(lt); got.R != 0x33 {
+		t.Errorf("浅色黑强调色的选中该叠黑：%v", got)
+	}
+}
+
+// VS Code 风格的符号小字照 VS Code 的符号图标上色：类橙、函数紫、变量蓝，标题灰；Grove 风格都是次级色。
+func TestSymbolColor(t *testing.T) {
+	defer vsLook.Store(vsLook.Load())
+	th := wui.LightTheme()
+	muted := th.TextMuted
+	vsLook.Store(true)
+	for k, want := range map[outline.Kind]wui.Color{
+		outline.Class: wui.Hex("#d67e00"), outline.Func: wui.Hex("#652d90"), outline.Method: wui.Hex("#652d90"),
+		outline.Var: wui.Hex("#007acc"), outline.Heading: muted, outline.Type: muted,
+	} {
+		if got := symbolColor(th, k, muted); got != want {
+			t.Errorf("VS Code 风格 %s：%v，应为 %v", symbolGlyph(k), got, want)
+		}
+	}
+	if got := symbolColor(wui.DarkTheme(), outline.Class, muted); got != wui.Hex("#ee9d28") {
+		t.Errorf("深色的类：%v", got)
+	}
+	vsLook.Store(false)
+	if got := symbolColor(th, outline.Class, muted); got != muted {
+		t.Errorf("Grove 风格的类该是次级色：%v", got)
 	}
 }

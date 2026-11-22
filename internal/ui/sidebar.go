@@ -90,7 +90,7 @@ func filesView(a *app.App, c *wui.Context, tools bool) {
 			openEditors(a, c.Key("open"), tools)
 		}
 		wui.Row(c).Padding(0, 8, 2, 14).Gap(2).AlignItems(wui.Center).Shrink(0).Children(func() {
-			wui.Text(c, i18n.T("仓库")).FontSize(sideSub).FontWeight(600).TextColor(t.TextMuted).Grow(1)
+			wui.Text(c, i18n.T("仓库")).FontSize(sideTitle()).FontWeight(600).TextColor(t.TextMuted).Grow(1)
 			if !tools {
 				wui.Box(c).Size(0, toolSize).Shrink(0)
 				if a.AnyLoading() {
@@ -348,6 +348,17 @@ const (
 	sideMono = 12.5
 )
 
+// sideTitle 是侧栏视图标题（仓库、变更、大纲、打开的编辑器）的字号：VS Code 风格照 VS Code 的视图标题、分栏头 11、半粗，
+// Grove 风格和次要的字一样大。
+func sideTitle() float32 {
+	if vscode() {
+		return sideTitleVS
+	}
+	return sideSub
+}
+
+const sideTitleVS = 11
+
 // 文件树每级缩进、图标到名字的间距（照 VS Code 8 / 6，缩进取 10，参考线不挤）；
 // 目录 / 文件行的高见 look.go 的 treeRowH。
 const (
@@ -367,6 +378,8 @@ func guideX(k int) float32 {
 }
 
 // drawGuides 在 el（第 tr.Depth 级的一行）上画它上面各级的竖线：1 px 描边色，选中行的上一级那条用淡字色。
+// VS Code 风格照它的 tree.indentGuidesStroke（#A9A9A9，深色 #585858）：选中行的上一级那条是它，别的是它的 40%
+// （tree.inactiveIndentGuidesStroke）。半透明的线压在选中、悬停的灰底上是深一点，不会像不透的浅色线那样把底切成一条一条的。
 func drawGuides(el wui.Element, tr app.TreeRow, g treeGuides) {
 	if !g.on || tr.Depth < 1 {
 		return
@@ -377,10 +390,15 @@ func drawGuides(el wui.Element, tr app.TreeRow, g treeGuides) {
 	}
 	el.Draw(func(p *wui.Painter, r wui.Rect) {
 		t := p.Theme()
+		line, on := t.Border, t.TextMuted
+		if vscode() {
+			on = vsGuide(t)
+			line = on.Alpha(0.4)
+		}
 		for k := 0; k < depth; k++ {
-			col := t.Border
+			col := line
 			if k == hl {
-				col = t.TextMuted
+				col = on
 			}
 			p.Fill(wui.Rect{X: r.X + guideX(k) - 0.5, Y: r.Y, W: 1, H: r.H}, col, 0)
 		}

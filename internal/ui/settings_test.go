@@ -89,8 +89,8 @@ func TestSettingsWindow(t *testing.T) {
 	if a.St.Settings.Backdrop != "" || saved().Backdrop != "" {
 		t.Fatalf("换回柔和应存成空：%q", a.St.Settings.Backdrop)
 	}
-	// 强调色默认蓝；选中行用淡底默认开着，关掉存成 solidSelection
-	pick("蓝", "青绿")
+	// 强调色默认黑；选中行用淡底默认开着，关掉存成 solidSelection
+	pick("黑", "青绿")
 	if a.St.Settings.Accent != "teal" || saved().Accent != "teal" {
 		t.Fatalf("换强调色：%q 存的 %q", a.St.Settings.Accent, saved().Accent)
 	}
@@ -103,7 +103,7 @@ func TestSettingsWindow(t *testing.T) {
 	if a.St.Settings.Accent != "system" || saved().Accent != "system" {
 		t.Fatalf("跟随系统该存成 system：%q 存的 %q", a.St.Settings.Accent, saved().Accent)
 	}
-	pick("跟随系统", "蓝")
+	pick("跟随系统", "黑")
 	mustClick(t, st, "选中行用淡底")
 	if a.St.Settings.Accent != "" || a.St.Settings.SolidSelection || saved().Accent != "" || saved().SolidSelection {
 		t.Fatalf("换回默认应存成空：%q %v", a.St.Settings.Accent, a.St.Settings.SolidSelection)

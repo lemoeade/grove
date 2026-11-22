@@ -4,6 +4,8 @@ import (
 	"image/color"
 	"testing"
 
+	wui "github.com/egoist/mygo/ui"
+
 	"github.com/lemoeade/grove/internal/testutil"
 )
 
@@ -16,11 +18,13 @@ func TestTreeFilterHits(t *testing.T) {
 	repo.Write("main.go", "package main\n")
 	repo.Commit("init")
 	a, tt, wait := filesUI(t, testutil.Workspace(t, repo.Root), "main.go")
-	a.St.Settings.Look = "grove" // 命中垫底色是 Grove 风格的；VS Code 风格是蓝的粗字（TestVSHitText）
+	a.St.Settings.Look = "grove"  // 命中垫底色是 Grove 风格的；VS Code 风格只加粗（TestVSHitText）
+	a.St.Settings.Accent = "blue" // 默认的黑强调色垫出来是灰，和字的灰边分不开；换成蓝量位置
 	tt.Move(700, 400)
 	const scale = 2
 	tt.SetScale(scale)
-	th := lightTheme()
+	th := wui.LightTheme()
+	applyAccent(a, th)
 	// hl 量 name 那行垫着命中底色的像素：个数和最左的 x（DIP）
 	hl := func(name string) (n int, left float32) {
 		t.Helper()

@@ -24,6 +24,7 @@ func TestSelectedRowStates(t *testing.T) {
 	tt.SetScale(scale)
 	a.St.BottomBar, a.St.RightBar = false, false
 	a.St.Settings.Look, a.St.Settings.Backdrop = "grove", "flat" // 三档淡填充是 Grove 风格的；VS Code 风格照它的颜色（TestVSListSelection）
+	a.St.Settings.Accent = "blue"                                // 量活动选中带不带强调色的色相；默认的黑没有色相（TestSoftFillsNeutral）
 	r := a.Repos[0]
 	a.RefreshRepo(r, app.WhyManual)
 	a.ShowSidebar(workspace.ModeFiles)

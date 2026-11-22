@@ -66,8 +66,8 @@ func TestScreenshotAppearance(t *testing.T) {
 	}
 
 	a, tt, wait := fresh()
-	if a.St.Settings.Accent != "" || workspace.DefaultAccent != "forest" {
-		t.Fatalf("强调色 %q / 默认 %q，该是默认的森绿", a.St.Settings.Accent, workspace.DefaultAccent)
+	if a.St.Settings.Accent != "" || workspace.DefaultAccent != "black" {
+		t.Fatalf("强调色 %q / 默认 %q，该是默认的黑", a.St.Settings.Accent, workspace.DefaultAccent)
 	}
 	r := a.Repos[0]
 	a.ExpandChanged(r)

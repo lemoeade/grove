@@ -191,7 +191,19 @@ func TestCommitButton(t *testing.T) {
 		r.CommitMsg = ""
 		tt.Frame()
 		label := i18n.Tf("提交 %s 个文件", strconv.Itoa(want))
-		if tt.HasText(label) {
+		// Grove 风格没写信息时框里没有按钮；VS Code 风格的“✓ 提交”一直在，灰着，点了把键盘给输入框、不提交
+		if vscode() {
+			if !tt.HasText(label) {
+				t.Fatal("VS Code 风格没写信息时也该有提交按钮")
+			}
+			r.CommitOpen = false
+			tt.Frame()
+			_ = tt.Click(label)
+			tt.Frame()
+			if !r.CommitOpen || r.Committing() {
+				t.Errorf("没写信息点提交该展开输入框、不提交：open=%v committing=%v", r.CommitOpen, r.Committing())
+			}
+		} else if tt.HasText(label) {
 			t.Fatal("没写信息时框里不该有提交按钮")
 		}
 		r.CommitMsg = "一百二十个"
@@ -207,7 +219,7 @@ func TestCommitButton(t *testing.T) {
 		if btn.X+btn.W > box.X+box.W+0.5 {
 			t.Errorf("%d 个文件：提交按钮 %v 超出了输入框 %v 的右边", want, btn, box)
 		}
-		if btn.H > midToolSize {
+		if hmax := float32(midToolSize); btn.H > hmax && !vscode() || btn.H > vsCommitBtnH {
 			t.Errorf("提交按钮高了: %v", btn)
 		}
 	}
