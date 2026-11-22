@@ -48,3 +48,19 @@ func TestLook(t *testing.T) {
 		t.Errorf("Grove 风格的代码用的还是 VS Code 配色：底 %v、字 %v", ct.Background, ct.Tokens[editor.TokenText].Color)
 	}
 }
+
+// VS Code 风格的滚动条轨道透明、滑块淡（静止时不超过 25%，悬停、拖着时一档比一档深，最深也不到 60%）。
+func TestVSScrollbarClear(t *testing.T) {
+	for _, th := range []*wui.Theme{wui.LightTheme(), wui.DarkTheme()} {
+		s := vsScrollbar(th)
+		if s.Track.A != 0 {
+			t.Errorf("dark=%v：轨道该是透明的：%v", th.Dark, s.Track)
+		}
+		if s.Thumb.A == 0 || s.Thumb.A > 0x40 || s.Hover.A <= s.Thumb.A || s.Active.A <= s.Hover.A || s.Active.A >= 0x99 {
+			t.Errorf("dark=%v：滑块该是通透的灰、一档比一档深：%v / %v / %v", th.Dark, s.Thumb, s.Hover, s.Active)
+		}
+		if s.Thumb.R != s.Thumb.G || s.Thumb.G != s.Thumb.B {
+			t.Errorf("dark=%v：滑块该是灰的：%v", th.Dark, s.Thumb)
+		}
+	}
+}

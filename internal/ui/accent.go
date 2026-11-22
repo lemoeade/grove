@@ -170,24 +170,10 @@ func (l *listLook) rowAt(c *wui.Context, i int, sel, focused bool, fn func()) {
 		}
 		bar := l.real.Accent
 		rad := l.real.Radius
-		if vscode() { // VS Code 的列表：满行、方的；活动选中不画竖条，描一道 1 pt focusBorder 的框（list.focusOutline），连着选中的几行框成一块
-			bar = vsFocus(l.real)
+		if vscode() { // VS Code 的列表：满行、方的；活动选中只是深一档的灰，不画竖条，也不描 VS Code 那道 focusOutline 的蓝框（太花）
 			box := wui.Box(c).Shrink(0).Children(fn)
 			if sel {
-				box.Draw(func(p *wui.Painter, r wui.Rect) {
-					p.Fill(r, fill, 0)
-					if !active {
-						return
-					}
-					p.Fill(wui.Rect{X: r.X, Y: r.Y, W: 1, H: r.H}, bar, 0)
-					p.Fill(wui.Rect{X: r.X + r.W - 1, Y: r.Y, W: 1, H: r.H}, bar, 0)
-					if !(i > 0 && l.chosen[i-1]) {
-						p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, bar, 0)
-					}
-					if !(i >= 0 && l.chosen[i+1]) {
-						p.Fill(wui.Rect{X: r.X, Y: r.Y + r.H - 1, W: r.W, H: 1}, bar, 0)
-					}
-				})
+				box.Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(r, fill, 0) })
 			}
 			return
 		}

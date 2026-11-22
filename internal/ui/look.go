@@ -37,9 +37,6 @@ var (
 	vsLineLight, vsLineDark     = wui.Hex("#f0f1f2"), wui.Hex("#2a2b2c")
 )
 
-// vsFocus 是 VS Code 2026 的 focusBorder（列表的焦点框、菜单高亮项的框）：浅色就是强调色 #0069CC，深色比按钮亮一档的 #3994BC。
-func vsFocus(t *wui.Theme) wui.Color { return pick(t, wui.Hex("#0069cc"), wui.Hex("#3994bc")) }
-
 // vsActiveLine 是当前标签顶上、底栏当前标题底下那道线（tab.activeBorderTop、panelTitle.activeBorder）：浅色是黑的，深色 #3994BC。
 func vsActiveLine(t *wui.Theme) wui.Color { return pick(t, wui.Hex("#000000"), wui.Hex("#3994bc")) }
 
@@ -86,15 +83,12 @@ func applyLook(t *wui.Theme) {
 }
 
 // vsScrollbar 是 VS Code 的滚动条：方的、贴着两头、10 宽（列表和编辑器；Diff 自己的概览条 14 宽），
-// 半透明的灰（scrollbarSlider.background / hoverBackground / activeBackground：#646464 的 75% / 82% / 88%，深色 #A8A9AA 的 52% / 56% / 61%），
-// 悬停、拖着时深一档。
+// 轨道透明，滑块是淡淡的灰：不照 2026 主题那块几乎不透的（#646464 的 75%），比 VS Code 以前的默认主题（Light+ / Dark+，40%）
+// 还淡：#646464（深色 #797979）的 25%，悬停 40%、拖着 55%，盖在代码上底下的字看得清。
 func vsScrollbar(t *wui.Theme) wui.ScrollbarStyle {
 	s := wui.ScrollbarStyle{TrackWidth: 10, ThumbWidth: 10, Square: true, Flush: true, MinLength: 20}
-	if t.Dark {
-		s.Thumb, s.Hover, s.Active = wui.RGBA(168, 169, 170, 0x85/255.0), wui.RGBA(168, 169, 170, 0x90/255.0), wui.RGBA(168, 169, 170, 0x9c/255.0)
-	} else {
-		s.Thumb, s.Hover, s.Active = wui.RGBA(100, 100, 100, 0xc0/255.0), wui.RGBA(100, 100, 100, 0xd0/255.0), wui.RGBA(100, 100, 100, 0xe0/255.0)
-	}
+	g := uint8(pickF(t, 100, 121))
+	s.Thumb, s.Hover, s.Active = wui.RGBA(g, g, g, 0x40/255.0), wui.RGBA(g, g, g, 0x66/255.0), wui.RGBA(g, g, g, 0x8c/255.0)
 	return s
 }
 

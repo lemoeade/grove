@@ -12,7 +12,7 @@ import (
 )
 
 // VS Code 风格的侧栏列表：行满宽、方的；非活动选中是 #DADADA 60% 盖在侧栏的 #FAFAFD 上（list.inactiveSelectionBackground），
-// 活动选中是黑 15% 的灰底加一道 1 pt focusBorder（#0069CC）的框（list.focusOutline），没有 Grove 那道 3 pt 的竖条。
+// 活动选中是黑 15% 的灰底，不描 VS Code 的 focusOutline 蓝框，也没有 Grove 那道 3 pt 的竖条：整行一个颜色。
 func TestVSListSelection(t *testing.T) {
 	r0 := testutil.NewRepo(t, "vslist")
 	for _, name := range []string{"go.mod", "main.go", "zz.txt"} {
@@ -65,15 +65,14 @@ func TestVSListSelection(t *testing.T) {
 
 	a.FocusTree = true
 	px, row = shot()
-	accent := wui.Hex("#0069cc")
-	if c := px(row.X+0.25, mid); !near(c, accent, 6) {
-		t.Errorf("活动选中左边的框是 %v，应是强调色 %v", c, accent)
-	}
-	if c := px(row.X+row.W/2, row.Y+0.25); !near(c, accent, 6) {
-		t.Errorf("活动选中顶上的框是 %v，应是强调色 %v", c, accent)
-	}
-	if c := px(row.X+4, mid); near(c, accent, 24) {
-		t.Errorf("活动选中不该有竖条：左头往里 4 pt 是 %v", c)
+	act := vsSideLight.Mix(wui.RGBA(0, 0, 0, 1), 0x25/255.0)
+	for _, p := range []struct {
+		name string
+		x, y float32
+	}{{"左边", row.X + 0.25, mid}, {"左头往里 4 pt", row.X + 4, mid}, {"顶上", row.X + row.W/2, row.Y + 0.25}, {"右头", row.X + row.W - 12, mid}} {
+		if c := px(p.x, p.y); !near(c, act, 4) {
+			t.Errorf("活动选中的%s是 %v，应是一色的灰 %v（没有框、没有竖条）", p.name, c, act)
+		}
 	}
 }
 
