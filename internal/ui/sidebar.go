@@ -882,7 +882,11 @@ func stickyStack(a *app.App, c *wui.Context, rows []app.TreeRow, box wui.Rect) {
 	for k := len(layers) - 1; k >= 0; k-- { // 深的先画：被顶出去的那层滑到上一层底下
 		l := layers[k]
 		tr := rows[l.i]
-		pin := wui.Box(c.Key(tr.Key())).Absolute().Top(l.y).Left(0).Right(0).PaddingX(4).Background(cardBg(t))
+		bg := cardBg(t)
+		if vscode() { // VS Code 的侧栏是平的 #F8F8F8，吸顶栈和它一色，只靠底下的阴影分开
+			bg = vsSide(t)
+		}
+		pin := wui.Box(c.Key(tr.Key())).Absolute().Top(l.y).Left(0).Right(0).PaddingX(sidePadX()).Background(bg)
 		if k == low {
 			// 和编辑器的粘性滚动一样是柔和的阴影、不画硬边线：被顶住一半的那行读起来是从栈底下滚过去的。
 			// 往上、往两边的那点被上面的层和列表的 Clip 盖住

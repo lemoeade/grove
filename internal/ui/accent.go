@@ -79,6 +79,11 @@ func newListLook(a *app.App, c *wui.Context, radius float32) *listLook {
 		rt.Radius = radius
 		l.list, l.real = &rt, &rt
 	}
+	if vscode() && !l.soft && t.Radius != 0 { // VS Code 风格的选中块是方的；行里的按钮、胶囊还按真的主题的圆角
+		lt := *t
+		lt.Radius = 0
+		l.list = &lt
+	}
 	if l.soft {
 		lt := *l.real
 		lt.Accent, lt.AccentText = wui.Color{}, t.Text
@@ -99,6 +104,11 @@ func softAlpha(t *wui.Theme) float32 {
 // softFills 是淡底列表行的三档底色：悬停是字色 4%（深色 6%），非活动选中是字色 8%（深色 12%），
 // 活动选中是强调色 softAlpha。深色主题里 mygo 的 SurfaceHover 和淡底的选中几乎一样亮，所以悬停也换掉。
 func softFills(t *wui.Theme) (f struct{ hover, inactive, active wui.Color }) {
+	if vscode() { // VS Code 的 list.hoverBackground、list.inactiveSelectionBackground；活动选中另外描一道强调色的框（rowAt）
+		f.hover, f.inactive = pick(t, wui.Hex("#e8e8e8"), wui.Hex("#2a2d2e")), pick(t, wui.Hex("#e4e6f1"), wui.Hex("#37373d"))
+		f.active = t.Accent.Alpha(softAlpha(t))
+		return f
+	}
 	f.hover, f.inactive = t.Text.Alpha(0.04), t.Text.Alpha(0.08)
 	if t.Dark {
 		f.hover, f.inactive = t.Text.Alpha(0.06), t.Text.Alpha(0.12)
@@ -158,6 +168,26 @@ func (l *listLook) rowAt(c *wui.Context, i int, sel, focused bool, fn func()) {
 		}
 		bar := l.real.Accent
 		rad := l.real.Radius
+		if vscode() { // VS Code 的列表：满行、方的；活动选中不画竖条，描一道 1 pt 强调色的框（list.focusOutline），连着选中的几行框成一块
+			box := wui.Box(c).Shrink(0).Children(fn)
+			if sel {
+				box.Draw(func(p *wui.Painter, r wui.Rect) {
+					p.Fill(r, fill, 0)
+					if !active {
+						return
+					}
+					p.Fill(wui.Rect{X: r.X, Y: r.Y, W: 1, H: r.H}, bar, 0)
+					p.Fill(wui.Rect{X: r.X + r.W - 1, Y: r.Y, W: 1, H: r.H}, bar, 0)
+					if !(i > 0 && l.chosen[i-1]) {
+						p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, bar, 0)
+					}
+					if !(i >= 0 && l.chosen[i+1]) {
+						p.Fill(wui.Rect{X: r.X, Y: r.Y + r.H - 1, W: r.W, H: 1}, bar, 0)
+					}
+				})
+			}
+			return
+		}
 		box := wui.Box(c).Shrink(0).Radius(rad).Children(fn)
 		if sel {
 			box.Draw(func(p *wui.Painter, r wui.Rect) {

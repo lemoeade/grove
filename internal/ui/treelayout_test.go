@@ -123,6 +123,7 @@ func TestTreeSizes(t *testing.T) {
 	repo.Write("n0.cs", "package main\n")
 	repo.Commit("init")
 	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), "")
+	a.St.Settings.Look = "grove" // 量的是 Grove 风格的内缩（列表左右各留 4）；VS Code 风格的行满宽，整体左移 4
 	a.ShowSidebar(workspace.ModeFiles)
 	r := a.Current()
 	a.EnsureFiles(r)

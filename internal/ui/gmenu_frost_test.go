@@ -54,6 +54,7 @@ func TestGroveMenuFrosted(t *testing.T) {
 	gamma.Commit("加 menu.txt")
 	k := newTreeKit(t, alpha.Root, beta.Root, gamma.Root)
 	tt := k.tt
+	k.a.St.Settings.Look = "grove" // 磨砂是 Grove 风格的；VS Code 风格的不透，最后量
 	const winW = 1200
 	tt.SetSize(winW, 800)
 	tt.Frame()
@@ -97,5 +98,17 @@ func TestGroveMenuFrosted(t *testing.T) {
 		}
 	}
 	tt.SetPreferences(wui.Preferences{TextScale: 1})
+	// VS Code 风格：不透，底是编辑器的底（白 / #1F1F1F）
+	k.a.St.Settings.Look = ""
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		want := vsEditorLight
+		if dark {
+			want = vsEditorDark
+		}
+		if c := at(); !same(c, want) {
+			t.Errorf("dark=%v：VS Code 风格的菜单该是不透的 %v，量到 %v", dark, want, c)
+		}
+	}
 	tt.SetDark(false)
 }

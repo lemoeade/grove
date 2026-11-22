@@ -315,7 +315,11 @@ func segIconTabs(c *wui.Context, sel *int, segs ...seg) wui.Element {
 func segTabsOf(c *wui.Context, sel *int, iconOnly bool, segs []seg) wui.Element {
 	t := c.Theme()
 	p := wui.SegmentedBase(c, sel, len(segs))
+	flat := iconOnly && vscode() // VS Code 风格的视图切换照它放在顶上的活动栏：没有胶囊，图标平放，当前那个字色深、底下一道线
 	p.Track.Height(26).Padding(2).Gap(2).Radius(7).Background(t.Text.Alpha(0.055)).AlignItems(wui.Stretch).MinWidth(0)
+	if flat {
+		p.Track.Height(toolSize).Padding(0).Radius(0).Background(wui.Color{})
+	}
 	p.Track.Children(func() {
 		for i, sg := range segs {
 			s := p.Segment(i).MinWidth(0).Radius(ctlRadius)
@@ -331,6 +335,15 @@ func segTabsOf(c *wui.Context, sel *int, iconOnly bool, segs []seg) wui.Element 
 			}
 			fg := t.TextMuted
 			switch {
+			case flat && i == *sel:
+				fg = t.Text
+				s.Draw(func(p *wui.Painter, r wui.Rect) {
+					p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, t.Text, 0)
+				})
+			case flat:
+				if s.Hovered() {
+					fg = t.Text
+				}
 			case i == *sel:
 				s.Background(t.Background).Shadow(shadowRaised())
 				fg = t.Text
@@ -370,6 +383,20 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 		b.Background(t.Background)
 	case b.Hovered():
 		b.Background(toolFill(t, 0.06))
+	}
+	return b
+}
+
+// panelTitle 是底栏标题行里的标签（终端、输出、问题）。Grove 风格同 panelTab；VS Code 风格照它面板的标题：
+// 不分格、不垫底色，当前的那个字深、底下一道 1 pt 强调色的线（panelTitle.activeBorder），别的字淡、悬停变深。
+func panelTitle(c *wui.Context, active bool) wui.Element {
+	if !vscode() {
+		return panelTab(c, active)
+	}
+	t := c.Theme()
+	b := wui.Row(c).Height(headerHeight).Padding(0, 4, 0, 10).Gap(6).AlignItems(wui.Center).Shrink(0).Cursor(wui.CursorPointer)
+	if active {
+		b.Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X + 6, Y: r.Y + r.H - 1, W: r.W - 12, H: 1}, t.Accent, 0) })
 	}
 	return b
 }
@@ -526,14 +553,14 @@ func underBackdrop(a *app.App, c *wui.Context, el wui.Element) {
 // 一格走一个行高（mygo 一行是 40，等于 1.67 个树行，加速后一次好几行，缓动又前重后轻，一顿一顿的），往累计的目标滑。
 // 列表自己还要接别的输入的（文件树的 menuPress）把 sideWheel 串在自己的 HandleInput 里。
 func sideList(a *app.App, c *wui.Context, st *wui.ListState, n int, rows func(wui.ListRow)) wui.Element {
-	l := newListLook(a, c, rowRadius)
+	l := newListLook(a, c, sideRowRadius())
 	s := sideScroll(a, st)
 	if s.Step(c.Now()) {
 		c.AnimationFrame()
 	}
 	var list wui.Element
 	l.build(c, func() {
-		list = wui.List(c, st, n).Grow(1).MinHeight(0).PaddingX(4).PaddingY(2).TrackScroll(&s.S).Rows(l.rows(rows))
+		list = wui.List(c, st, n).Grow(1).MinHeight(0).PaddingX(sidePadX()).PaddingY(2).TrackScroll(&s.S).Rows(l.rows(rows))
 	})
 	list.Draw(func(*wui.Painter, wui.Rect) { s.Drawn = s.S.Y }) // 画的时候的偏移（布局夹过、列表自己挪过的）
 	list.HandleInput(func(ev wui.InputEvent) bool { return sideWheel(a, c, st, ev) })

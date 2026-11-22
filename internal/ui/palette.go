@@ -195,8 +195,15 @@ func hitSpans(c *wui.Context, s string, hits []int, off int, size float32, color
 }
 
 // hitText 和 hitSpans 一样，只是字号、颜色、粗细、删除线都跟着元素（调用方在返回的元素上设，文件树筛选的行用）。
+//
+// VS Code 风格照它的列表：命中的字不加底，换成 list.highlightForeground 的蓝、加粗；在实心的强调色行上（hl 是 AccentText 调出来的）
+// 只加粗、字色跟着行。
 func hitText(c *wui.Context, s string, hits []int, off int, hl wui.Color) wui.Element {
 	var spans []wui.Span
+	vs, vsHit := vscode(), wui.Color{}
+	if t := c.Theme(); vs && (hl.R != t.AccentText.R || hl.G != t.AccentText.G || hl.B != t.AccentText.B) {
+		vsHit = pick(t, wui.Hex("#0066bf"), wui.Hex("#2aaaff"))
+	}
 	plain := func(from, to int) {
 		if from < to {
 			spans = append(spans, wui.Span{Text: s[from:to]})
@@ -210,7 +217,11 @@ func hitText(c *wui.Context, s string, hits []int, off int, hl wui.Color) wui.El
 		}
 		plain(at, i)
 		n := search.RuneCeil(s, i+1) - i
-		spans = append(spans, wui.Span{Text: s[i : i+n], Background: hl, Radius: 2})
+		if vs {
+			spans = append(spans, wui.Span{Text: s[i : i+n], Color: vsHit, Weight: 700})
+		} else {
+			spans = append(spans, wui.Span{Text: s[i : i+n], Background: hl, Radius: 2})
+		}
 		at = i + n
 	}
 	plain(at, len(s))

@@ -189,3 +189,9 @@ func lookSize(grove, vs float32) float32 {
 
 // histRowH 是右栏历史一个提交一行的高。
 func histRowH() float32 { return lookSize(histRowGrove, histRowVS) }
+
+// sidePadX 是侧栏列表左右留的：Grove 内缩 4（圆角的选中块不贴边），VS Code 风格的行满宽、不留。
+func sidePadX() float32 { return lookSize(4, 0) }
+
+// sideRowRadius 是侧栏列表选中块的圆角：Grove 5，VS Code 风格方的（mygo 的实心选中块看它；淡底的由 rowAt 自己画方的）。
+func sideRowRadius() float32 { return lookSize(rowRadius, 0) }

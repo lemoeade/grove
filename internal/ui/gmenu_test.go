@@ -258,7 +258,7 @@ func TestTreeGroveMenuRightClickElsewhere(t *testing.T) {
 	if !ok {
 		t.Fatal("找不到 beta.go")
 	}
-	x, y := b.X+2, b.Y+b.H/2 // 名字的左头：菜单开在 notes.md 名字的中间，盖不到这里
+	x, y := b.X+10, b.Y+b.H/2 // 名字的左头（VS Code 风格的行满宽，+2 就贴着窗口边，菜单要往里挪）：菜单开在 notes.md 名字的中间，盖不到这里
 	if p := popMenus(t, tt)[0].Panel; float64(x) >= p.X && float64(x) < p.X+p.W && float64(y) >= p.Y && float64(y) < p.Y+p.H {
 		t.Fatal("测不到：beta.go 在菜单底下")
 	}

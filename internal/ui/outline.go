@@ -95,7 +95,7 @@ func outlineTree(a *app.App, c *wui.Context, d *docs.Doc, tree *outline.Tree) {
 	st.List.Selected = &d.OutlineSel
 	st.List.Label = func(i int) string { return symbolLabel(&tree.Flat[tree.ByKey[st.Item(i)]]) }
 	clicked := ""
-	l := newListLook(a, c, rowRadius)
+	l := newListLook(a, c, sideRowRadius())
 	focused := st.List.Focused(c)
 	var list wui.Element
 	l.build(c, func() {
@@ -106,7 +106,7 @@ func outlineTree(a *app.App, c *wui.Context, d *docs.Doc, tree *outline.Tree) {
 					clicked = k
 				}
 			})
-		}).Grow(1).MinHeight(0).PaddingX(4).PaddingY(2)
+		}).Grow(1).MinHeight(0).PaddingX(sidePadX()).PaddingY(2)
 	})
 	rowOf := func(k string) int {
 		for r := range st.Rows() {

@@ -16,6 +16,7 @@ func TestTreeFilterHits(t *testing.T) {
 	repo.Write("main.go", "package main\n")
 	repo.Commit("init")
 	a, tt, wait := filesUI(t, testutil.Workspace(t, repo.Root), "main.go")
+	a.St.Settings.Look = "grove" // 命中垫底色是 Grove 风格的；VS Code 风格是蓝的粗字（TestVSHitText）
 	tt.Move(700, 400)
 	const scale = 2
 	tt.SetScale(scale)

@@ -418,22 +418,35 @@ func gmenuTint(t *wui.Theme) wui.Color {
 	return gmenuBg(t).Alpha(0.44)
 }
 
-// gmenuFrosted 报面板要不要磨砂：系统开了“减少透明度”或“增强对比度”时不要，用不透明的 gmenuBg。
+// gmenuFrosted 报面板要不要磨砂：系统开了“减少透明度”或“增强对比度”时不要，用不透明的 gmenuBg；
+// VS Code 风格也不要（VS Code 的菜单是不透的白底，深色 #1F1F1F）。
 func gmenuFrosted(c *wui.Context) bool {
 	p := c.Preferences()
-	return !p.ReduceTransparency && !p.HighContrast
+	return !p.ReduceTransparency && !p.HighContrast && !vscode()
 }
+
+// VS Code 风格的菜单照它的 menu.* 颜色：底是编辑器的底（白 / #1F1F1F），框和分隔线 #CECECE（#454545），
+// 高亮项是实心的强调色、字反白（menu.selectionBackground，默认就是强调色的蓝）。
+func vsMenuLine(t *wui.Theme) wui.Color { return pick(t, wui.Hex("#cecece"), wui.Hex("#454545")) }
 
 // gmenuPanel 画一层：open 是这一层里开着子菜单的那项（高亮着）。l.Head 不为 0 的那层顶上钉着筛选框
 // （query 是打的字，hint 是没字时的灰字），项在它下面滚。press 是无障碍树里按了第 i 项（读屏、按名字按；指针和键盘走接收层）。
 func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, hint string, press func(i int)) wui.Element {
 	r := l.Rect
 	frosted := gmenuFrosted(c)
+	vs := vscode()
+	border, sep := t.Border.Alpha(0.9), t.Border.Alpha(0.5)
+	if vs {
+		border, sep = vsMenuLine(t), vsMenuLine(t)
+	}
 	panel := wui.Column(c).Absolute().Left(r.X).Top(r.Y).Width(r.W).Height(r.H).Radius(gmenuRadius).
-		Border(1, t.Border.Alpha(0.9)).Shadow(shadowMenu(t)).Clip().Role(wui.RoleMenu)
-	if frosted {
+		Border(1, border).Shadow(shadowMenu(t)).Clip().Role(wui.RoleMenu)
+	switch {
+	case frosted:
 		panel.Material(glass.Blur{Radius: gmenuBlur})
-	} else {
+	case vs:
+		panel.Background(vsEditor(t))
+	default:
 		panel.Background(gmenuBg(t))
 	}
 	items := func() {
@@ -442,7 +455,7 @@ func gmenuPanel(c *wui.Context, t *wui.Theme, l app.MenuLevel, open int, query, 
 			for i, it := range l.Items {
 				if it.Sep {
 					wui.Column(c).Height(app.MenuSepH).Shrink(0).Justify(wui.Center).Padding(0, 6).Children(func() {
-						wui.Column(c).Height(1).Background(t.Border.Alpha(0.5))
+						wui.Column(c).Height(1).Background(sep)
 					})
 					continue
 				}
@@ -506,6 +519,9 @@ func gmenuItem(c *wui.Context, t *wui.Theme, it app.MenuEntry, hot bool, textL f
 		if hot {
 			row.Background(t.Danger.Alpha(0.14))
 		}
+	case hot && vscode():
+		row.Background(t.Accent)
+		fg, muted = t.AccentText, t.AccentText.Alpha(0.85)
 	case hot:
 		bg, text := gmenuHot(t)
 		row.Background(bg)

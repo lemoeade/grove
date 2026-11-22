@@ -102,7 +102,7 @@ func TestSelectedRowLook(t *testing.T) {
 	const scale = 2
 	tt.SetScale(scale)
 	a.St.BottomBar, a.St.RightBar = false, false
-	a.St.Settings.Backdrop = "flat"
+	a.St.Settings.Look, a.St.Settings.Backdrop = "grove", "flat" // 竖条、圆角是 Grove 风格的；VS Code 风格的见 TestVSListSelection
 	r := a.Repos[0]
 	a.RefreshRepo(r, app.WhyManual)
 	a.ShowSidebar(workspace.ModeFiles)

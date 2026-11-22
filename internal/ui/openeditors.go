@@ -52,7 +52,7 @@ func openEditors(a *app.App, c *wui.Context, tools bool) {
 	if rows[0].Head() { // 拆分了：标签比“第 N 组”再缩一级
 		indent = treeIndent(1)
 	}
-	wui.Scroll(c.Key("rows")).Shrink(0).MaxHeight(rowH*app.OpenEditorsMax+4).PaddingX(4).PaddingY(2).Margin(0, 0, 6, 0).Children(func() {
+	wui.Scroll(c.Key("rows")).Shrink(0).MaxHeight(rowH*app.OpenEditorsMax+4).PaddingX(sidePadX()).PaddingY(2).Margin(0, 0, 6, 0).Children(func() {
 		for i, r := range rows {
 			if r.Head() {
 				wui.Row(c.Key(i)).Height(rowH).Padding(0, 8, 0, treeIndent(0)).AlignItems(wui.Center).Children(func() {

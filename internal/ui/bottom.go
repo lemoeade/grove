@@ -137,7 +137,7 @@ func termTab(a *app.App, c *wui.Context, r *app.Repo, tt *app.TermTab, active bo
 		return
 	}
 	label := r.TermLabel(tt)
-	b := panelTab(c, active).Label(label).Tooltip(i18n.T("双击改名"))
+	b := panelTitle(c, active).Label(label).Tooltip(i18n.T("双击改名"))
 	fg := panelTabColor(c, b, active)
 	hover := b.Hovered()
 	if active && r.TermShown != tt.Num { // 换了当前终端标签：滚到看得见（同编辑器的 g.TabShown）
@@ -197,7 +197,7 @@ func termTab(a *app.App, c *wui.Context, r *app.Repo, tt *app.TermTab, active bo
 func renameTab(a *app.App, c *wui.Context, r *app.Repo, tt *app.TermTab) {
 	t := c.Theme()
 	e := &a.Rename
-	panelTab(c, true).Padding(0, 6).Children(func() {
+	panelTitle(c, true).Padding(0, 6).Children(func() {
 		wui.Icon(c, iconTerminal).FontSize(iconRow).TextColor(t.Text)
 		in := wui.TextInput(c.Key("name"), &e.Text).Label(i18n.T("终端标签的名字")).Placeholder(r.TermLabel(&app.TermTab{Num: tt.Num})).
 			FontSize(barFont).TextColor(t.Text).Width(140).
@@ -477,8 +477,8 @@ func termFind(a *app.App, c *wui.Context, p *app.TermPane) {
 // "输出 3" / "问题 2" 这样的全名。left：前面是「+」，左边也画一条分隔线。
 func bottomTab(a *app.App, c *wui.Context, which int, ic *wui.SVG, label string, n int, left bool) {
 	active := a.BottomTab == which
-	b := panelTab(c, active).Padding(0, 10).Gap(4).Label(label)
-	if left {
+	b := panelTitle(c, active).Padding(0, 10).Gap(4).Label(label)
+	if left && !vscode() {
 		b.BorderWidth(0, 1, 0, 1)
 	}
 	tooltip(c, b, label)

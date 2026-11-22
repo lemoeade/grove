@@ -48,6 +48,7 @@ func TestTreeStickyShadow(t *testing.T) {
 	if b, ok := a.TreeSpans[target]; ok { // 再滚半行：栈底下那行被顶住一半
 		tt.Wheel(b.X+b.W/2, b.Y+b.H/2, 0, b.H/2)
 	}
+	tt.Move(1000, 400) // 指针挪开：底下那行悬停的底会盖过阴影
 	for range 4 {
 		tt.Frame()
 	}
