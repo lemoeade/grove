@@ -97,6 +97,13 @@ func newListLook(a *app.App, c *wui.Context, radius float32) *listLook {
 	return l
 }
 
+// noHover 让列表不画悬停的底（命令面板：选中跟着鼠标走，悬停就是选中）。
+func (l *listLook) noHover() {
+	lt := *l.list
+	lt.SurfaceHover = wui.Color{}
+	l.list = &lt
+}
+
 // softAlpha 是淡底的选中行（活动选中）上强调色的透明度。
 func softAlpha(t *wui.Theme) float32 {
 	if t.Dark {

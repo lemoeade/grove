@@ -93,6 +93,11 @@ type PaletteState struct {
 	Items []PaletteItem
 	Note  string // 输入框下面的一行提示（怎么用、没有匹配、不能跳行的原因……）
 
+	// 指针上一帧在面板里的位置（界面记）：鼠标真的动了，选中才跟到指针下面那行；
+	// 面板开在不动的指针下面、上下键移走选中、滚轮滚列表时都不算动
+	PtrX, PtrY float32
+	PtrIn      bool
+
 	History []string // 跑过的 git 命令的参数，最新的在最后
 	sig     string   // 上次算 Items 时的输入和文件数，变了才重算
 
@@ -107,6 +112,7 @@ type PaletteState struct {
 func (a *App) OpenPalette(prefix string) {
 	p := &a.Palette
 	p.Open, p.Text, p.Sel, p.sig = true, prefix, 0, "\x00"
+	p.PtrIn = false
 	p.defs, p.defFrom, p.defQual = "", nil, ""
 	for _, r := range a.Repos {
 		a.EnsureFiles(r)

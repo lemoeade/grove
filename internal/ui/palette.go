@@ -30,11 +30,8 @@ func palette(a *app.App, c *wui.Context) {
 		frostFill(c, panel.Width(640).Padding(6).Gap(4).Radius(dlgRadius), paletteBg(t)).Border(1, t.Border).
 			Shadow(shadowDialog()) // 和 dialogFrame 一样的圆角、阴影；磨砂的（frost.go）
 		wui.Row(c).Padding(2, 8).Gap(8).AlignItems(wui.Center).Children(func() {
-			icon := iconSearch
-			if strings.HasPrefix(p.Text, ">") {
-				icon = iconChevronRight
-			}
-			wui.Icon(c, icon).FontSize(iconTool).TextColor(t.TextMuted)
+			// 一直是放大镜：命令模式的 ">" 已经在输入框里了，图标再换成 › 就成了 "› >"
+			wui.Icon(c, iconSearch).FontSize(iconTool).TextColor(t.TextMuted)
 			in := wui.TextInputBase(c.Key("in"), &p.Text).Label(i18n.T("快速打开或命令")).
 				Placeholder(i18n.T("按名字找文件；> 命令，>git 运行 git 命令，:行号 跳行")).FontSize(14).Grow(1).MinWidth(0).Height(30).AutoFocus().
 				OnTextKey(func(k wui.TextKey) bool {
@@ -63,7 +60,7 @@ func palette(a *app.App, c *wui.Context) {
 			return
 		}
 		wui.Divider(c)
-		paletteList(a, c)
+		paletteList(a, c, panel)
 	})
 	if !p.Open {
 		a.ClosePalette()
@@ -71,7 +68,11 @@ func palette(a *app.App, c *wui.Context) {
 }
 
 // paletteList 是面板的列表：文件（名字、灰的仓库和目录，命中的字高亮）、命令（名字、分组、快捷键）、git 命令。
-func paletteList(a *app.App, c *wui.Context) {
+//
+// 鼠标和键盘共用一个选中（Spotlight 那样）：指针在面板里动了，选中就跟到它下面那行，所以不画悬停的底，
+// 不然键盘移走选中以后指针下面还剩一块灰，像选中了两行。指针位置拿 panel 的（不随列表滚），
+// 面板开在不动的指针下面、上下键、滚轮都不会把选中拽到指针那行。
+func paletteList(a *app.App, c *wui.Context, panel wui.Element) {
 	p := &a.Palette
 	p.List.Selected = &p.Sel
 	p.List.Label = func(i int) string {
@@ -92,24 +93,45 @@ func paletteList(a *app.App, c *wui.Context) {
 		}
 		return it.Text
 	}
-	clicked := -1
+	x, y, in := panel.PointerPosition()
+	moved := in && p.PtrIn && (x != p.PtrX || y != p.PtrY)
+	p.PtrX, p.PtrY, p.PtrIn = x, y, in
+	clicked, hovered := -1, -1
 	h := float32(min(len(p.Items), paletteRows) * paletteRowH)
+	// 出滚动条时行的右边让出滚动条的宽，快捷键、右边的灰字不压在滑块底下
+	right := float32(10)
+	if len(p.Items) > paletteRows {
+		t := c.Theme()
+		w := t.ScrollbarStyle.TrackWidth // VS Code 风格 10；Grove 风格没设，按 mygo 的细滚动条
+		if w <= 0 {
+			w = t.ScrollbarWidth
+		}
+		right += max(w, 6)
+	}
 	l := newListLook(a, c, 0)
 	l.active = true // 键盘在输入框里，上下键移的是这个列表
+	l.noHover()
 	l.build(c, func() {
 		wui.List(c, &p.List, len(p.Items)).Height(h).Shrink(0).Rows(l.rows(func(row wui.ListRow) {
-			if paletteRow(a, row, p.Items[row.Index]) {
+			if row.Hovered() {
+				hovered = row.Index
+			}
+			if paletteRow(a, row, p.Items[row.Index], right) {
 				clicked = row.Index
 			}
 		}))
 	})
+	if moved && hovered >= 0 && hovered != p.Sel {
+		p.Sel = hovered
+		c.Invalidate() // 这一帧的行已经按旧的选中画了
+	}
 	if clicked >= 0 {
 		a.AcceptPalette(clicked)
 	}
 }
 
-// paletteRow 画一项，返回它是不是被点了。
-func paletteRow(a *app.App, row wui.ListRow, it app.PaletteItem) bool {
+// paletteRow 画一项，返回它是不是被点了；right 是行右边的内边距（出滚动条时加宽）。
+func paletteRow(a *app.App, row wui.ListRow, it app.PaletteItem, right float32) bool {
 	c := row.Context
 	t := c.Theme()
 	// 选中的行由列表画成强调色，上面的字跟着换成强调色上的字（淡底时不换）
@@ -121,10 +143,11 @@ func paletteRow(a *app.App, row wui.ListRow, it app.PaletteItem) bool {
 	if it.Off {
 		text = muted.Alpha(0.7)
 	}
-	el := wui.Row(c).Height(paletteRowH).Padding(0, 10).Gap(8).AlignItems(wui.Center).Cursor(wui.CursorPointer)
+	left := float32(10)
 	if it.Under {
-		el.Padding(0, 10, 0, 30) // "名字@符号"：符号缩在文件下面
+		left = 30 // "名字@符号"：符号缩在文件下面
 	}
+	el := wui.Row(c).Height(paletteRowH).Padding(0, right, 0, left).Gap(8).AlignItems(wui.Center).Cursor(wui.CursorPointer)
 	el.Children(func() {
 		switch it.Kind {
 		case app.ItemFile:

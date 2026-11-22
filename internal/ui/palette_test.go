@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"testing"
 
 	wui "github.com/egoist/mygo/ui"
@@ -111,5 +112,65 @@ func TestPalette(t *testing.T) {
 	tt.Frame()
 	if p.Open || a.St.RightBar == right {
 		t.Fatalf("回车没执行第三项：open=%v right=%v", p.Open, a.St.RightBar)
+	}
+}
+
+// 命令面板里鼠标和键盘共用一个选中：指针动了选中才跟到它下面那行；指针不动时上下键移走的选中不会被拽回来，
+// 面板开在不动的指针下面也不抢选中。WORKBENCH_SHOT=目录 时顺带存一张 palette-commands.png。
+func TestPaletteMouseFollows(t *testing.T) {
+	_, ws := testutil.TempRepo(t)
+	a, tt, _ := newUI(t, ws, "")
+	p := &a.Palette
+	row := func(i int) wui.Rect {
+		t.Helper()
+		r, ok := tt.Find("命令 " + p.Items[i].Text)
+		if !ok {
+			t.Fatalf("找不到第 %d 行 %q", i, p.Items[i].Text)
+		}
+		return r
+	}
+	a.OpenPalette(">")
+	tt.Frame()
+	tt.Frame()
+	if len(p.Items) <= paletteRows {
+		t.Fatalf("命令应多于 %d 项（要出滚动条）：%d", paletteRows, len(p.Items))
+	}
+	r3 := row(3)
+	tt.Move(r3.X+40, r3.Y+r3.H/2) // 指针第一次进面板：只记位置
+	tt.Frame()
+	if p.Sel != 0 {
+		t.Fatalf("指针刚进面板不该改选中：sel=%d", p.Sel)
+	}
+	tt.Move(r3.X+44, r3.Y+r3.H/2)
+	tt.Frame()
+	tt.Frame()
+	if p.Sel != 3 {
+		t.Fatalf("指针在第 3 行动了，选中应跟过去：sel=%d", p.Sel)
+	}
+	tt.Key(0, wui.KeyDown)
+	tt.Frame()
+	tt.Frame()
+	if p.Sel != 4 {
+		t.Fatalf("↓ 后选中应是 4（指针不动不拽回来）：sel=%d", p.Sel)
+	}
+	r1 := row(1)
+	tt.Move(r1.X+44, r1.Y+r1.H/2)
+	tt.Frame()
+	tt.Frame()
+	if p.Sel != 1 {
+		t.Fatalf("指针移到第 1 行，选中应跟过去：sel=%d", p.Sel)
+	}
+	if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+		tt.SetScale(2)
+		writeShot(t, tt, dir, "palette-commands.png")
+	}
+	// 重开：指针还停在列表上，选中从第一项开始
+	a.ClosePalette()
+	tt.Frame()
+	a.OpenPalette(">")
+	tt.Frame()
+	tt.Frame()
+	if p.Sel != 0 {
+		t.Fatalf("重开面板时指针没动，不该抢选中：sel=%d", p.Sel)
 	}
 }
