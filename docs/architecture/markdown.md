@@ -180,6 +180,8 @@ Modeled on VS Code's Markdown preview:
 - When placing the jump marker, the frames of this block and the next are both taken from the previous frame's `mdView.prev` (measured in the same layout pass, so while scrolling the difference doesn't carry a frame's worth of scroll).
 - `RowOf` / `LineAtRow` use ged's `etops`, computed only from estimated wrap counts (`TopLine` still uses `tops`, from actual layout): while scrolling, newly laid-out lines differ from the estimates, so `tops` changes and so does the denominator of the in-block ratio, making the preview jump around; `etops` is recomputed only when the lines, width or font change, and stays put while scrolling.
 - For a chunked preview (`seekChunk`), if the block that needs the marker was already laid out last frame, it places the marker directly instead of first doing `ScrollTo` to the chunk's start; otherwise it would flicker between the chunk start and the original spot every other frame.
+  Blocks that draw nothing (`<style>`, comments) are always zero height, so they count as laid out when another block in
+  the same chunk was (chunks are laid out whole); otherwise scrolling the editor through a long `<style>` block flickers the same way.
 
 #### Two-way sync
 

@@ -380,10 +380,31 @@ func (v *mdView) seekChunk(c *wui.Context) {
 	v.seek++
 }
 
-// laidOut 是第 line 行所在的顶层块上一帧排着没有。
+// laidOut 是第 line 行所在的顶层块上一帧排着没有。高 0 的块（<style>、注释这些画不出东西的 HTML 块）看高度
+// 永远像没排过，看它那一段里别的块：段是整个排的，别的块排着它也排着。不然编辑器滚过一大块 <style> 时
+// 每步都先 ScrollTo 到段首，预览一帧段首一帧原处地抖
 func (v *mdView) laidOut(line int) bool {
+	at := -1
+	for i, b := range v.prev {
+		if b.line <= line && line < b.next {
+			if b.r.H > 0 {
+				return true
+			}
+			at = i
+			break
+		}
+	}
+	if at < 0 || v.chunks == nil {
+		return false
+	}
+	// 刚排出来的一段第一帧框都是 0（Bounds 是上一帧的）：同一段里有排着的块才算
+	k := sort.Search(len(v.chunks), func(i int) bool { return v.chunks[i].line > line }) - 1
+	lo, hi := v.chunks[max(k, 0)].line, len(v.lines)
+	if k+1 < len(v.chunks) {
+		hi = v.chunks[k+1].line
+	}
 	for _, b := range v.prev {
-		if b.r.H > 0 && b.line <= line && line < b.next {
+		if b.r.H > 0 && lo <= b.line && b.line < hi {
 			return true
 		}
 	}

@@ -277,6 +277,76 @@ func testPreviewSmooth(t *testing.T, n int) {
 	}
 }
 
+// 分段的预览里有一大块 <style>（排出来高 0）：编辑器滚过它那几十行时，预览停在下一块的顶上，不一帧滚到段首
+// 一帧回来地抖（laidOut 曾经只认高度大于 0 的块，<style> 那块永远算“没排着”，每步都先 ScrollTo 到段首）。
+func TestMarkdownPreviewStyleBlock(t *testing.T) {
+	root, ws := testutil.TempRepo(t)
+	var b strings.Builder
+	b.WriteString("# 开头\n\n")
+	para := func(i int) {
+		if i%10 == 0 {
+			b.WriteString("## 节 " + itoa(i) + "\n\n")
+		}
+		b.WriteString("第 " + itoa(i+1) + " 段，写长一点：一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十。\n\n")
+	}
+	for i := range 300 {
+		para(i)
+	}
+	b.WriteString("## 时序\n\n<style>\n")
+	style := strings.Count(b.String(), "\n")
+	for i := range 80 {
+		b.WriteString(".c" + itoa(i) + "{color:#333;margin:2px}\n")
+	}
+	b.WriteString("</style>\n\n<div style=\"padding:16px;border:1px solid #ccc\">时序图</div>\n\n")
+	for i := 300; i < 500; i++ {
+		para(i)
+	}
+	writeDoc(t, root, "guide.md", b.String())
+	a, tt, wait := newUI(t, ws, "")
+	guide := a.OpenFile(a.Repos[0], "guide.md", true)
+	a.FocusDoc = true
+	wait("打开 guide.md", func() bool { return tt.Focused("编辑 guide.md") })
+	a.Exec("view.markdownSidePreview")
+	var pv *docs.Doc
+	wait("并排预览", func() bool { pv = a.SidePreviewOf(guide); return pv != nil && tt.HasText("开头") })
+	if mdViewOf(pv).chunks == nil {
+		t.Fatal("没分段")
+	}
+	tt.Move(500, 300) // 指针在编辑器上
+	guide.ScrollToFrac(float64(style - 6))
+	wait("预览跟到时序那一节", func() bool { tt.Frame(); return tt.HasText("时序图") })
+	var last []mdBlock
+	back := ""
+	mdPassHook = func(v *mdView) {
+		if v.env.d != pv {
+			return
+		}
+	match:
+		for _, b := range v.blocks {
+			for _, o := range last {
+				if o.line == b.line && o.r.H > 0 && b.r.H > 0 {
+					if dy := b.r.Y - o.r.Y; dy > 1 && back == "" {
+						back = fmt.Sprintf("第 %d 行那块往回跳了 %.0f", b.line, dy)
+					}
+					break match
+				}
+			}
+		}
+		last = append(last[:0], v.blocks...)
+	}
+	defer func() { mdPassHook = nil }()
+	for range 60 {
+		tt.Scroll(500, 300, 0, 30)
+		tt.Frame()
+	}
+	if L, _ := guide.TopLine(); L < float64(style+80) {
+		t.Fatalf("编辑器没滚过 <style>：顶上是第 %.0f 行", L)
+	}
+	if back != "" {
+		t.Fatalf("编辑器滚过 <style> 时预览抖了：%s", back)
+	}
+}
+
 // 并排预览拖进源文件那一组（源文件的标签看不见了）：在预览上滚，滚到哪停在哪，不被源文件编辑器停在最后一帧的位置拉回去。
 func TestMarkdownPreviewSameGroup(t *testing.T) {
 	root, ws := testutil.TempRepo(t)

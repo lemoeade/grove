@@ -15,6 +15,9 @@ What changed in each version, newest first.
   header shows a one-word badge (merging, rebasing, cherry-picking, reverting) instead of "merge in progress", which
   squeezed the repository name down to an ellipsis.
 - The README screenshots were retaken with the English interface and English sample content.
+- The side-by-side Markdown preview no longer jitters while the editor scrolls through a long `<style>` block (or any
+  other HTML block that draws nothing) in a large document: it stays on the next block instead of jumping to the start
+  of the section and back on every frame.
 
 ## v0.3.0 — 2026-11-23
 
