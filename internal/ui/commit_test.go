@@ -190,7 +190,7 @@ func TestCommitButton(t *testing.T) {
 		}
 		r.CommitMsg = ""
 		tt.Frame()
-		label := i18n.Tf("提交 %s 个文件", strconv.Itoa(want))
+		label := i18n.Tn("提交 %d 个文件", want)
 		// Grove 风格没写信息时框里没有按钮；VS Code 风格的“✓ 提交”一直在，灰着，点了把键盘给输入框、不提交
 		if vscode() {
 			if !tt.HasText(label) {
@@ -229,7 +229,7 @@ func TestCommitButton(t *testing.T) {
 	slowOp(a, r)
 	a.Commit(r)
 	tt.Frame()
-	label := i18n.Tf("提交 %s 个文件", "120")
+	label := i18n.Tn("提交 %d 个文件", 120)
 	var found *accNode
 	nodes := accessTree(t, tt)
 	for i := range nodes {
@@ -271,7 +271,7 @@ func TestCommitAllButton(t *testing.T) {
 	a.OpenCommit(r)
 	r.CommitMsg = "一个文件"
 	tt.Frame()
-	mustText(t, tt, i18n.Tf("提交 %s 个文件", "1"))
+	mustText(t, tt, i18n.Tn("提交 %d 个文件", 1))
 
 	repo.Write("new.txt", "新\n")
 	a.RefreshRepo(r, app.WhyManual)
@@ -304,7 +304,7 @@ func TestCommitStagedOnly(t *testing.T) {
 	wait("读状态", func() bool { return idle(r)() && r.Status.Staged == 1 })
 	r.CommitMsg = "只提交 a"
 	tt.Frame()
-	mustClick(t, tt, i18n.Tf("提交 %s 个文件", "1"))
+	mustClick(t, tt, i18n.Tn("提交 %d 个文件", 1))
 	wait("提交完", func() bool { return idle(r)() && r.Status.Staged == 0 && r.Status.Unstaged == 1 })
 	if got := repo.Git("show", "--format=", "--name-only", "HEAD"); got != "a.txt" {
 		t.Errorf("提交里的文件 %q", got)

@@ -27,12 +27,16 @@ const (
 
 var (
 	ongoingNames   = [...]string{"", "合并", "变基", "拣选", "还原"}
+	badgeLabels    = [...]string{"", "合并中", "变基中", "拣选中", "还原中"}
 	abortLabels    = [...]string{"", "中止合并", "中止变基", "中止拣选", "中止还原"}
 	continueLabels = [...]string{"", "继续合并", "继续变基", "继续拣选", "继续还原"}
 )
 
 // String 是操作的名字（"合并"）；没有为空。
 func (o Ongoing) String() string { return i18n.T(ongoingNames[o]) }
+
+// Badge 是仓库标题上的短标签（"合并中"）：英文是一个词（"merging"），比"merge in progress"省地方，仓库名不被挤成省略号。
+func (o Ongoing) Badge() string { return i18n.T(badgeLabels[o]) }
 
 // AbortLabel 是中止它的按钮名（"中止合并"）。
 func (o Ongoing) AbortLabel() string { return i18n.T(abortLabels[o]) }

@@ -104,7 +104,7 @@ func TestAmendToggle(t *testing.T) {
 	r.CommitMsg = ""
 	tt.Frame()
 	// Grove 风格没写信息时框里没有提交按钮；VS Code 风格的“✓ 提交”一直在
-	if tt.HasText(i18n.Tf("提交 %s 个文件", "1")) != vscode() {
+	if tt.HasText(i18n.Tn("提交 %d 个文件", 1)) != vscode() {
 		t.Fatalf("没写信息时提交按钮在不在不对（VS Code 风格=%v）", vscode())
 	}
 

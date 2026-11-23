@@ -130,7 +130,7 @@ func TestGitBarAllRepos(t *testing.T) {
 	mustClickRow(t, tt, "提交信息")
 	tt.Type("beta 3")
 	tt.Frame()
-	mustText(t, tt, i18n.Tf("提交 %s 个文件", "1"))
+	mustText(t, tt, i18n.Tn("提交 %d 个文件", 1))
 	tt.Key(wui.Cmd, wui.KeyEnter)
 	wait("beta 提交完", func() bool { return idle(beta)() && beta.Status.Count == 0 })
 	if got := rb.Git("log", "-1", "--format=%s"); got != "beta 3" {
@@ -149,7 +149,7 @@ func TestGitBarAllRepos(t *testing.T) {
 	}
 	// 点过"展开所有仓库"，干净了也还展开着（干净由段头的勾表示，不再写说明行）
 	wait("beta 干净了", func() bool {
-		return beta.Status.Count == 0 && beta.GitOpen() && !tt.HasText(i18n.Tf("提交 %s 个文件", "1"))
+		return beta.Status.Count == 0 && beta.GitOpen() && !tt.HasText(i18n.Tn("提交 %d 个文件", 1))
 	})
 }
 

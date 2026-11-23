@@ -228,7 +228,7 @@ func repoHeader(a *app.App, c *wui.Context, r *app.Repo) {
 			linkedTag(c, r, false)
 		}
 		if op := r.Extra.Ongoing; op != git.NoOp {
-			pill(c, i18n.Tf("%s中", op.String()), t.Warning, false).
+			pill(c, op.Badge(), t.Warning, false).
 				Tooltip(i18n.Tf("正在%s：看下面的横幅", op.String()))
 		}
 		if n := len(r.Extra.Stashes); n > 0 && !open && r.ShowStashes() {
@@ -1057,11 +1057,11 @@ func commitLabel(r *app.Repo) string {
 	case r.Amend:
 		return i18n.T("修改提交")
 	case st.Staged > 0:
-		return i18n.Tf("提交 %s 个文件", strconv.Itoa(st.Staged))
+		return i18n.Tn("提交 %d 个文件", st.Staged)
 	case r.MergeReady() || !r.CommitsAll():
 		return i18n.T("提交")
 	case st.Count == 1:
-		return i18n.Tf("提交 %s 个文件", "1")
+		return i18n.Tn("提交 %d 个文件", 1)
 	}
 	return i18n.Tf("提交全部 %s 个文件", strconv.Itoa(st.Count))
 }

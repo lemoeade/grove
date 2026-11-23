@@ -11,6 +11,9 @@ What changed in each version, newest first.
   CHANGELOG.md and everything under docs/ (architecture, pitfalls, testing, release, terms) were rewritten in English.
   docs/shortcuts.md is generated in English from the command registry.
 - Commit messages follow Conventional Commits; the existing history was reworded accordingly.
+- English interface fixes: the commit button says "Commit 1 file" instead of "Commit 1 files", and a repository's
+  header shows a one-word badge (merging, rebasing, cherry-picking, reverting) instead of "merge in progress", which
+  squeezed the repository name down to an ellipsis.
 
 ## v0.3.0 — 2026-11-23
 
