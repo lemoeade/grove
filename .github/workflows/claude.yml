@@ -43,7 +43,7 @@ jobs:
       REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false # 不把 token 留在 .git/config 里，Claude 推不了；推送在收尾一步
@@ -58,12 +58,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash "$RUNNER_TEMP/claude/prepare.sh"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -92,7 +92,7 @@ jobs:
       # 收尾推送失败时改动还在这里（finish.sh 推送前打的 bundle）
       - name: 留存改动
         if: always() && steps.prep.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: claude-work
           path: ${{ runner.temp }}/claude-work.bundle
