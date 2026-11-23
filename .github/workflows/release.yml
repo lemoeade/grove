@@ -40,7 +40,7 @@ jobs:
           fi
           # 更新窗口里的“改了什么”取 CHANGELOG.md 里这个版本的那一节（## v1.2.3 — 日期）
           if ! grep -Eq "^## \[?v?${version//./\\.}\]?([[:space:]]|$)" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md 里没有 ## v$version 这一节（把“## 未发布”改成它再打标签）"
+            echo "::error::CHANGELOG.md has no ## v$version section (rename “## Unreleased” to it before tagging)"
             exit 1
           fi
 
