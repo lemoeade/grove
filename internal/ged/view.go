@@ -1784,7 +1784,11 @@ func (d *Diff) paintCell(p *wui.Painter, r wui.Rect, g geom, s *Style, side int,
 		p.Glyphs(wui.Shape(sign, s.Font), x0+g.markX, base, mark)
 	}
 	tx := x0 + g.textX
-	clip := wui.Rect{X: tx, Y: y, W: max(0, x0+pw-tx), H: h}
+	cw := x0 + pw - tx
+	if side == 1 || d.unified { // 右边那格让出概览条（和小地图），不然字画到它们底下、文件不够长时还从概览条那列露出来
+		cw -= g.right
+	}
+	clip := wui.Rect{X: tx, Y: y, W: max(0, cw), H: h}
 	l := d.layout(side, line, s)
 	ty := y + (g.lh-l.lt)/2
 	vy := l.rowY(y, g.lh) // 排出来的 y 在第几个折出来的行：那一行的顶

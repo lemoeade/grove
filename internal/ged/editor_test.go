@@ -276,3 +276,36 @@ func TestEditorRowOf(t *testing.T) {
 		t.Errorf("排出来两行时滚了一行 TopLine = %v，应为 0.5", got)
 	}
 }
+
+// 文件短（不用上下滚，概览条不铺底）、有一行很长：正文的字不画到小地图和概览条底下，
+// 概览条那一列整列还是底色（之前字一直画到窗口最右边，从概览条那列露出半截字）。
+func TestMinimapClipsText(t *testing.T) {
+	long := strings.Repeat("WWWW 应用平台工程规范 ", 40)
+	d := plainEd(t, []string{"a: 1", "b: 2", long, "c: 3", ""})
+	th := editor.DefaultTheme(wui.LightTheme())
+	const w, h = 600, 400
+	view := func(c *wui.Context) {
+		wui.Column(c).Width(w).Height(h).Children(func() {
+			View(c, "ed", d, Style{Code: th, Font: wui.Font{Family: "monospace", Size: 13}, Minimap: true})
+		})
+	}
+	tt := wui.NewTester(view, w, h)
+	tt.Frame()
+	if d.lh <= 0 {
+		t.Fatal("没画出来")
+	}
+	img := tt.Image()
+	k := float32(img.Bounds().Dx()) / w
+	px := func(x, y float32) [4]uint8 {
+		c := img.RGBAAt(int(x*k), int(y*k))
+		return [4]uint8{c.R, c.G, c.B, c.A}
+	}
+	empty := 4*d.lh + d.lh/2 // 第 5 行是空的：同一列的底色
+	for x := float32(w - rulerW); x < w; x++ {
+		for y := 2 * d.lh; y < 3*d.lh; y++ {
+			if got, want := px(x, y), px(x, empty); got != want {
+				t.Fatalf("概览条那列 (%v, %v) 画上了字：%v（底色 %v）", x, y, got, want)
+			}
+		}
+	}
+}

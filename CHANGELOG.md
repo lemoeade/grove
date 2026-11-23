@@ -18,6 +18,9 @@ What changed in each version, newest first.
 - The side-by-side Markdown preview no longer jitters while the editor scrolls through a long `<style>` block (or any
   other HTML block that draws nothing) in a large document: it stays on the next block instead of jumping to the start
   of the section and back on every frame.
+- In a file tab with the minimap on, a long line's text now stops at the minimap's left edge. Before, the text kept
+  going underneath the minimap and the overview ruler, and in a file too short to scroll, half-cut glyphs showed
+  through at the far right edge.
 
 ## v0.3.0 — 2026-11-23
 
