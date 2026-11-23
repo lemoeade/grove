@@ -891,74 +891,101 @@ func (c *Command) Label() string {
 
 // ShortcutDoc 是 docs/shortcuts.md 的内容，由注册表生成（commands_test.go 用 -update 写文件、平时比对）。
 func ShortcutDoc() string {
+	en := func(s string) string { // 文档是英文的：命令名、菜单、分组都用 en.json 里的译文
+		if t := i18n.English()[s]; t != "" {
+			return t
+		}
+		return s
+	}
 	var b strings.Builder
-	b.WriteString("# 快捷键\n\n这个文件由 `go test ./internal/app -run TestShortcutDoc -update` 从命令注册表" +
-		"（`internal/app/commands.go`）生成，不要手改。\n\n")
-	b.WriteString("⌘P 快速打开和 ⇧⌘P 命令面板是同一个浮层：输入以 `>` 开头是命令，`>git ` 开头在当前仓库跑一条 git 命令" +
-		"（⌘K 直接带着它打开，编辑器有焦点时也一样：菜单先接到 ⌘K），`:行号` 在当前文件跳行，" +
-		"`名字:行号` 打开文件并跳到那一行；文件项上按 ⌥↩ 是在侧边打开。对话框和面板里 Esc 关闭。\n\n" +
-		"同一个键在不同上下文里可以是不同的命令，按当前标签分派：⌥⌘F 在 Diff 标签里是全文 diff，在文件标签里是替换。" +
-		"编辑器自带的 ⇧⌘G（找上一个）和 Git 侧栏同键：有菜单栏时菜单先接到，是 Git 侧栏；找上一个用查找条里的 ⇧↩。" +
-		"编辑器自带的 ⇧⌘H（替换）同样让给侧栏的搜索并替换（所有仓库）；只在当前文件里替换用 ⌥⌘F。\n\n" +
-		"终端里按住 ⌘ 点：文件路径（`path:行[:列]`，相对 shell 现在的目录，也认 `~/` 和 `file://`）在编辑器里固定打开到那一行，" +
-		"仓库里的目录在文件树里显示，网址用系统浏览器开。\n\n" +
-		"键盘在终端里时下面“终端”一节的键归终端，盖过同键的全局和编辑器命令：⌘W 关掉有键盘的那一格（只剩一格就关标签，" +
-		"有命令在跑先问），⌘K 清屏（不再是带着 `>git ` 打开命令面板），⌘F / ⌘G / ⇧⌘G 在终端的回看里查找。" +
-		"⌃⇧` 新建终端标签不管键盘在哪都行。\n\n" +
-		"⌘= / ⌘- / ⌘0 是界面缩放（视图菜单，所有窗口一起，状态栏右边显示不是 100% 的缩放）；键盘在终端里也是：" +
-		"终端自带的字号键（⌘= ⇧⌘= ⌘- ⌘0）让给了它，终端字号在设置的终端页改。设置窗口里 ⌘F 到搜索框，有字时 Esc 清空。\n")
+	b.WriteString("# Keyboard shortcuts\n\nThis file is generated from the command registry (`internal/app/commands.go`) by " +
+		"`go test ./internal/app -run TestShortcutDoc -update`. Do not edit it by hand.\n\n")
+	b.WriteString("⌘P (Quick Open) and ⇧⌘P (Command Palette) are the same overlay: input starting with `>` runs a command, " +
+		"`>git ` runs a git command in the current repository (⌘K opens the palette with it already typed, even when the editor " +
+		"has focus, because the menu gets ⌘K first), `:line` jumps to a line in the current file, and `name:line` opens a file " +
+		"at that line; ⌥↩ on a file item opens it to the side. Esc closes dialogs and panels.\n\n" +
+		"The same key can mean different commands in different contexts, dispatched by the current tab: ⌥⌘F is the full-file " +
+		"diff in a Diff tab and Replace in a file tab. The editor's built-in ⇧⌘G (Find Previous) shares its key with the Git " +
+		"sidebar: when there is a menu bar the menu gets it first, so it opens the Git sidebar; use ⇧↩ in the find bar for " +
+		"Find Previous. The editor's built-in ⇧⌘H (Replace) likewise yields to the sidebar's search and replace (all " +
+		"repositories); to replace only in the current file use ⌥⌘F.\n\n" +
+		"⌘-click in the terminal: a file path (`path:line[:col]`, relative to the shell's current directory; `~/` and `file://` " +
+		"also work) opens pinned in the editor at that line, a directory inside a repository is revealed in the file tree, and a " +
+		"URL opens in the system browser.\n\n" +
+		"While the keyboard is in a terminal, the keys in the Terminal section below belong to the terminal and override global " +
+		"and editor commands on the same key: ⌘W closes the focused pane (with a single pane it closes the tab, asking first if " +
+		"a command is running), ⌘K clears the screen (instead of opening the Command Palette with `>git `), and ⌘F / ⌘G / ⇧⌘G " +
+		"search the terminal's scrollback. ⌃⇧` (new terminal tab) works wherever the keyboard is.\n\n" +
+		"⌘= / ⌘- / ⌘0 zoom the interface (View menu; applies to all windows, and the status bar shows the zoom when it is not " +
+		"100%). This also holds in the terminal: its own font-size keys (⌘= ⇧⌘= ⌘- ⌘0) are given up for interface zoom; change " +
+		"the terminal font size on the Terminal page of Settings. In the Settings window ⌘F focuses the search field, and Esc " +
+		"clears it when it has text.\n")
 	for ctx := Global; ctx <= GitList; ctx++ {
 		var rows []string
 		for _, c := range Commands {
 			if c.Context == ctx && c.Key != 0 {
-				title := c.Title
-				if c.Group != "" {
-					title = c.Group + " › " + title
+				title := en(c.Title)
+				if n, ok := strings.CutPrefix(c.ID, "repo."); ok && len(n) == 1 && n[0] >= '1' && n[0] <= '9' {
+					title = fmt.Sprintf(en("跳到第 %d 个仓库"), int(n[0]-'0'))
 				}
-				rows = append(rows, fmt.Sprintf("| %s | %s |", c.Keys(), title))
+				if c.Group != "" {
+					title = en(c.Group) + " › " + title
+				}
+				rows = append(rows, fmt.Sprintf("| %s | %s |", en(c.Keys()), title))
 			}
 		}
 		if len(rows) == 0 {
 			continue
 		}
-		fmt.Fprintf(&b, "\n## %s\n\n| 快捷键 | 命令 |\n| --- | --- |\n%s\n", ctx, strings.Join(rows, "\n"))
+		fmt.Fprintf(&b, "\n## %s\n\n| Shortcut | Command |\n| --- | --- |\n%s\n", en(ctx.String()), strings.Join(rows, "\n"))
 	}
 	var rows []string
 	for _, c := range Commands {
 		if c.Section != "" {
-			rows = append(rows, fmt.Sprintf("| %s | %s | %s |", cmp.Or(c.Hint, "—"), c.Section, c.Title))
+			rows = append(rows, fmt.Sprintf("| %s | %s | %s |", strings.ReplaceAll(cmp.Or(c.Hint, "—"), "空格", "Space"), en(c.Section), en(c.Title)))
 		}
 	}
-	fmt.Fprintf(&b, "\n## 编辑器自带（mygo 默认键）\n\n"+
-		"编辑器（mygo）自带的命令都在 ⇧⌘P 命令面板里，中文名、英文名（如 `foldAll`）都搜得到，分组写“编辑器 · 折叠”这样。"+
-		"编辑器有焦点时也能按下表的键（编辑器自己接，不在菜单栏里）。写“—”的是 mygo 默认键的第一下被菜单栏占了，只能从命令面板跑："+
-		"⌘K 是“运行 git 命令…”，菜单先接到，所以 mygo 的 ⌘K 和弦（⌘K ⌘0 全部折叠、⌘K ⌘L 折叠 / 展开、⌘K ⌘/ 块注释……）在窗口里都用不了；"+
-		"⇧⌘U（撤销选区变化之后的重做）是拉取，⌥⌘L（在选区里查找）是统一 diff，⇧⌘G（查找上一个）是 Git 侧栏。\n\n"+
-		"会改文字的在只读的标签（历史版本、大文件）上不能用；跳改动、还原改动要有 HEAD 对比；全部折叠、折叠到第 N 级、递归折叠、"+
-		"选中所有相同的、把选区拆成每行一个光标要扫一遍整篇，%d MB 以上的文件上不能用。\n\n| 快捷键 | 分组 | 命令 |\n| --- | --- | --- |\n%s\n",
+	fmt.Fprintf(&b, "\n## Built into the editor (mygo default keys)\n\n"+
+		"The editor's own (mygo) commands are all in the ⇧⌘P Command Palette, searchable by their display name or their "+
+		"English id (such as `foldAll`), grouped like \"Editor · Folding\". While the editor has focus you can also press the "+
+		"keys in the table below (the editor handles them itself; they are not in the menu bar). Rows marked \"—\" are mygo "+
+		"default keys whose first stroke is taken by the menu bar, so they can only be run from the Command Palette: ⌘K is "+
+		"\"Run Git Command…\" and the menu gets it first, so mygo's ⌘K chords (⌘K ⌘0 fold all, ⌘K ⌘L toggle fold, ⌘K ⌘/ block "+
+		"comment…) do not work in the window; ⇧⌘U (redo after undoing a selection change) is Pull, ⌥⌘L (find in selection) is "+
+		"the unified diff, and ⇧⌘G (Find Previous) is the Git sidebar.\n\n"+
+		"Commands that change text are unavailable in read-only tabs (history versions, big files); jumping to and reverting "+
+		"changes needs a HEAD comparison; Fold All, Fold Level N, Fold Recursively, Select All Occurrences and Split Selection "+
+		"into Lines scan the whole text and are unavailable on files over %d MB.\n\n| Shortcut | Group | Command |\n| --- | --- | --- |\n%s\n",
 		MaxWholeTextBytes>>20, strings.Join(rows, "\n"))
-	b.WriteString("\n## 自定义\n\n" +
-		"上面是默认键，可以改：设置 → 快捷键里选中一条命令点“改…”按新键（⌫ 是不要快捷键，Esc 不改），" +
-		"或者直接编辑 `<状态目录>/keybindings.json`（平时是 `~/Library/Application Support/Grove/keybindings.json`，" +
-		"快捷键页右上 ⋯ → 打开 keybindings.json）。文件是一个数组，一条管一个命令：\n\n```json\n" +
+	b.WriteString("\n## Customizing\n\n" +
+		"The keys above are the defaults and can be changed: in Settings → Keyboard Shortcuts select a command, click " +
+		"\"Change…\" and press the new key (⌫ removes the shortcut, Esc cancels), or edit `<state dir>/keybindings.json` " +
+		"directly (normally `~/Library/Application Support/Grove/keybindings.json`; on the shortcuts page, ⋯ at the top right → " +
+		"Open keybindings.json). The file is an array, one entry per command:\n\n```json\n" +
 		`[
   {"command": "palette.commands", "key": "cmd+k"},
   {"command": "git.command", "key": ""}
 ]` + "\n```\n\n" +
-		"- `command` 是命令 id：快捷键页里鼠标停在命令名上看得到，那里的搜索框也搜 id。`key` 为空是去掉这条命令的键；" +
-		"删掉那一条（或在快捷键页点“重置”）是回到默认。\n" +
-		"- `key` 是修饰键加键，用 `+` 连，大小写随意：修饰键 `cmd`（`command`、`meta`、`⌘`）、`ctrl`（`control`、`⌃`）、" +
-		"`alt`（`option`、`opt`、`⌥`）、`shift`（`⇧`），符号写在开头时可以不用 `+`（`⇧⌘P`）；" +
-		"键是 `a`–`z`、`0`–`9`、`f1`–`f12`、`enter`、`escape`（`esc`）、`backspace`、`tab`、`space`、`delete`、`insert`、" +
-		"`home`、`end`、`pageup`、`pagedown`、`left`、`right`、`up`、`down` 和 `` - = , . / ; ' [ ] \\ ` ``" +
-		"（也可以写 `minus`、`equal`、`comma`、`period`、`slash`、`semicolon`、`quote`、`bracketleft`、`bracketright`、" +
-		"`backslash`、`backquote`）。\n" +
-		"- 冲突按键由谁接来算：窗口（全局、Diff 标签、编辑器）、终端、文件树、提交框、搜索结果各是一处。同一处里同一个键，" +
-		"上下文相同或有一个是全局才算冲突（⌥⌘F 在 Diff 标签和编辑器里各是一个命令不算）：改了的赢，被顶掉的命令没有键，" +
-		"快捷键页那一行写着被谁占了；文件里两条改成同一个键，靠后的赢。\n" +
-		"- 编辑器自带的命令（`editor.*`，上一张表）也能改，改了以后 mygo 的默认键不再起作用。\n" +
-		"- 不做和弦（⌘K ⌘0 这样按两下的）和 `when` 条件。\n" +
-		"- 快捷键页写这个文件时一条一行整个重写，文件里的注释会丢；看不懂的条目原样留着，快捷键页顶上列出来，其余照常生效。" +
-		"整个文件读不了（不是 JSON 数组）就全用默认键，快捷键页也不往里写，免得盖掉；在编辑器里改好保存马上生效。\n")
+		"- `command` is the command id: hover a command name on the shortcuts page to see it, and that page's search field " +
+		"also matches ids. An empty `key` removes the command's shortcut; deleting the entry (or clicking \"Reset\" on the " +
+		"shortcuts page) restores the default.\n" +
+		"- `key` is modifiers plus a key joined by `+`, case-insensitive: modifiers `cmd` (`command`, `meta`, `⌘`), " +
+		"`ctrl` (`control`, `⌃`), `alt` (`option`, `opt`, `⌥`), `shift` (`⇧`); symbols written at the front need no `+` " +
+		"(`⇧⌘P`). Keys are `a`–`z`, `0`–`9`, `f1`–`f12`, `enter`, `escape` (`esc`), `backspace`, `tab`, `space`, `delete`, " +
+		"`insert`, `home`, `end`, `pageup`, `pagedown`, `left`, `right`, `up`, `down` and `` - = , . / ; ' [ ] \\ ` `` " +
+		"(or `minus`, `equal`, `comma`, `period`, `slash`, `semicolon`, `quote`, `bracketleft`, `bracketright`, " +
+		"`backslash`, `backquote`).\n" +
+		"- Conflicts are counted per receiver: the window (global, Diff tab, editor), the terminal, the file tree, the commit " +
+		"box and the search results are each one receiver. Within one receiver the same key conflicts only if the contexts " +
+		"match or one of them is global (⌥⌘F being one command in Diff tabs and another in the editor is fine): the changed " +
+		"binding wins, the displaced command loses its key, and its row on the shortcuts page says what took it; if two " +
+		"entries in the file use the same key, the later one wins.\n" +
+		"- The editor's built-in commands (`editor.*`, the previous table) can be rebound too; once changed, mygo's default " +
+		"key stops working.\n" +
+		"- There are no chords (two-stroke keys like ⌘K ⌘0) and no `when` conditions.\n" +
+		"- When the shortcuts page writes this file it rewrites it whole, one entry per line, so comments in the file are lost; " +
+		"entries it cannot understand are kept as they are and listed at the top of the shortcuts page, while the rest take " +
+		"effect. If the whole file cannot be read (it is not a JSON array) all default keys are used and the shortcuts page does " +
+		"not write to it, so nothing is overwritten; after you fix it in the editor and save, it takes effect immediately.\n")
 	return b.String()
 }

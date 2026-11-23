@@ -1,244 +1,244 @@
-# 快捷键
+# Keyboard shortcuts
 
-这个文件由 `go test ./internal/app -run TestShortcutDoc -update` 从命令注册表（`internal/app/commands.go`）生成，不要手改。
+This file is generated from the command registry (`internal/app/commands.go`) by `go test ./internal/app -run TestShortcutDoc -update`. Do not edit it by hand.
 
-⌘P 快速打开和 ⇧⌘P 命令面板是同一个浮层：输入以 `>` 开头是命令，`>git ` 开头在当前仓库跑一条 git 命令（⌘K 直接带着它打开，编辑器有焦点时也一样：菜单先接到 ⌘K），`:行号` 在当前文件跳行，`名字:行号` 打开文件并跳到那一行；文件项上按 ⌥↩ 是在侧边打开。对话框和面板里 Esc 关闭。
+⌘P (Quick Open) and ⇧⌘P (Command Palette) are the same overlay: input starting with `>` runs a command, `>git ` runs a git command in the current repository (⌘K opens the palette with it already typed, even when the editor has focus, because the menu gets ⌘K first), `:line` jumps to a line in the current file, and `name:line` opens a file at that line; ⌥↩ on a file item opens it to the side. Esc closes dialogs and panels.
 
-同一个键在不同上下文里可以是不同的命令，按当前标签分派：⌥⌘F 在 Diff 标签里是全文 diff，在文件标签里是替换。编辑器自带的 ⇧⌘G（找上一个）和 Git 侧栏同键：有菜单栏时菜单先接到，是 Git 侧栏；找上一个用查找条里的 ⇧↩。编辑器自带的 ⇧⌘H（替换）同样让给侧栏的搜索并替换（所有仓库）；只在当前文件里替换用 ⌥⌘F。
+The same key can mean different commands in different contexts, dispatched by the current tab: ⌥⌘F is the full-file diff in a Diff tab and Replace in a file tab. The editor's built-in ⇧⌘G (Find Previous) shares its key with the Git sidebar: when there is a menu bar the menu gets it first, so it opens the Git sidebar; use ⇧↩ in the find bar for Find Previous. The editor's built-in ⇧⌘H (Replace) likewise yields to the sidebar's search and replace (all repositories); to replace only in the current file use ⌥⌘F.
 
-终端里按住 ⌘ 点：文件路径（`path:行[:列]`，相对 shell 现在的目录，也认 `~/` 和 `file://`）在编辑器里固定打开到那一行，仓库里的目录在文件树里显示，网址用系统浏览器开。
+⌘-click in the terminal: a file path (`path:line[:col]`, relative to the shell's current directory; `~/` and `file://` also work) opens pinned in the editor at that line, a directory inside a repository is revealed in the file tree, and a URL opens in the system browser.
 
-键盘在终端里时下面“终端”一节的键归终端，盖过同键的全局和编辑器命令：⌘W 关掉有键盘的那一格（只剩一格就关标签，有命令在跑先问），⌘K 清屏（不再是带着 `>git ` 打开命令面板），⌘F / ⌘G / ⇧⌘G 在终端的回看里查找。⌃⇧` 新建终端标签不管键盘在哪都行。
+While the keyboard is in a terminal, the keys in the Terminal section below belong to the terminal and override global and editor commands on the same key: ⌘W closes the focused pane (with a single pane it closes the tab, asking first if a command is running), ⌘K clears the screen (instead of opening the Command Palette with `>git `), and ⌘F / ⌘G / ⇧⌘G search the terminal's scrollback. ⌃⇧` (new terminal tab) works wherever the keyboard is.
 
-⌘= / ⌘- / ⌘0 是界面缩放（视图菜单，所有窗口一起，状态栏右边显示不是 100% 的缩放）；键盘在终端里也是：终端自带的字号键（⌘= ⇧⌘= ⌘- ⌘0）让给了它，终端字号在设置的终端页改。设置窗口里 ⌘F 到搜索框，有字时 Esc 清空。
+⌘= / ⌘- / ⌘0 zoom the interface (View menu; applies to all windows, and the status bar shows the zoom when it is not 100%). This also holds in the terminal: its own font-size keys (⌘= ⇧⌘= ⌘- ⌘0) are given up for interface zoom; change the terminal font size on the Terminal page of Settings. In the Settings window ⌘F focuses the search field, and Esc clears it when it has text.
 
-## 全局
+## Global
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| ⌘N | 文件 › 新建文件… |
-| ⇧⌘N | 文件 › 新建文件夹… |
-| ⌘O | 文件 › 打开文件夹… |
-| ⌥⌘N | 文件 › 新建窗口 |
-| ⌥⌘O | 文件 › 在新窗口中打开文件夹… |
-| ⌘P | 文件 › 快速打开… |
-| ⇧⌘P | 文件 › 命令面板… |
-| ⌘T | 文件 › 跳到工作区里的符号… |
-| ⌘S | 文件 › 保存 |
-| ⌥⌘S | 文件 › 全部保存 |
-| ⌘W | 文件 › 关闭标签 |
-| ⇧⌘W | 文件 › 关闭全部标签 |
-| ⌥⌘W | 文件 › 关闭已保存的标签 |
-| ⇧⌘T | 文件 › 重新打开关闭的标签 |
-| ⌘R | 文件 › 刷新 Git 状态 |
-| ⌘K | 文件 › 运行 git 命令… |
-| ⌘B | 视图 › 侧栏 |
-| ⌘J | 视图 › 底栏（终端 / 输出） |
-| ⇧⌘J | 视图 › 最大化底栏 |
-| ⇧⌘M | 视图 › 问题面板 |
-| ⌥⌘B | 视图 › 右栏（历史） |
-| ⌃⌘Z | 视图 › 禅模式 |
-| ⌘= | 视图 › 放大 |
-| ⌘- | 视图 › 缩小 |
-| ⌘0 | 视图 › 实际大小 |
-| ⇧⌘E | 视图 › 文件 |
-| ⌥⇧⌘E | 视图 › 在文件树里定位当前文件 |
-| ⇧⌘F | 视图 › 搜索 |
-| ⇧⌘H | 视图 › 搜索并替换 |
-| ⇧⌘G | 视图 › Git |
-| ⌃- | 视图 › 后退 |
-| ⌃⇧- | 视图 › 前进 |
-| ⇧⌘[ | 视图 › 上一个标签 |
-| ⇧⌘] | 视图 › 下一个标签 |
-| ⌃⇥ | 视图 › 上一个用过的标签 |
-| ⌃⇧⇥ | 视图 › 最久没用的标签 |
-| ⌘\ | 视图 › 向右拆分编辑器 |
-| ⌥⌘\ | 视图 › 向下拆分编辑器 |
-| ⇧⌘\ | 视图 › 在另一组里再开一份 |
-| ⌥Z | 视图 › 软换行 |
-| ⇧⌘V | 视图 › Markdown / SVG 预览 |
-| ⌥⇧⌘V | 视图 › 在旁边预览 Markdown |
-| ⌃⌘B | 视图 › 显示 blame 装订线 |
-| ⌃⇧` | 终端 › 新建终端 |
-| ⌃⇧⌘` | 终端 › 在编辑器区新建终端 |
-| ⇧⌘B | 终端 › 运行任务… |
-| ⇧⌘U | Git › 拉取 |
-| ⌥⌘P | Git › 推送 |
-| ⇧⌘R | Git › 全部抓取 |
-| ⌥⇧⌘U | Git › 全部拉取 |
-| ⌥⇧⌘B | Git › 新建分支… |
-| ⌘1 | 仓库 › 跳到第 1 个仓库 |
-| ⌘2 | 仓库 › 跳到第 2 个仓库 |
-| ⌘3 | 仓库 › 跳到第 3 个仓库 |
-| ⌘4 | 仓库 › 跳到第 4 个仓库 |
-| ⌘5 | 仓库 › 跳到第 5 个仓库 |
-| ⌘6 | 仓库 › 跳到第 6 个仓库 |
-| ⌘7 | 仓库 › 跳到第 7 个仓库 |
-| ⌘8 | 仓库 › 跳到第 8 个仓库 |
-| ⌘9 | 仓库 › 跳到第 9 个仓库 |
-| ⇧⌘O | 仓库 › 添加仓库… |
-| ⌘, | 应用 › 设置… |
+| ⌘N | File › New File… |
+| ⇧⌘N | File › New Folder… |
+| ⌘O | File › Open Folder… |
+| ⌥⌘N | File › New Window |
+| ⌥⌘O | File › Open Folder in New Window… |
+| ⌘P | File › Quick Open… |
+| ⇧⌘P | File › Command Palette… |
+| ⌘T | File › Go to Symbol in Workspace… |
+| ⌘S | File › Save |
+| ⌥⌘S | File › Save All |
+| ⌘W | File › Close Tab |
+| ⇧⌘W | File › Close All Tabs |
+| ⌥⌘W | File › Close Saved Tabs |
+| ⇧⌘T | File › Reopen Closed Tab |
+| ⌘R | File › Refresh Git Status |
+| ⌘K | File › Run Git Command… |
+| ⌘B | View › Sidebar |
+| ⌘J | View › Bottom Panel (Terminal / Output) |
+| ⇧⌘J | View › Maximize Bottom Panel |
+| ⇧⌘M | View › Problems Panel |
+| ⌥⌘B | View › Right Panel (History) |
+| ⌃⌘Z | View › Zen Mode |
+| ⌘= | View › Zoom In |
+| ⌘- | View › Zoom Out |
+| ⌘0 | View › Actual Size |
+| ⇧⌘E | View › File |
+| ⌥⇧⌘E | View › Reveal Current File in File Tree |
+| ⇧⌘F | View › Search |
+| ⇧⌘H | View › Search and Replace |
+| ⇧⌘G | View › Git |
+| ⌃- | View › Back |
+| ⌃⇧- | View › Forward |
+| ⇧⌘[ | View › Previous Tab |
+| ⇧⌘] | View › Next Tab |
+| ⌃⇥ | View › Previously Used Tab |
+| ⌃⇧⇥ | View › Least Recently Used Tab |
+| ⌘\ | View › Split Editor Right |
+| ⌥⌘\ | View › Split Editor Down |
+| ⇧⌘\ | View › Open Another Copy in the Other Group |
+| ⌥Z | View › Soft Wrap |
+| ⇧⌘V | View › Markdown / SVG Preview |
+| ⌥⇧⌘V | View › Preview Markdown to the Side |
+| ⌃⌘B | View › Show Blame Gutter |
+| ⌃⇧` | Terminal › New Terminal |
+| ⌃⇧⌘` | Terminal › New Terminal in Editor Area |
+| ⇧⌘B | Terminal › Run Task… |
+| ⇧⌘U | Git › Pull |
+| ⌥⌘P | Git › Push |
+| ⇧⌘R | Git › Fetch All |
+| ⌥⇧⌘U | Git › Pull All |
+| ⌥⇧⌘B | Git › New Branch… |
+| ⌘1 | Repository › Jump to Repository 1 |
+| ⌘2 | Repository › Jump to Repository 2 |
+| ⌘3 | Repository › Jump to Repository 3 |
+| ⌘4 | Repository › Jump to Repository 4 |
+| ⌘5 | Repository › Jump to Repository 5 |
+| ⌘6 | Repository › Jump to Repository 6 |
+| ⌘7 | Repository › Jump to Repository 7 |
+| ⌘8 | Repository › Jump to Repository 8 |
+| ⌘9 | Repository › Jump to Repository 9 |
+| ⇧⌘O | Repository › Add Repository… |
+| ⌘, | App › Settings… |
 
-## 编辑器
+## Editor
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| ⌥⌘← | 上一个标签（备用键） |
-| ⌥⌘→ | 下一个标签（备用键） |
-| ⌘F | 查找… |
-| ⌥⌘F | 替换… |
-| ⌘G | 查找下一个 |
-| ⌃G | 跳到行… |
-| ⌃⇧O | 跳到符号… |
-| ⇧F12 | 查找引用 |
-| ⌥⇧F | 格式化文档 |
-| ⌥F7 | 下一处冲突 |
-| ⌥⇧F7 | 上一处冲突 |
-| ⌃⌥↓ | 下一处冲突 |
-| ⌃⌥↑ | 上一处冲突 |
-| ⌃⌥1 | 冲突：用我的 |
-| ⌃⌥2 | 冲突：用他们的 |
-| ⌃⌥3 | 冲突：两个都要 |
+| ⌥⌘← | Previous Tab (Alternate Keys) |
+| ⌥⌘→ | Next Tab (Alternate Keys) |
+| ⌘F | Find… |
+| ⌥⌘F | Replace… |
+| ⌘G | Find Next |
+| ⌃G | Go to Line… |
+| ⌃⇧O | Go to Symbol… |
+| ⇧F12 | Find References |
+| ⌥⇧F | Format Document |
+| ⌥F7 | Next Conflict |
+| ⌥⇧F7 | Previous Conflict |
+| ⌃⌥↓ | Next Conflict |
+| ⌃⌥↑ | Previous Conflict |
+| ⌃⌥1 | Conflict: Accept Ours |
+| ⌃⌥2 | Conflict: Accept Theirs |
+| ⌃⌥3 | Conflict: Accept Both |
 
 ## Diff
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| ⌥⌘L | 视图 › 统一 diff |
-| ⌥⌘F | 视图 › 全文 diff |
-| ⌥J | 视图 › 下一个文件 |
-| ⌥K | 视图 › 上一个文件 |
-| J | 下一处改动 |
-| K | 上一处改动 |
+| ⌥⌘L | View › Unified Diff |
+| ⌥⌘F | View › Full-File Diff |
+| ⌥J | View › Next File |
+| ⌥K | View › Previous File |
+| J | Next Change |
+| K | Previous Change |
 
-## 文件树
+## File Tree
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| → | 展开目录 / 仓库 |
-| ← | 收起目录 / 仓库，或走到上一级 |
-| ↩ | 固定打开文件 |
-| ⌥↩ | 在侧边打开 |
-| 空格 | 快速查看 |
-| F2 | 重命名… |
-| ⌘⌫ | 移到废纸篓… |
-| ⌘C | 复制文件 |
-| ⌘V | 粘贴文件 |
-| ⌘D | 创建副本 |
-| ⌘Z | 撤销上次文件操作 |
+| → | Expand Folder / Repository |
+| ← | Collapse Folder / Repository, or Go to Parent |
+| ↩ | Open File (Pinned) |
+| ⌥↩ | Open to the Side |
+| Space | Quick Look |
+| F2 | Rename… |
+| ⌘⌫ | Move to Trash… |
+| ⌘C | Copy Files |
+| ⌘V | Paste Files |
+| ⌘D | Duplicate |
+| ⌘Z | Undo Last File Operation |
 
-## 终端
+## Terminal
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| ⌘W | 关闭终端 |
-| ⌘K | 清屏 |
-| ⌘F | 在终端里查找… |
-| ⌘G | 查找下一个 |
-| ⇧⌘G | 查找上一个 |
-| ⌘D | 左右分屏 |
-| ⇧⌘D | 上下分屏 |
-| ⇧⌘[ | 上一个终端标签 |
-| ⇧⌘] | 下一个终端标签 |
-| ⌥⌘← | 上一个终端标签 |
-| ⌥⌘→ | 下一个终端标签 |
-| ⇧⌘C | 把终端内容开成标签 |
+| ⌘W | Close Terminal |
+| ⌘K | Clear |
+| ⌘F | Find in Terminal… |
+| ⌘G | Find Next |
+| ⇧⌘G | Find Previous |
+| ⌘D | Split Right |
+| ⇧⌘D | Split Down |
+| ⇧⌘[ | Previous Terminal Tab |
+| ⇧⌘] | Next Terminal Tab |
+| ⌥⌘← | Previous Terminal Tab |
+| ⌥⌘→ | Next Terminal Tab |
+| ⇧⌘C | Open Terminal Output in a Tab |
 
-## 提交框
+## Commit Box
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| ⌘↩ | 提交 |
+| ⌘↩ | Commit |
 
-## 搜索结果
+## Search Results
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| ⌘↩ | 替换选中的一处 / 文件 |
-| ⌫ | 排除选中的一处 / 文件 |
+| ⌘↩ | Replace Selected Match / File |
+| ⌫ | Dismiss Selected Match / File |
 
-## Git 栏
+## Git Sidebar
 
-| 快捷键 | 命令 |
+| Shortcut | Command |
 | --- | --- |
-| 空格 | 暂存 / 取消暂存选中的变更 |
-| ⌘⌫ | 丢弃选中的改动… |
+| Space | Stage / Unstage Selected Changes |
+| ⌘⌫ | Discard Selected Changes… |
 
-## 编辑器自带（mygo 默认键）
+## Built into the editor (mygo default keys)
 
-编辑器（mygo）自带的命令都在 ⇧⌘P 命令面板里，中文名、英文名（如 `foldAll`）都搜得到，分组写“编辑器 · 折叠”这样。编辑器有焦点时也能按下表的键（编辑器自己接，不在菜单栏里）。写“—”的是 mygo 默认键的第一下被菜单栏占了，只能从命令面板跑：⌘K 是“运行 git 命令…”，菜单先接到，所以 mygo 的 ⌘K 和弦（⌘K ⌘0 全部折叠、⌘K ⌘L 折叠 / 展开、⌘K ⌘/ 块注释……）在窗口里都用不了；⇧⌘U（撤销选区变化之后的重做）是拉取，⌥⌘L（在选区里查找）是统一 diff，⇧⌘G（查找上一个）是 Git 侧栏。
+The editor's own (mygo) commands are all in the ⇧⌘P Command Palette, searchable by their display name or their English id (such as `foldAll`), grouped like "Editor · Folding". While the editor has focus you can also press the keys in the table below (the editor handles them itself; they are not in the menu bar). Rows marked "—" are mygo default keys whose first stroke is taken by the menu bar, so they can only be run from the Command Palette: ⌘K is "Run Git Command…" and the menu gets it first, so mygo's ⌘K chords (⌘K ⌘0 fold all, ⌘K ⌘L toggle fold, ⌘K ⌘/ block comment…) do not work in the window; ⇧⌘U (redo after undoing a selection change) is Pull, ⌥⌘L (find in selection) is the unified diff, and ⇧⌘G (Find Previous) is the Git sidebar.
 
-会改文字的在只读的标签（历史版本、大文件）上不能用；跳改动、还原改动要有 HEAD 对比；全部折叠、折叠到第 N 级、递归折叠、选中所有相同的、把选区拆成每行一个光标要扫一遍整篇，1 MB 以上的文件上不能用。
+Commands that change text are unavailable in read-only tabs (history versions, big files); jumping to and reverting changes needs a HEAD comparison; Fold All, Fold Level N, Fold Recursively, Select All Occurrences and Split Selection into Lines scan the whole text and are unavailable on files over 1 MB.
 
-| 快捷键 | 分组 | 命令 |
+| Shortcut | Group | Command |
 | --- | --- | --- |
-| ⌥⌘[ | 折叠 | 折叠 |
-| ⌥⌘] | 折叠 | 展开 |
-| — | 折叠 | 折叠 / 展开 |
-| — | 折叠 | 全部折叠 |
-| — | 折叠 | 全部展开 |
-| — | 折叠 | 递归折叠 |
-| — | 折叠 | 递归展开 |
-| — | 折叠 | 折叠选中的行 |
-| — | 折叠 | 折叠到第 1 级 |
-| — | 折叠 | 折叠到第 2 级 |
-| — | 折叠 | 折叠到第 3 级 |
-| — | 折叠 | 折叠到第 4 级 |
-| — | 折叠 | 折叠到第 5 级 |
-| — | 折叠 | 折叠到第 6 级 |
-| — | 折叠 | 折叠到第 7 级 |
-| — | 折叠 | 折叠导入 |
-| ⌥⌘↑ | 多光标与选择 | 在上一行加光标 |
-| ⌥⌘↓ | 多光标与选择 | 在下一行加光标 |
-| ⌘D | 多光标与选择 | 加选下一个相同的 |
-| ⌃⌘D | 多光标与选择 | 加选上一个相同的 |
-| ⇧⌘L | 多光标与选择 | 选中所有相同的 |
-| — | 多光标与选择 | 把选区拆成每行一个光标 |
-| ⌘L | 多光标与选择 | 选中当前行 |
-| ⌃⇧→ | 多光标与选择 | 扩大选区 |
-| ⌃⇧← | 多光标与选择 | 缩小选区 |
-| ⌘U | 多光标与选择 | 撤销选区变化 |
-| — | 多光标与选择 | 重做选区变化 |
-| ⌃M | 多光标与选择 | 跳到匹配的括号 |
-| — | 多光标与选择 | 选到匹配的括号 |
-| ⌥↑ | 行 | 上移行 |
-| ⌥↓ | 行 | 下移行 |
-| ⌥⇧↑ | 行 | 向上复制行 |
-| ⌥⇧↓ | 行 | 向下复制行 |
-| — | 行 | 重复选中的内容 |
-| ⇧⌘K | 行 | 删除行 |
-| ⌃J | 行 | 合并行 |
-| ⌃T | 行 | 对调光标两边的字符 |
-| ⌘] | 行 | 增加缩进 |
-| ⌘[ | 行 | 减少缩进 |
-| ⌘/ | 行 | 切换行注释 |
-| — | 行 | 切换块注释 |
-| — | 行 | 按升序排列行 |
-| — | 行 | 按升序排列行（不分大小写） |
-| — | 行 | 反转行的顺序 |
-| — | 行 | 删掉重复的行 |
-| — | 行 | 去掉行尾空白 |
-| — | 大小写 | 转成大写 |
-| — | 大小写 | 转成小写 |
-| — | 大小写 | 转成词首大写 |
-| — | 大小写 | 转成 snake_case |
-| — | 大小写 | 转成 kebab-case |
-| — | 大小写 | 转成 camelCase |
-| — | 大小写 | 转成 PascalCase |
-| — | 查找 | 查找上一个 |
-| ⌘E | 查找 | 用选中的文字查找 |
-| — | 查找 | 在选区里查找 |
-| F12 | 代码 | 跳到定义 |
-| — | 代码 | 显示悬停提示 |
-| ⌃空格 | 代码 | 提示补全 |
-| ⌃L | 其他 | 把光标滚到中间 |
-| ⌘F8 | 其他 | 下一处改动 |
-| ⇧⌘F8 | 其他 | 上一处改动 |
-| ⌥⌘Z | 其他 | 丢弃这一块 |
+| ⌥⌘[ | Fold | Fold |
+| ⌥⌘] | Fold | Expand |
+| — | Fold | Toggle Fold |
+| — | Fold | Fold All |
+| — | Fold | Unfold All |
+| — | Fold | Fold Recursively |
+| — | Fold | Unfold Recursively |
+| — | Fold | Fold Selected Lines |
+| — | Fold | Fold Level 1 |
+| — | Fold | Fold Level 2 |
+| — | Fold | Fold Level 3 |
+| — | Fold | Fold Level 4 |
+| — | Fold | Fold Level 5 |
+| — | Fold | Fold Level 6 |
+| — | Fold | Fold Level 7 |
+| — | Fold | Fold Imports |
+| ⌥⌘↑ | Multiple Cursors and Selection | Add Cursor Above |
+| ⌥⌘↓ | Multiple Cursors and Selection | Add Cursor Below |
+| ⌘D | Multiple Cursors and Selection | Add Next Occurrence |
+| ⌃⌘D | Multiple Cursors and Selection | Add Previous Occurrence |
+| ⇧⌘L | Multiple Cursors and Selection | Select All Occurrences |
+| — | Multiple Cursors and Selection | Split Selection into Lines |
+| ⌘L | Multiple Cursors and Selection | Select Line |
+| ⌃⇧→ | Multiple Cursors and Selection | Expand Selection |
+| ⌃⇧← | Multiple Cursors and Selection | Shrink Selection |
+| ⌘U | Multiple Cursors and Selection | Undo Selection Change |
+| — | Multiple Cursors and Selection | Redo Selection Change |
+| ⌃M | Multiple Cursors and Selection | Go to Matching Bracket |
+| — | Multiple Cursors and Selection | Select to Matching Bracket |
+| ⌥↑ | Lines | Move Line Up |
+| ⌥↓ | Lines | Move Line Down |
+| ⌥⇧↑ | Lines | Copy Line Up |
+| ⌥⇧↓ | Lines | Copy Line Down |
+| — | Lines | Duplicate Selection |
+| ⇧⌘K | Lines | Delete Line |
+| ⌃J | Lines | Join Lines |
+| ⌃T | Lines | Transpose Characters |
+| ⌘] | Lines | Indent Line |
+| ⌘[ | Lines | Outdent Line |
+| ⌘/ | Lines | Toggle Line Comment |
+| — | Lines | Toggle Block Comment |
+| — | Lines | Sort Lines Ascending |
+| — | Lines | Sort Lines Ascending (Case Insensitive) |
+| — | Lines | Reverse Lines |
+| — | Lines | Delete Duplicate Lines |
+| — | Lines | Trim Trailing Whitespace |
+| — | Case | Transform to Uppercase |
+| — | Case | Transform to Lowercase |
+| — | Case | Transform to Title Case |
+| — | Case | Transform to snake_case |
+| — | Case | Transform to kebab-case |
+| — | Case | Transform to camelCase |
+| — | Case | Transform to PascalCase |
+| — | Find | Find Previous |
+| ⌘E | Find | Use Selection for Find |
+| — | Find | Find in Selection |
+| F12 | Code | Go to Definition |
+| — | Code | Show Hover |
+| ⌃Space | Code | Trigger Suggest |
+| ⌃L | Other | Scroll Cursor to Center |
+| ⌘F8 | Other | Next Change |
+| ⇧⌘F8 | Other | Previous Change |
+| ⌥⌘Z | Other | Discard Hunk |
 
-## 自定义
+## Customizing
 
-上面是默认键，可以改：设置 → 快捷键里选中一条命令点“改…”按新键（⌫ 是不要快捷键，Esc 不改），或者直接编辑 `<状态目录>/keybindings.json`（平时是 `~/Library/Application Support/Grove/keybindings.json`，快捷键页右上 ⋯ → 打开 keybindings.json）。文件是一个数组，一条管一个命令：
+The keys above are the defaults and can be changed: in Settings → Keyboard Shortcuts select a command, click "Change…" and press the new key (⌫ removes the shortcut, Esc cancels), or edit `<state dir>/keybindings.json` directly (normally `~/Library/Application Support/Grove/keybindings.json`; on the shortcuts page, ⋯ at the top right → Open keybindings.json). The file is an array, one entry per command:
 
 ```json
 [
@@ -247,9 +247,9 @@
 ]
 ```
 
-- `command` 是命令 id：快捷键页里鼠标停在命令名上看得到，那里的搜索框也搜 id。`key` 为空是去掉这条命令的键；删掉那一条（或在快捷键页点“重置”）是回到默认。
-- `key` 是修饰键加键，用 `+` 连，大小写随意：修饰键 `cmd`（`command`、`meta`、`⌘`）、`ctrl`（`control`、`⌃`）、`alt`（`option`、`opt`、`⌥`）、`shift`（`⇧`），符号写在开头时可以不用 `+`（`⇧⌘P`）；键是 `a`–`z`、`0`–`9`、`f1`–`f12`、`enter`、`escape`（`esc`）、`backspace`、`tab`、`space`、`delete`、`insert`、`home`、`end`、`pageup`、`pagedown`、`left`、`right`、`up`、`down` 和 `` - = , . / ; ' [ ] \ ` ``（也可以写 `minus`、`equal`、`comma`、`period`、`slash`、`semicolon`、`quote`、`bracketleft`、`bracketright`、`backslash`、`backquote`）。
-- 冲突按键由谁接来算：窗口（全局、Diff 标签、编辑器）、终端、文件树、提交框、搜索结果各是一处。同一处里同一个键，上下文相同或有一个是全局才算冲突（⌥⌘F 在 Diff 标签和编辑器里各是一个命令不算）：改了的赢，被顶掉的命令没有键，快捷键页那一行写着被谁占了；文件里两条改成同一个键，靠后的赢。
-- 编辑器自带的命令（`editor.*`，上一张表）也能改，改了以后 mygo 的默认键不再起作用。
-- 不做和弦（⌘K ⌘0 这样按两下的）和 `when` 条件。
-- 快捷键页写这个文件时一条一行整个重写，文件里的注释会丢；看不懂的条目原样留着，快捷键页顶上列出来，其余照常生效。整个文件读不了（不是 JSON 数组）就全用默认键，快捷键页也不往里写，免得盖掉；在编辑器里改好保存马上生效。
+- `command` is the command id: hover a command name on the shortcuts page to see it, and that page's search field also matches ids. An empty `key` removes the command's shortcut; deleting the entry (or clicking "Reset" on the shortcuts page) restores the default.
+- `key` is modifiers plus a key joined by `+`, case-insensitive: modifiers `cmd` (`command`, `meta`, `⌘`), `ctrl` (`control`, `⌃`), `alt` (`option`, `opt`, `⌥`), `shift` (`⇧`); symbols written at the front need no `+` (`⇧⌘P`). Keys are `a`–`z`, `0`–`9`, `f1`–`f12`, `enter`, `escape` (`esc`), `backspace`, `tab`, `space`, `delete`, `insert`, `home`, `end`, `pageup`, `pagedown`, `left`, `right`, `up`, `down` and `` - = , . / ; ' [ ] \ ` `` (or `minus`, `equal`, `comma`, `period`, `slash`, `semicolon`, `quote`, `bracketleft`, `bracketright`, `backslash`, `backquote`).
+- Conflicts are counted per receiver: the window (global, Diff tab, editor), the terminal, the file tree, the commit box and the search results are each one receiver. Within one receiver the same key conflicts only if the contexts match or one of them is global (⌥⌘F being one command in Diff tabs and another in the editor is fine): the changed binding wins, the displaced command loses its key, and its row on the shortcuts page says what took it; if two entries in the file use the same key, the later one wins.
+- The editor's built-in commands (`editor.*`, the previous table) can be rebound too; once changed, mygo's default key stops working.
+- There are no chords (two-stroke keys like ⌘K ⌘0) and no `when` conditions.
+- When the shortcuts page writes this file it rewrites it whole, one entry per line, so comments in the file are lost; entries it cannot understand are kept as they are and listed at the top of the shortcuts page, while the rest take effect. If the whole file cannot be read (it is not a JSON array) all default keys are used and the shortcuts page does not write to it, so nothing is overwritten; after you fix it in the editor and save, it takes effect immediately.
