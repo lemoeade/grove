@@ -20,11 +20,14 @@ import (
 // DefaultWorkspace 是真实工作区（环境变量 WORKBENCH_TEST_WS）：只读测试（status / diff / log、截图）用它，没设就跳过。
 var DefaultWorkspace = os.Getenv("WORKBENCH_TEST_WS")
 
+// Author 是临时仓库的作者名；README 截图换成英文名，别的测试照旧断言"测试"。
+var Author = "测试"
+
 // gitEnv 让临时仓库里的 git 不读本机配置，作者固定。
 func gitEnv() []string {
 	return append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
-		"GIT_AUTHOR_NAME=测试", "GIT_AUTHOR_EMAIL=t@example.com",
-		"GIT_COMMITTER_NAME=测试", "GIT_COMMITTER_EMAIL=t@example.com")
+		"GIT_AUTHOR_NAME="+Author, "GIT_AUTHOR_EMAIL=t@example.com",
+		"GIT_COMMITTER_NAME="+Author, "GIT_COMMITTER_EMAIL=t@example.com")
 }
 
 // Budget 是验收里的时长预算：-race 下整条链路慢一两倍，预算放宽到 3 倍；平常就是 d。
@@ -50,7 +53,7 @@ func NewRepo(t testing.TB, name string) *Repo {
 		t.Fatal(err)
 	}
 	r.Git("init", "-q", "-b", "main")
-	r.Git("config", "user.name", "测试")
+	r.Git("config", "user.name", Author)
 	r.Git("config", "user.email", "t@example.com")
 	r.Git("config", "commit.gpgsign", "false")
 	return r

@@ -20,6 +20,13 @@ open -n -g -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<dir> --env "WO
 open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<dir> --env WORKBENCH_FOCUS=editor   # memory with focus (editor or terminal; check with lsappinfo front that it is frontmost); add -g for without focus; --env WORKBENCH_CARET_REST=off to compare with a caret that never rests
 ```
 
+**README screenshots** (light, gitbar, history-all, history-graph, split-editors, terminals, start-page) render the
+English interface with English sample repos and the author "Alex Chen" (`shotEnglish` / `shotAuthor` in
+`internal/ui/shot_test.go`). Only `light.png` (`TestScreenshot`) reads a real workspace: point `WORKBENCH_SHOT_WS` at
+a workspace of `git clone file://…` copies with some uncommitted changes, make sure the clones aren't shallow (a
+shallow clone shows a single "grafted" commit in History), and run with `ZDOTDIR=<dir>` whose `.zshrc` sets a plain
+`PS1='%1~ %# '`, so the terminal doesn't show your own prompt.
+
 For routine memory measurement use `tools/measure/measure.sh`; the method and rules are in the
 [Single instance, real windows and measuring memory](../AGENTS.md#single-instance-real-windows-and-measuring-memory)
 section of AGENTS.md.

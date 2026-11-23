@@ -14,6 +14,7 @@ What changed in each version, newest first.
 - English interface fixes: the commit button says "Commit 1 file" instead of "Commit 1 files", and a repository's
   header shows a one-word badge (merging, rebasing, cherry-picking, reverting) instead of "merge in progress", which
   squeezed the repository name down to an ellipsis.
+- The README screenshots were retaken with the English interface and English sample content.
 
 ## v0.3.0 — 2026-11-23
 

@@ -50,6 +50,7 @@ func TestScreenshot(t *testing.T) {
 		t.Skip(err)
 	}
 	a, tt, wait := newUI(t, ws, t.TempDir())
+	shotEnglish(t, a, tt)
 	tt.SetScale(2)
 	tt.SetTitleBar(shotBar)
 	a.Start()
@@ -93,14 +94,14 @@ func TestScreenshot(t *testing.T) {
 	if _, _, p := a.ActivePane(); p != nil && p.Term != nil {
 		term := p.Term
 		testutil.WaitTermReady(t, tt, term, 400*time.Millisecond, 15*time.Second)
-		hdr, ok := tt.Find("终端 · " + r.Name)
+		hdr, ok := tt.Find(i18n.Tf("终端 · %s", r.Name))
 		if !ok {
 			t.Fatalf("底栏没有终端标签；texts=%q", tt.Texts())
 		}
 		tt.ClickAt(hdr.X+40, hdr.Y+hdr.H+60)
-		tt.Type("echo 中文测试 && ls")
+		tt.Type("echo grove && ls")
 		tt.Key(0, wui.KeyEnter)
-		testutil.WaitTerm(t, tt, term, "\n中文测试", 15*time.Second)
+		testutil.WaitTerm(t, tt, term, "\ngrove", 15*time.Second)
 		// ls 的输出紧跟着到，再推半秒帧让它和新提示符都画出来
 		for range 25 {
 			time.Sleep(20 * time.Millisecond)
@@ -246,6 +247,26 @@ func TestScreenshotPreviewSettings(t *testing.T) {
 	writeShot(t, tt, dir, "en.png")
 }
 
+// shotAuthor 让截图用的临时仓库换个英文作者名（默认的"测试"会出现在提交卡片上），测试结束换回来。
+// 要在建仓库之前调。
+func shotAuthor(t *testing.T) {
+	t.Helper()
+	old := testutil.Author
+	testutil.Author = "Alex Chen"
+	t.Cleanup(func() { testutil.Author = old })
+}
+
+// shotEnglish 让 README 用的截图画英文界面（界面默认英文），测试结束换回中文，别的测试照旧断言中文。
+// 示例仓库里的提交信息、注释也写英文，截图里才不会中英混着。
+// 语言也写进设置：SettingsChanged（如 showGroups）按设置重设语言，不写会被换回中文。
+func shotEnglish(t *testing.T, a *app.App, tt *wui.Tester) {
+	t.Helper()
+	a.St.Settings.Lang = "en"
+	i18n.Set("en")
+	tt.SetLocale(i18n.Locale())
+	t.Cleanup(func() { i18n.Set("") })
+}
+
 func writeShot(t *testing.T, tt *wui.Tester, dir, name string) {
 	t.Helper()
 	tt.Frame()
@@ -340,19 +361,20 @@ func TestScreenshotGitBar(t *testing.T) {
 	if dir == "" {
 		t.Skip("设置 WORKBENCH_SHOT=目录 才渲染截图")
 	}
+	shotAuthor(t)
 	now := time.Now().Truncate(time.Minute)
 	ago := func(h float64) time.Time { return now.Add(-time.Duration(h * float64(time.Hour))) }
 
 	api := testutil.NewRepo(t, "api-server")
 	api.Write("go.mod", "module example.com/api\n\ngo 1.25\n")
 	api.Write("main.go", "package main\n\nfunc main() {\n\tserve(\":8080\")\n}\n")
-	api.CommitAt("初始化服务骨架", ago(70))
-	api.Write("handlers/user.go", "package handlers\n\n// ListUsers 列出用户。\nfunc ListUsers() []User {\n\treturn db.Users()\n}\n")
-	api.CommitAt("加用户列表接口", ago(46))
+	api.CommitAt("Scaffold the API server", ago(70))
+	api.Write("handlers/user.go", "package handlers\n\n// ListUsers returns all users.\nfunc ListUsers() []User {\n\treturn db.Users()\n}\n")
+	api.CommitAt("Add the user list endpoint", ago(46))
 	api.Write("config.yaml", "port: 8080\ntimeout: 10s\n")
-	api.CommitAt("修复登录超时", ago(20))
-	api.Write("handlers/user.go", "package handlers\n\n// ListUsers 列出用户，一页 page 条。\nfunc ListUsers(page int) []User {\n\treturn db.Users().Page(page, 50)\n}\n")
-	api.Write("handlers/auth.go", "package handlers\n\n// Refresh 换一个新的访问令牌。\nfunc Refresh(token string) (string, error) {\n\treturn sign(token)\n}\n")
+	api.CommitAt("Fix the login timeout", ago(20))
+	api.Write("handlers/user.go", "package handlers\n\n// ListUsers returns one page of users.\nfunc ListUsers(page int) []User {\n\treturn db.Users().Page(page, 50)\n}\n")
+	api.Write("handlers/auth.go", "package handlers\n\n// Refresh trades a token for a new access token.\nfunc Refresh(token string) (string, error) {\n\treturn sign(token)\n}\n")
 	api.Git("add", "handlers")
 	api.Write("config.yaml", "port: 8080\ntimeout: 30s\n")
 	api.Write("scripts/migrate.sh", "#!/bin/sh\n")
@@ -360,35 +382,36 @@ func TestScreenshotGitBar(t *testing.T) {
 	web := testutil.NewRepo(t, "web-client")
 	web.Write("src/App.tsx", "export function App() {\n  return <Users />\n}\n")
 	web.Write("src/api.ts", "export const base = '/api'\n")
-	web.CommitAt("前端脚手架", ago(66))
+	web.CommitAt("Scaffold the web client", ago(66))
 	web.Write("src/Users.tsx", "export function Users() {\n  return <ul />\n}\n")
-	web.CommitAt("用户列表页", ago(30))
+	web.CommitAt("Add the users page", ago(30))
 	web.Write("src/api.ts", "export const base = '/api/v2'\n")
-	web.CommitAt("接口换到 v2", ago(5))
+	web.CommitAt("Move API calls to v2", ago(5))
 	web.Write("src/App.tsx", "export function App() {\n  return <Layout><Users /></Layout>\n}\n")
 	web.Write("src/api.ts", "export const base = '/api/v2'\nexport const pageSize = 50\n")
 	web.Write("src/components/Badge.tsx", "export const Badge = () => null\n")
 
 	infra := testutil.NewRepo(t, "infra")
 	infra.Write("deploy.yaml", "replicas: 2\nimage: api:1.0\n")
-	infra.CommitAt("部署配置", ago(60))
+	infra.CommitAt("Add the deploy config", ago(60))
 	infra.Git("switch", "-q", "-c", "scale-up")
 	infra.Write("deploy.yaml", "replicas: 4\nimage: api:1.0\n")
-	infra.CommitAt("扩到 4 个副本", ago(26))
+	infra.CommitAt("Scale to 4 replicas", ago(26))
 	infra.Git("switch", "-q", "main")
 	infra.Write("deploy.yaml", "replicas: 3\nimage: api:1.1\n")
-	infra.CommitAt("升级镜像到 1.1", ago(9))
+	infra.CommitAt("Bump the image to 1.1", ago(9))
 	if out, err := git.Run(infra.Root, "merge", "-q", "scale-up"); err == nil {
 		t.Fatalf("infra 应该合并冲突: %s", out)
 	}
 
 	docsRepo := testutil.NewRepo(t, "docs")
-	docsRepo.Write("README.md", "# 文档\n")
-	docsRepo.CommitAt("文档目录", ago(52))
-	docsRepo.Write("api.md", "# 接口\n\n分页参数 page。\n")
-	docsRepo.CommitAt("补接口分页说明", ago(2))
+	docsRepo.Write("README.md", "# Docs\n")
+	docsRepo.CommitAt("Add the docs index", ago(52))
+	docsRepo.Write("api.md", "# API\n\nPages are selected with `page`.\n")
+	docsRepo.CommitAt("Document API paging", ago(2))
 
 	a, tt, wait := newUI(t, testutil.Workspace(t, api.Root, web.Root, infra.Root, docsRepo.Root), t.TempDir())
+	shotEnglish(t, a, tt)
 	tt.SetScale(2)
 	tt.SetTitleBar(shotBar)
 	a.St.BottomBar = false // 测试里不起 shell，空终端占地方
@@ -399,7 +422,7 @@ func TestScreenshotGitBar(t *testing.T) {
 	a.Exec("view.git")
 	a.ToggleGitGroup(a.Repos[1], app.GroupUnstaged)
 	r := a.Repos[0]
-	r.CommitMsg = "用户列表分页，加刷新令牌接口"
+	r.CommitMsg = "Paginate users, add token refresh"
 	ch := r.Status.Changes[0]
 	a.GitSel = slices.IndexFunc(a.GitRows(), func(cr app.ChangeRow) bool {
 		return cr.Kind == app.RowChange && cr.Repo == r && cr.Change.Path == ch.Path && cr.Change.Kind == ch.Kind
@@ -409,8 +432,10 @@ func TestScreenshotGitBar(t *testing.T) {
 	writeShot(t, tt, dir, "gitbar.png")
 
 	a.SetHistAll(true)
-	wait("所有仓库的历史", func() bool { return tt.HasText("web-client 接口换到 v2") && a.AllHistDone() && !a.AllHistLoading() })
-	mustClickRow(t, tt, "web-client 接口换到 v2")
+	wait("所有仓库的历史", func() bool {
+		return tt.HasText("web-client Move API calls to v2") && a.AllHistDone() && !a.AllHistLoading()
+	})
+	mustClickRow(t, tt, "web-client Move API calls to v2")
 	w := a.Repos[1]
 	wait("提交的文件", func() bool { return w.Hist.FilesFor != "" && !w.Hist.FilesLoading })
 	// Git 栏里也有 src/api.ts（工作区的改动），按行选右栏里提交的那个
@@ -447,18 +472,18 @@ func TestScreenshotHunksHistory(t *testing.T) {
 		"\tid, _ := strconv.Atoi(r.PathValue(\"id\"))", "\twriteJSON(w, db.User(id))", "}", "")
 	api.Write("go.mod", "module example.com/api\n\ngo 1.25\n")
 	api.Write("handlers/user.go", strings.Join(user, "\n"))
-	api.CommitAt("初始化服务骨架", ago(70))
+	api.CommitAt("Scaffold the API server", ago(70))
 	api.Write("config.yaml", "port: 8080\ntimeout: 10s\n")
 	api.Git("add", "-A")
 	api.Git("commit", "-q", "-m", "加用户列表接口\n\n列表先不分页，之后再说。", "--author", "张三 <zhangsan@example.com>",
 		"--date", ago(46).Format(time.RFC3339))
 	api.Write("config.yaml", "port: 8080\ntimeout: 15s\n")
-	api.CommitAt("修复登录超时", ago(20))
+	api.CommitAt("Fix the login timeout", ago(20))
 	api.Git("remote", "add", "origin", "git@github.com:example/api-server.git") // 假的地址：只用来推网页，不连网
 	api.Git("update-ref", "refs/remotes/origin/main", "HEAD")                   // 当前面三个推送过了
 	api.Git("branch", "-q", "--set-upstream-to=origin/main")
-	api.Write("handlers/auth.go", "package handlers\n\n// Refresh 换一个新的访问令牌。\nfunc Refresh(token string) (string, error) {\n\treturn sign(token)\n}\n")
-	api.CommitAt("加刷新令牌接口", ago(3))
+	api.Write("handlers/auth.go", "package handlers\n\n// Refresh trades a token for a new access token.\nfunc Refresh(token string) (string, error) {\n\treturn sign(token)\n}\n")
+	api.CommitAt("Add token refresh", ago(3))
 	api.Write("config.yaml", "port: 8080\ntimeout: 30s\n")
 	api.Git("stash", "push", "-q", "-m", "试一下 30 秒超时")
 	api.Write("go.mod", "module example.com/api\n\ngo 1.26\n")
@@ -469,13 +494,13 @@ func TestScreenshotHunksHistory(t *testing.T) {
 
 	infra := testutil.NewRepo(t, "infra")
 	infra.Write("deploy.yaml", "replicas: 2\nimage: api:1.0\n")
-	infra.CommitAt("部署配置", ago(60))
+	infra.CommitAt("Add the deploy config", ago(60))
 	infra.Git("switch", "-q", "-c", "scale-up")
 	infra.Write("deploy.yaml", "replicas: 4\nimage: api:1.0\n")
-	infra.CommitAt("扩到 4 个副本", ago(26))
+	infra.CommitAt("Scale to 4 replicas", ago(26))
 	infra.Git("switch", "-q", "main")
 	infra.Write("deploy.yaml", "replicas: 3\nimage: api:1.1\n")
-	infra.CommitAt("升级镜像到 1.1", ago(9))
+	infra.CommitAt("Bump the image to 1.1", ago(9))
 	if out, err := git.Run(infra.Root, "merge", "-q", "scale-up"); err == nil {
 		t.Fatalf("infra 应该合并冲突: %s", out)
 	}
@@ -523,22 +548,24 @@ func TestScreenshotTerminals(t *testing.T) {
 	if dir == "" {
 		t.Skip("设置 WORKBENCH_SHOT=目录 才渲染截图")
 	}
+	shotAuthor(t)
 	now := time.Now().Truncate(time.Minute)
 	ago := func(h float64) time.Time { return now.Add(-time.Duration(h * float64(time.Hour))) }
 	api := testutil.NewRepo(t, "api-server")
 	api.Write("go.mod", "module example.com/api\n\ngo 1.25\n")
 	api.Write("handlers/user.go", "package handlers\n")
-	api.CommitAt("初始化服务骨架", ago(30))
-	api.Write("handlers/auth.go", "package handlers\n\n// Refresh 换一个新的访问令牌。\nfunc Refresh() {}\n")
-	api.CommitAt("加刷新令牌接口", ago(3))
+	api.CommitAt("Scaffold the API server", ago(30))
+	api.Write("handlers/auth.go", "package handlers\n\n// Refresh issues a new access token.\nfunc Refresh() {}\n")
+	api.CommitAt("Add token refresh", ago(3))
 	api.Write("config.yaml", "port: 8080\n")
-	api.Write("handlers/user.go", "package handlers\n\n// ListUsers 列出用户。\n")
+	api.Write("handlers/user.go", "package handlers\n\n// ListUsers returns all users.\n")
 	infra := testutil.NewRepo(t, "infra")
 	infra.Write("deploy.yaml", "replicas: 2\n")
-	infra.CommitAt("部署配置", ago(60))
+	infra.CommitAt("Add the deploy config", ago(60))
 
 	state := termState(t, true)
 	a, tt, wait := termUI(t, testutil.Workspace(t, api.Root, infra.Root), state)
+	shotEnglish(t, a, tt)
 	tt.SetScale(2)
 	tt.SetTitleBar(shotBar)
 	a.St.RightBar, a.St.BottomH = false, 400
@@ -554,7 +581,7 @@ func TestScreenshotTerminals(t *testing.T) {
 	wait("认领到 shell 的进程号", func() bool { return p1.Job() == "" })
 	tidy(p1)
 	typeLine(t, tt, p1, "ls", "handlers")
-	typeLine(t, tt, p1, "git --no-pager log --oneline", "初始化服务骨架")
+	typeLine(t, tt, p1, "git --no-pager log --oneline", "Scaffold the API server")
 
 	tt.Key(wui.Cmd, wui.KeyD)
 	wait("左右分屏", func() bool { return len(a.CurTermTab(r).Panes()) == 2 })
@@ -564,7 +591,7 @@ func TestScreenshotTerminals(t *testing.T) {
 
 	a.StartRenameTerm(r, a.CurTermTab(r))
 	tt.Frame()
-	tt.Type("服务")
+	tt.Type("server")
 	tt.Key(0, wui.KeyEnter)
 	tt.Frame()
 	a.NewTerminal(r, "")
@@ -573,14 +600,14 @@ func TestScreenshotTerminals(t *testing.T) {
 	a.FocusPane(r, p1)
 	a.FindInTerm()
 	tt.Frame()
-	tt.Type("令牌")
+	tt.Type("token")
 	wait("查找", func() bool { st := p1.Term.SearchStatus(); return !st.Searching && st.Total == 1 })
-	mustText(t, tt, "服务")
-	mustText(t, tt, "终端 2")
-	div, _ := tt.Find("拖动调整分屏大小")
+	mustText(t, tt, "server")
+	mustText(t, tt, i18n.Tf("终端 %d", 2))
+	div, _ := tt.Find(i18n.T("拖动调整分屏大小"))
 	tt.Move(div.X+120, div.Y+div.H/2)
 	tt.Frame()
-	mustText(t, tt, "关闭这一格分屏")
+	mustText(t, tt, i18n.T("关闭这一格分屏"))
 	tt.SetVibrancy(true)
 	writeMaterialShot(t, tt, dir, "terminals.png", false)
 }
@@ -602,16 +629,16 @@ func TestScreenshotTitlebarQueue(t *testing.T) {
 	ago := func(h float64) time.Time { return now.Add(-time.Duration(h * float64(time.Hour))) }
 	api := testutil.NewRepo(t, "api-server")
 	api.Write("go.mod", "module example.com/api\n\ngo 1.25\n")
-	api.Write("handlers/user.go", "package handlers\n\n// ListUsers 列出用户。\nfunc ListUsers() []User {\n\treturn db.Users()\n}\n")
+	api.Write("handlers/user.go", "package handlers\n\n// ListUsers returns all users.\nfunc ListUsers() []User {\n\treturn db.Users()\n}\n")
 	api.CommitAt("加用户列表接口", ago(20))
-	api.Write("handlers/user.go", "package handlers\n\n// ListUsers 列出用户，一页 page 条。\nfunc ListUsers(page int) []User {\n\treturn db.Users().Page(page, 50)\n}\n")
+	api.Write("handlers/user.go", "package handlers\n\n// ListUsers returns one page of users.\nfunc ListUsers(page int) []User {\n\treturn db.Users().Page(page, 50)\n}\n")
 	api.Write("config.yaml", "port: 8080\n")
 	web := testutil.NewRepo(t, "web-client")
 	web.Write("src/api.ts", "export const base = '/api'\n")
 	web.CommitAt("前端脚手架", ago(30))
 	web.Write("src/api.ts", "export const base = '/api/v2'\n")
 	docsRepo := testutil.NewRepo(t, "docs")
-	docsRepo.Write("README.md", "# 文档\n")
+	docsRepo.Write("README.md", "# Docs\n")
 	docsRepo.CommitAt("文档目录", ago(50))
 
 	a, tt, wait := newUI(t, testutil.Workspace(t, api.Root, web.Root, docsRepo.Root), t.TempDir())
@@ -666,9 +693,11 @@ func TestScreenshotHistoryGraph(t *testing.T) {
 	if dir == "" {
 		t.Skip("设置 WORKBENCH_SHOT=目录 才渲染截图")
 	}
-	repo := graphRepo(t)
-	repo.Write("README.md", "加 README\n\n## 提交图\n")
+	shotAuthor(t)
+	repo := graphRepoMsgs(t, graphEnglish)
+	repo.Write("README.md", "Add README\n\n## Commit graph\n")
 	a, tt, wait := newUI(t, testutil.Workspace(t, repo.Root), t.TempDir())
+	shotEnglish(t, a, tt)
 	tt.SetScale(2)
 	tt.SetTitleBar(shotBar)
 	a.St.BottomBar = false // 测试里不起 shell，空终端占地方
@@ -685,7 +714,7 @@ func TestScreenshotHistoryGraph(t *testing.T) {
 		return d != nil && d.Buf != nil && r.Hist.Loaded && !r.Hist.Loading && len(r.Hist.Commits) == 10
 	})
 	tt.Frame()
-	mustClickRow(t, tt, "合并 feature/login")
+	mustClickRow(t, tt, graphEnglish("合并 feature/login"))
 	wait("展开合并", func() bool { return r.Hist.Expanded != "" && r.Hist.FilesFor == r.Hist.Expanded })
 	writeShot(t, tt, dir, "history-graph.png")
 }
@@ -750,10 +779,10 @@ func TestScreenshotTreeMulti(t *testing.T) {
 	now := time.Now().Truncate(time.Minute)
 	api := testutil.NewRepo(t, "api-server")
 	api.Write("go.mod", "module example.com/api\n\ngo 1.25\n")
-	api.Write("handlers/user.go", "package handlers\n\n// ListUsers 列出用户。\nfunc ListUsers() []User {\n\treturn db.Users()\n}\n")
+	api.Write("handlers/user.go", "package handlers\n\n// ListUsers returns all users.\nfunc ListUsers() []User {\n\treturn db.Users()\n}\n")
 	api.Write("handlers/order.go", "package handlers\n\n// ListOrders 列出订单。\nfunc ListOrders() []Order {\n\treturn db.Orders()\n}\n")
 	api.Write("README.md", "# api-server\n")
-	api.CommitAt("加用户和订单接口", now.Add(-20*time.Hour))
+	api.CommitAt("Add the user and order endpoints", now.Add(-20*time.Hour))
 	api.Write("handlers/order.go", "package handlers\n\n// ListOrders 列出订单，一页 page 条。\nfunc ListOrders(page int) []Order {\n\treturn db.Orders().Page(page, 50)\n}\n")
 	web := testutil.NewRepo(t, "web-client")
 	web.Write("package.json", "{\n  \"name\": \"web-client\"\n}\n")
@@ -849,7 +878,7 @@ func TestScreenshotWorktrees(t *testing.T) {
 	search.Write("search/query.go", "package search\n\n// Query 按词查，结果按相关度排。\n")
 	search.Write("search/rank.go", "package search\n")
 	search.Write("handlers/search.go", "package handlers\n")
-	api.Write("handlers/order.go", "package handlers\n\n// ListOrders 列出订单，一页 50 条。\n")
+	api.Write("handlers/order.go", "package handlers\n\n// ListOrders writes one page of 50 orders as JSON.\n")
 	web := testutil.NewRepo(t, "web-client")
 	web.Write("package.json", "{\n  \"name\": \"web-client\"\n}\n")
 	web.CommitAt("前端脚手架", ago(40))
@@ -896,16 +925,18 @@ func TestScreenshotSplitEditors(t *testing.T) {
 	if dir == "" {
 		t.Skip("设置 WORKBENCH_SHOT=目录 才渲染截图")
 	}
+	shotAuthor(t)
 	api := testutil.NewRepo(t, "api-server")
 	api.Write("go.mod", "module example.com/api\n\ngo 1.25\n")
-	api.Write("README.md", "# api-server\n\n用户和订单的 HTTP 接口。\n\n```sh\ngo run .\n```\n")
+	api.Write("README.md", "# api-server\n\nHTTP API for users and orders.\n\n```sh\ngo run .\n```\n")
 	api.Write("main.go", "package main\n\nimport (\n\t\"net/http\"\n\n\t\"example.com/api/handlers\"\n)\n\nfunc main() {\n\thttp.HandleFunc(\"/users\", handlers.ListUsers)\n\thttp.HandleFunc(\"/orders\", handlers.ListOrders)\n\thttp.ListenAndServe(\":8080\", nil)\n}\n")
-	api.Write("handlers/user.go", "package handlers\n\nimport \"net/http\"\n\n// ListUsers 列出用户。\nfunc ListUsers(w http.ResponseWriter, r *http.Request) {\n\twriteJSON(w, db.Users())\n}\n")
-	api.Write("handlers/order.go", "package handlers\n\nimport \"net/http\"\n\n// ListOrders 列出订单。\nfunc ListOrders(w http.ResponseWriter, r *http.Request) {\n\twriteJSON(w, db.Orders())\n}\n")
-	api.CommitAt("加用户和订单接口", time.Now().Truncate(time.Minute).Add(-20*time.Hour))
-	api.Write("handlers/order.go", "package handlers\n\nimport (\n\t\"net/http\"\n\t\"strconv\"\n)\n\n// ListOrders 列出订单，一页 50 条。\nfunc ListOrders(w http.ResponseWriter, r *http.Request) {\n\tpage, _ := strconv.Atoi(r.URL.Query().Get(\"page\"))\n\twriteJSON(w, db.Orders().Page(page, 50))\n}\n")
+	api.Write("handlers/user.go", "package handlers\n\nimport \"net/http\"\n\n// ListUsers writes all users as JSON.\nfunc ListUsers(w http.ResponseWriter, r *http.Request) {\n\twriteJSON(w, db.Users())\n}\n")
+	api.Write("handlers/order.go", "package handlers\n\nimport \"net/http\"\n\n// ListOrders writes all orders as JSON.\nfunc ListOrders(w http.ResponseWriter, r *http.Request) {\n\twriteJSON(w, db.Orders())\n}\n")
+	api.CommitAt("Add the user and order endpoints", time.Now().Truncate(time.Minute).Add(-20*time.Hour))
+	api.Write("handlers/order.go", "package handlers\n\nimport (\n\t\"net/http\"\n\t\"strconv\"\n)\n\n// ListOrders writes one page of 50 orders as JSON.\nfunc ListOrders(w http.ResponseWriter, r *http.Request) {\n\tpage, _ := strconv.Atoi(r.URL.Query().Get(\"page\"))\n\twriteJSON(w, db.Orders().Page(page, 50))\n}\n")
 
 	a, tt, wait := newUI(t, testutil.Workspace(t, api.Root), termState(t, false))
+	shotEnglish(t, a, tt)
 	tt.SetScale(2)
 	tt.SetTitleBar(shotBar)
 	a.ShowSidebar(workspace.ModeFiles)
@@ -929,6 +960,8 @@ func TestScreenshotSplitEditors(t *testing.T) {
 	if got := len(a.Groups()); got != 3 {
 		t.Fatalf("分成了 %d 组", got)
 	}
+	// 右边历史栏读完再截，不然栏头还在转圈
+	wait("历史", func() bool { return loaded(a)() && r.Hist.Loaded && !r.Hist.Loading })
 	tt.Frame()
 	tt.Frame()
 	writeShot(t, tt, dir, "split-editors.png")

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -22,10 +23,26 @@ import (
 //	topic：从"合并 feature/login"分出，试验：新布局（没合并，只在"所有分支"里看得到，也是最新的）
 func graphRepo(t *testing.T) *testutil.Repo {
 	t.Helper()
+	return graphRepoMsgs(t, func(s string) string { return s })
+}
+
+// graphEnglish 是 graphRepo 的提交信息换成英文（README 用的 history-graph.png）。
+func graphEnglish(s string) string {
+	return cmp.Or(map[string]string{
+		"初始提交": "Initial commit", "加 README": "Add README", "登录页": "Add the login page", "登录校验": "Validate login input",
+		"搜索框": "Add the search box", "修文档": "Fix typos in the docs", "合并 feature/login": "Merge feature/login",
+		"搜索结果": "Show search results", "合并 feature/search": "Merge feature/search", "试验：新布局": "Experiment: new layout",
+	}[s], s)
+}
+
+// graphRepoMsgs 和 graphRepo 一样，提交信息先过一遍 m。
+func graphRepoMsgs(t *testing.T, m func(string) string) *testutil.Repo {
+	t.Helper()
 	repo := testutil.NewRepo(t, "graph")
 	base := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 	at := func(i int) time.Time { return base.Add(time.Duration(i) * time.Hour) }
 	commit := func(i int, file, msg string) {
+		msg = m(msg)
 		repo.Write(file, msg+"\n")
 		repo.CommitAt(msg, at(i))
 	}
@@ -33,7 +50,7 @@ func graphRepo(t *testing.T) *testutil.Repo {
 		d := at(i).Format(time.RFC3339)
 		t.Setenv("GIT_AUTHOR_DATE", d)
 		t.Setenv("GIT_COMMITTER_DATE", d)
-		repo.Git("merge", "-q", "--no-ff", "-m", "合并 "+branch, branch)
+		repo.Git("merge", "-q", "--no-ff", "-m", m("合并 "+branch), branch)
 		os.Unsetenv("GIT_AUTHOR_DATE")
 		os.Unsetenv("GIT_COMMITTER_DATE")
 	}
