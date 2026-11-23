@@ -335,7 +335,7 @@ ged 自己不做的命令（跳行、补全、跳到定义、显示悬停……�
 编辑器自己的命令（跳到定义、更改所有匹配项）不在菜单栏的注册表里，键按 `edBindingOf` 从 `app.EditorBindings()` 再 `editor.DefaultBindings()` 找（只要一下的，不要和弦）；一个命令有几个键时挑 `edMenuKeys` 里 VS Code 菜单写的那个（更改所有匹配项 ⌘F2，`TestEdMenuKeys`）。
 括号按层上色（`Style.Brackets`，只在 VS Code 风格里给，Light+ / Dark+ 的三种色）：每行开头的括号层数和分词状态一起缓存（`depths` / `stateAt`），`walkBrackets` 跳过字符串、注释里的括号。
 小地图（`ged/minimap.go`，`Style.Minimap`，也只在 VS Code 风格里开）：概览条左边 100 pt，一行 2 pt、一个字 1 pt，按词的颜色画细条（每行按字和分词状态缓存），
-比编辑器高时按比例跟着滚（编辑器滚到底它也到底）；`geom.right` 是右边让出的宽，正文、粘性滚动、横滚、软换行的宽都按它算。指针在上面时出滑块，按滑块外把滑块挪到指针下再拖。`ged` 包里 `TestMinimap`。
+比编辑器高时按比例跟着滚（编辑器滚到底它也到底）；`geom.right` 是右边让出的宽，正文、粘性滚动、横滚、软换行的宽都按它算。当前一屏的滑块一直淡淡地画着（照 VS Code 的 `minimap.showSlider: always`），指针在上面深一档，按滑块外把滑块挪到指针下再拖。`ged` 包里 `TestMinimap`。
 最后一行下面能滚出来多少（`Diff.tail`）：Diff 三行，单栏照 VS Code 的 scrollBeyondLastLine 能把最后一行滚到顶上（一屏放得下的不滚），恢复的标签才滚得回原来的顶；
 同一帧里既有恢复的顶（`wantTop`）又有要露出来的光标（`want`），光标在滚好的视野里就不再为它挪。测的是 mygo 编辑器自己的东西（它的 FindBar、`LineTop` / `ScrollY`、
 `TextBackgrounds`、它画的粘性滚动行）的测试钉在 `gedEditor(t, false)` 上。

@@ -8,7 +8,7 @@ import (
 
 // 小地图：单栏编辑器右边、概览条左边的一条缩略图（照 VS Code 的 minimap）。每行 mmLH 高，每个字 mmCW 宽，
 // 按词的颜色画成细条（空白不画）；整个文件比小地图高时它跟着编辑器按比例滚（编辑器滚到底它也到底）。
-// 指针在上面时画出当前一屏的那块（滑块），按在滑块上拖着滚，按在别处先把滑块挪到指针下、接着拖。
+// 当前一屏的那块（滑块）一直淡淡地画着，指针在上面时深一档；按在滑块上拖着滚，按在别处先把滑块挪到指针下、接着拖。
 const (
 	minimapW    = 100 // 多宽（VS Code 默认一行最多画 120 个字，常见的宽差不多这么多）
 	minimapMinW = 480 // 编辑器比这窄就不画
@@ -151,14 +151,16 @@ func (d *Diff) paintMinimap(p *wui.Painter, r wui.Rect, g geom, s *Style) {
 			p.Fill(wui.Rect{X: x, Y: y, W: min((ru.c1-ru.c0)*mmCW, right-x), H: mmLH - 0.5}, ru.col, 0)
 		}
 	}
-	if d.mm.on || d.mm.drag {
-		top, h := d.mmSlider(g)
-		a := float32(0.2)
-		if d.mm.drag {
-			a = 0.3
-		}
-		p.Fill(wui.Rect{X: box.X, Y: box.Y + top, W: box.W, H: h}, wui.RGBA(121, 121, 121, a), 0)
+	// 滑块一直画（照 VS Code 的 minimap.showSlider: always），不然看不出这一屏在文件的哪儿；指针在上面深一档，拖着再深一档
+	top, h := d.mmSlider(g)
+	a := float32(0.12)
+	switch {
+	case d.mm.drag:
+		a = 0.3
+	case d.mm.on:
+		a = 0.2
 	}
+	p.Fill(wui.Rect{X: box.X, Y: box.Y + top, W: box.W, H: h}, wui.RGBA(121, 121, 121, a), 0)
 }
 
 // minimapInput 管小地图上的按、拖、悬停；滚轮照常滚编辑器（不在这接）。
