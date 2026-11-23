@@ -293,7 +293,7 @@ func crumb(a *app.App, c *wui.Context, r *app.Repo, path, text string, file bool
 }
 
 // dirMenu 是面包屑里目录段的菜单：在文件树里显示，然后是目录里的子目录（子菜单，最多两层）和文件（选了打开）。
-// 还是 mygo 的菜单（wui.Menu）：Grove 菜单每帧连子菜单一起重建，两层 × 每层 80 项最坏几十万项，要先让子菜单按需建（docs/architecture.md）。
+// 还是 mygo 的菜单（wui.Menu）：Grove 菜单每帧连子菜单一起重建，两层 × 每层 80 项最坏几十万项，要先让子菜单按需建（docs/architecture/menus.md）。
 func dirMenu(a *app.App, m *wui.Menu, r *app.Repo, dir string, depth int) {
 	a.EnsureFiles(r)
 	if depth == 0 {

@@ -21,6 +21,8 @@
 package main
 
 import (
+	"bytes"
+	"image/png"
 	"io"
 	"log"
 	"os"
@@ -28,9 +30,12 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
+	updnative "github.com/egoist/mygo/plugins/updater/native"
 	wui "github.com/egoist/mygo/ui"
 
 	"github.com/lemoeade/grove/internal/app"
+	"github.com/lemoeade/grove/internal/appicon"
 	"github.com/lemoeade/grove/internal/askpass"
 	"github.com/lemoeade/grove/internal/crash"
 	"github.com/lemoeade/grove/internal/fonts"
@@ -148,6 +153,8 @@ func main() {
 	mygo.App.OnOpenFile(func(path string) { deliver([]string{path}, "") })
 	mygo.App.OnSecondInstance(func(args []string, wd string) { deliver(app.Args(args), wd) })
 
+	setupUpdates()
+
 	mygo.App.SetLanguages(i18n.Locale()) // 界面语言不跟系统走，由设置里的"语言"定（读完设置后 OnSettings 再设一次）
 	mygo.App.WhenReady(func() {
 		fonts.Load()
@@ -181,6 +188,12 @@ func main() {
 				aboutWin.Invalidate()
 			}
 		}
+		// 自动更新的偏好、上次检查、找到的新版本变了（检查完、在更新窗口里答了）：设置窗口的“更新”页跟着重画。
+		updater.OnChange(func() {
+			if settingsWin != nil && !settingsWin.IsDestroyed() {
+				settingsWin.Invalidate()
+			}
+		})
 		openSettings := func(a *app.App) {
 			if settingsWin != nil && !settingsWin.IsDestroyed() {
 				settingsWin.Show()
@@ -447,4 +460,29 @@ func vibrancy(s *workspace.Settings) mygo.Vibrancy {
 		return mygo.Vibrancy(s.Material)
 	}
 	return mygo.VibrancySidebar
+}
+
+// setupUpdates 接上自动更新：mygo 的 updater 插件（原生 UI 画的更新窗口），更新从 GitHub Releases 来、按 mygo.json 的
+// updates.publicKey 验签（docs/release.md）。go run 和开发构建不带更新：插件不在后台检查，手动检查时窗口里说明。
+// 用另一份 state.json 时（WORKBENCH_STATE：量内存、手测）不在后台检查——更新窗口会抢前台；菜单里手动检查照旧。
+func setupUpdates() {
+	var icon []byte
+	var buf bytes.Buffer
+	if png.Encode(&buf, appicon.Draw(256)) == nil {
+		icon = buf.Bytes()
+	}
+	mygo.Use(updnative.New(updater.Options{
+		Icon:                   icon,
+		DisableAutomaticChecks: os.Getenv("WORKBENCH_STATE") != "",
+	}))
+	app.Updates = &app.UpdateHooks{
+		Enabled:         mygo.Updater.Enabled,
+		Check:           updater.CheckForUpdates,
+		AutoCheck:       updater.AutomaticChecks,
+		SetAutoCheck:    updater.SetAutomaticChecks,
+		AutoDownload:    updater.AutomaticDownloads,
+		SetAutoDownload: updater.SetAutomaticDownloads,
+		LastCheck:       updater.LastCheck,
+		Available:       updater.AvailableVersion,
+	}
 }

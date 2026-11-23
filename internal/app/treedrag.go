@@ -534,7 +534,7 @@ func (a *App) PressTreeRow(i int, alt bool, now time.Time) {
 	a.TreeTip.Dismiss()
 }
 
-// TreePressed 是按下还没松开、也没拖走的那行（PressTreeRow 记的），没有时第二个值为假。界面拿它画"按下"的底色。
+// TreePressed 是按下还没松开、也没拖走的那行（PressTreeRow 记的），没有时第二个值为假。界面拿它让那一行接着收移动和松开（不画“按下”的底色）。
 func (a *App) TreePressed() (FileKey, bool) {
 	tc := &a.treeClick
 	return tc.press, tc.pressing && !tc.dragged

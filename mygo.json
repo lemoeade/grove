@@ -5,8 +5,13 @@
   "icon": "assets/icon.png",
   "main": "./cmd/workbench",
   "out": "build",
+  "updates": {
+    "publicKey": "x5AEQoBAwyfiVmqW1OQ5cs1gDPQOiszF1qLT67rn/GU=",
+    "github": "lemoeade/grove"
+  },
   "macos": {
     "minimumSystemVersion": "13.0",
+    "entitlements": "assets/entitlements.plist",
     "infoPlist": {
       "CFBundleDocumentTypes": [
         {

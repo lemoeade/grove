@@ -2343,5 +2343,15 @@
   "锁定预览": "Lock Preview",
   "在旁边打开预览（左右并排，跟着编辑器滚）": "Open Preview to the Side (scrolls with the editor)",
   "关掉旁边的预览": "Close Preview to the Side",
-  "打开一个 Markdown 文件，预览就跟过去": "Open a Markdown file and the preview will follow it"
+  "打开一个 Markdown 文件，预览就跟过去": "Open a Markdown file and the preview will follow it",
+  "%s 可以更新": "%s is available",
+  "%s检查过": "checked %s",
+  "有新版本不问就下载、验签、装好，下次启动时生效": "Download, verify and install new versions without asking; they take effect the next time Grove starts",
+  "检查更新…": "Check for Updates…",
+  "每天在后台看一次 GitHub 上有没有新版本，有就弹窗说改了什么，装不装由你": "Look for a new version on GitHub once a day in the background; when there is one, a window shows what changed and you decide whether to install it",
+  "版本": "Version",
+  "现在就去 GitHub 看有没有新版本": "Look for a new version on GitHub now",
+  "自动下载并安装更新": "Automatically download and install updates",
+  "自动检查更新": "Automatically check for updates",
+  "这个构建不能自己更新": "this build can't update itself"
 }

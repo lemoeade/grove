@@ -4,6 +4,13 @@
 
 ## 未发布
 
+- 自动更新：Grove 每天在后台看一次 GitHub Releases 上有没有新版本，有就弹窗列出这一版改了什么，选“安装”就下载（有增量包先用增量包）、
+  验签名、装好重启，也可以跳过这一版或以后再提醒。菜单 Grove → “检查更新…”（命令面板里也有）随时手动查；设置里新加“更新”一页：
+  自动检查、自动下载并安装（下次启动时生效）、当前版本和上次检查的时间。`go run` 和开发构建不检查。
+- 安装：`curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh` 下载最新版、验签名、装进“应用程序”；
+  也可以下 DMG。还没有经过 Apple 公证，DMG 第一次打开要到 系统设置 → 隐私与安全性 点“仍要打开”（install.sh 装的不用）。
+  推 `v*` 标签由 GitHub Actions 构建、签名，把 DMG、更新包、更新清单和 install.sh 传到草稿 Release，看过再发布。
+
 - Markdown 预览改由 Grove 自己画（`internal/gmd`，照编辑器换成 `internal/ged` 的做法：解析还用 mygo 的，排版、绘制、选择、复制都是 Grove 的），
   文档里带样式的 HTML 照 VS Code 的预览画出来：`<style>` 里的 class 和 `style=` 按选择器、优先级层叠（新的 `internal/css`），
   grid / flex 排版、底色和渐变、边框（实线、虚线、单边着色）、圆角、阴影、内外边距、`::before` / `::after`、`display: none`、带样式的表格和列表，

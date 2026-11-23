@@ -9,7 +9,7 @@ Git 审阅 + 终端。工作区可以是一个 `.code-workspace` 文件，也可
 文档：
 
 - [README.md](README.md) / [README.en.md](README.en.md)：给用户的说明
-- [docs/architecture.md](docs/architecture.md)：架构，现在实际是什么样
+- [docs/architecture.md](docs/architecture.md)：架构总览（分层、包、约定），各子系统的细节在 [docs/architecture/](docs/architecture/)
 - [docs/testing.md](docs/testing.md)：测试怎么分工、怎么量
 - [docs/release.md](docs/release.md)：版本号、构建、DMG、签名和公证、CI
 - [docs/shortcuts.md](docs/shortcuts.md)：快捷键表（从命令注册表生成，别手改）
@@ -47,8 +47,8 @@ Git 审阅 + 终端。工作区可以是一个 `.code-workspace` 文件，也可
    - 界面文案一律 `i18n.T("中文")` / `i18n.Tf(…)`，改了文案跑 `TestCatalog -update` 再补 `en.json`。
    - 术语以界面为准（`internal/i18n/zh-CN.json` 里的写法），README、CHANGELOG、注释跟着用，清单见 [docs/terms.md](docs/terms.md)：已暂存 / 未暂存 / 未跟踪（后两者同在“改动”一组）、只看改动附近 / 全文、并排 / 统一、抓取 / 拉取 / 推送、贮藏、丢弃改动、拣选、预览标签 / 固定标签、工作区干净……
 6. **state.json 向后兼容**：`~/Library/Application Support/Grove/state.json` 带格式版本（`workspace.Version`），旧格式的文件照常读、
-   一步步迁到现在的格式（见 [docs/architecture.md](docs/architecture.md)）。新加字段时旧文件照常读（缺的当默认），`TestStateMigration` / `TestStateSessions` 要跟着加。
-7. **改了行为要同步文档**：README（功能、快捷键）、`CHANGELOG.md` 的"## 未发布"、`docs/architecture.md`、
+   一步步迁到现在的格式（见 [docs/architecture/state.md](docs/architecture/state.md)）。新加字段时旧文件照常读（缺的当默认），`TestStateMigration` / `TestStateSessions` 要跟着加，`TestStateDocKeys` 要求 state.md 的示例写出每个新键。
+7. **改了行为要同步文档**：README（功能、快捷键）、`CHANGELOG.md` 的"## 未发布"、`docs/architecture.md` 或 `docs/architecture/` 下对应的那篇、
    `docs/shortcuts.md`（生成，见下面的命令）；踩到新的坑写进 `docs/mygo-pitfalls.md`。
 
 ## 命令
@@ -84,7 +84,7 @@ WORKBENCH_SHOT_WS=<工作区>                   # 截图用另一个工作区（
 WORKBENCH_SHOT_RENDER=<目录>                 # 截图里的 Mermaid / 公式按目录里录好的真 WebKit 结果回放
 WORKBENCH_MEASURE=1                          # 跑大文件的计时测试（TestMeasureBigFile 等），平时跳过
 WORKBENCH_WORKSPACE=<路径>                   # 启动时打开这个工作区
-WORKBENCH_STATE=<目录>                       # 用那个目录里的 state.json / window-state.json / termd，不动默认的；也不抢单实例锁
+WORKBENCH_STATE=<目录>                       # 用那个目录里的 state.json / window-state.json / termd，不动默认的；也不抢单实例锁、不在后台检查更新
 WORKBENCH_LOGS=<目录>                        # 日志和崩溃日志写到这里，不写 ~/Library/Logs/Grove
 WORKBENCH_SINGLE=1                           # 设了 WORKBENCH_STATE 也抢单实例锁（只在测单实例本身时用）
 WORKBENCH_PANIC=1                            # 启动 3 秒后在后台 goroutine 里 panic（测崩溃日志）
@@ -166,7 +166,7 @@ MYGO_FRAME_STATS=all                         # mygo 的帧统计写进日志（�
 
 ## 目录
 
-细节见 [docs/architecture.md](docs/architecture.md)。
+细节见 [docs/architecture.md](docs/architecture.md)（总览和包表）和 [docs/architecture/](docs/architecture/)。
 
 - `cmd/workbench`：入口，开窗口；第一行先分出 termd 后台进程
 - `internal/app`：状态机和命令注册表（`commands.go`）；一个窗口一个 `App`，`app.Windows`（`windows.go`）是开着的窗口的注册表，

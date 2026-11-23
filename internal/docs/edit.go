@@ -72,7 +72,7 @@ func (d *Doc) Run(cmd editor.Command) bool {
 }
 
 // Completions 是 ged 编辑器上的补全列表：从缓冲区第 Start 个字节到光标是正在打的词，Items 是给的候选
-// （按打的字筛，见 ui/gedcomplete.go），Sel 是选中第几个（筛过的里面）。
+// （按打的字筛，见 ui/gedfile.go），Sel 是选中第几个（筛过的里面）。
 type Completions struct {
 	Start int
 	Items []editor.Completion

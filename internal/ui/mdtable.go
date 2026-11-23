@@ -14,11 +14,6 @@ import (
 // README 常拿表格并排放截图（GitHub 上显示得出来），所以这种表格自己搭：列等宽、铺满一栏，
 // 每个单元格是一个小的 markdown.View（只有图片的单元格就显示图片）。不带图片的表格照旧给 mygo。
 
-// mdHasTable 粗看源码里可能有带图片的表格：没有就不挂 Block 钩子（挂了每个块外面都多包一层）。
-func mdHasTable(src string) bool {
-	return strings.Contains(src, "|") && strings.Contains(src, "![")
-}
-
 // mdTableKey 是带图表格上留着的单元格选项（里面有图片缓存，每帧新建就会一直重读图片）。
 type mdTableKey struct{}
 

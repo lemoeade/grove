@@ -44,9 +44,27 @@ Grove 使用 Go 编写，界面由 [mygo](https://github.com/egoist/mygo) 原生
 - **本地历史**：每次保存都会保留快照，方便找回误改或误删的内容。
 - **其他**：支持中英文界面、浅色和深色主题，以及自定义快捷键。
 
+## 安装
+
+需要搭载 Apple Silicon 芯片、运行 macOS 13 或更新版本的 Mac。在终端里运行：
+
+```bash
+curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh
+```
+
+它下载最新版本、验证签名，装到“应用程序”文件夹（没有写权限时装到 `~/Applications`）并打开。卸载：
+`curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh -s -- --uninstall`（设置和数据会保留）。
+
+也可以从 [Releases](https://github.com/lemoeade/grove/releases/latest) 下载 DMG，把 Grove 拖进“应用程序”。Grove 还没有经过
+Apple 公证，第一次打开会被拦下：到 系统设置 → 隐私与安全性，在页面底部点“仍要打开”；或者在终端里运行
+`xattr -dr com.apple.quarantine /Applications/Grove.app`。只有第一次需要这样做。
+
+装好以后 Grove 每天检查一次更新，有新版本时弹窗列出改动，由你决定装不装；也可以从菜单 Grove → 检查更新… 手动检查。
+在 设置 → 更新 里可以关掉自动检查，或者打开自动下载安装。
+
 ## 构建
 
-需要搭载 Apple Silicon 芯片、运行 macOS 13 或更新版本的 Mac。目前还没有安装包，需要自行构建：
+也可以自己构建：
 
 ```bash
 git clone https://github.com/lemoeade/grove.git
@@ -56,7 +74,7 @@ open build/darwin-arm64/Grove.app
 ```
 
 mygo 已在 `go.mod` 中声明，无需单独安装。如果本机 Go 版本较旧，`GOTOOLCHAIN=auto` 会自动下载所需版本。
-签名、公证和 DMG 打包说明见 [docs/release.md](docs/release.md)。
+发布流程、自动更新、签名和 DMG 打包说明见 [docs/release.md](docs/release.md)。
 
 ## 用法
 

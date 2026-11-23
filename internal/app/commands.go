@@ -443,6 +443,8 @@ func buildCommands() []*Command {
 				a.OpenAbout()
 			}
 		}},
+		&Command{ID: "app.checkUpdates", Title: "检查更新…", Group: AppGroup,
+			Enabled: func(*App) bool { return Updates != nil }, Run: (*App).CheckUpdates},
 		&Command{ID: "app.settings", Title: "设置…", Group: AppGroup, Sep: true, Mods: cmd, Key: ui.KeyComma, Run: func(a *App) {
 			if a.OpenSettings != nil {
 				a.OpenSettings()

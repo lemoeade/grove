@@ -447,17 +447,17 @@ func TestStateClamp(t *testing.T) {
 	}
 }
 
-// architecture.md 的 state.json 示例要写出 State、Session（连同它挂的 Tab、Terms、Layout、Panels……）的每个键：
+// docs/architecture/state.md 的 state.json 示例要写出 State、Session（连同它挂的 Tab、Terms、Layout、Panels……）的每个键：
 // 加了字段却没补文档时这里报。Settings 的键太多，不要求都在示例里。
 func TestStateDocKeys(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture.md"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "architecture", "state.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	doc := string(data)
 	start := strings.Index(doc, "### state.json")
 	if start < 0 {
-		t.Fatal("architecture.md 里没有 \"### state.json\" 一节")
+		t.Fatal("docs/architecture/state.md 里没有 \"### state.json\" 一节")
 	}
 	doc = doc[start:]
 	if i := strings.Index(doc, "```json"); i >= 0 {
@@ -483,7 +483,7 @@ func TestStateDocKeys(t *testing.T) {
 				continue
 			}
 			if !strings.Contains(doc, `"`+name+`"`) {
-				t.Errorf("docs/architecture.md 的 state.json 示例里没有 %s.%s（%q）：补进示例", path, f.Name, name)
+				t.Errorf("docs/architecture/state.md 的 state.json 示例里没有 %s.%s（%q）：补进示例", path, f.Name, name)
 			}
 			walk(f.Type, path+"."+f.Name)
 		}

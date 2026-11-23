@@ -3,7 +3,7 @@ package git
 import "strings"
 
 // 这个文件认"agent 写的提交"：提交正文里有 Co-Authored-By: trailer，名字或邮箱像编码 agent。
-// 右栏历史在这样的提交行右边放一个四角星，头部的"只看 agent 写的"开关只留这些提交。
+// 右栏历史展开的提交卡片在信息行里写上 agent 的名字（Commit.Agent），头部的"只看 agent 写的"开关只留这些提交。
 
 // agentPat 是一个 agent 的认法：words 是名字或邮箱用户名里的一个词（不分大小写，按非字母数字切开比），
 // domains 是邮箱域名（等于或是它的子域名）。

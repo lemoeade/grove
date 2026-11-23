@@ -410,7 +410,7 @@
 - `git restore` 对子模块什么也不做：子模块那一项（gitlink）的丢弃是 `git submodule update -- <路径>`（检出父仓库记录的提交），
   只有检出的提交变了（`Change.Sub` 带 `C`）才有得丢；里面有改动 / 未跟踪的文件是子模块自己的事，提示用户到子模块里处理。`DiscardAll` 跳过子模块。
   子模块记的提交不在父仓库里，`cat-file` / `show <commit>:<path>` 读不出来：看是不是子模块用 `ls-tree -z <commit> -- <path>` 的模式 `160000`。
-- 行级暂存是正着打补丁：取消暂存 / 丢弃不用 `git apply -R`，而是在新的一边上写"改回去"的补丁正着打（`LinesEdits` 的配对规则见 [architecture.md](architecture.md)）。
+- 行级暂存是正着打补丁：取消暂存 / 丢弃不用 `git apply -R`，而是在新的一边上写"改回去"的补丁正着打（`LinesEdits` 的配对规则见 [architecture/staging.md](architecture/staging.md)）。
   Diff 视图在以换行结尾的文件后面多一行空的，选到它不算一行改动。
 - `git ls-files -s` 的已跟踪文件和未跟踪文件的输出格式不同：带 `--others` 时已跟踪的是 `mode sha stage\t路径`，未跟踪的只有路径（git 不记它是什么）。
   mode `120000` 是符号链接，指向目录的链接也列成文件。整棵读时别为了认链接逐个 `Lstat`（5 万个文件），仅对数量较少的 `Links` + `Others` 调用 `Readlink`（`files.ReadLinks`）。
@@ -476,7 +476,7 @@
   - `search.readFile` 先 `utf8.Valid`（UTF-8 不多分配），不过才 `docs.Sniff`（和打开文件同一套认编码），解出来的字符串用 `unsafe` 借成只读的 `[]byte`、搜完就丢；
     `Match.Enc` 记编码，认不出的照原字节搜、预览换成 U+FFFD。
   - 替换：开着的文档在 `Buf.String()` 上 `Plan` → `Buf.Edit`（干净的按 `d.Enc` 编回写盘）；没开的 `docs.Decode` 可编辑才换、`Encode` 写回（nil 报"编不回 %s"、不写）。
-  - 手动换过编码的标签和搜索认的不一样时 `Plan` 核对不过，算 stale。细节见 [architecture.md](architecture.md)。
+  - 手动换过编码的标签和搜索认的不一样时 `Plan` 核对不过，算 stale。细节见 [architecture/editor.md](architecture/editor.md) 的“搜索和替换”。
 - 结果跟着改动更新只换"变了的文件"（`app/searchfollow.go`）：别为了跟着磁盘就整份重搜，也别动 `ver` 没变的文件。"全部替换？"问着时靠 `ver` 判断结果作废没有，
   无意义地更新版本会让用户点击的"替换"变成"结果变了，没换"。新加会改结果的路径（替换、撤销替换、跟着更新）都走 `splice`，保持 (仓库顺序, 路径) 的顺序。
 - regexp2（`search/advanced.go`）：
@@ -603,7 +603,7 @@
 - 系统右键菜单（`ContextMenu`）在窗口靠下的地方会折起来（issue #6）：mygo 的 darwin 后端用 `popUpMenuPositioningItem:nil atLocation:inView:` 弹（v0.7.4 到 v0.8.3 都是，`internal/darwin/menu.go` 第一个参数还是 0），
   左上角钉在点的地方，下面（到屏幕底 / Dock）放不下时 AppKit 不往上翻，而是把菜单截短、底下出滚动箭头。Grove 碰不到这个调用（位置也改不了），
   所以文件树的右键菜单（`treeMenu`、`rowMenu`、仓库行、钉在顶上的行、压缩目录的每一段）画在窗口里（先是 `PopoverMenu`，issue #48 起是 Grove 自己画的
-  `ui/gmenu.go`），下面放不下就往上开，窗口本身都放不下才滚。样子跟着主题，磨砂是自己加的（下一条）。后来（issue #58）大多数右键菜单和按钮的菜单也换成了它；还是 mygo 画的（`SetMenuPresentation(PopoverMenus)`）只剩编辑器的右键菜单、设置窗口的“更多”、标题栏的面包屑，名单见 `docs/architecture.md`。
+  `ui/gmenu.go`），下面放不下就往上开，窗口本身都放不下才滚。样子跟着主题，磨砂是自己加的（下一条）。后来（issue #58）大多数右键菜单和按钮的菜单也换成了它；还是 mygo 画的（`SetMenuPresentation(PopoverMenus)`）只剩编辑器的右键菜单、设置窗口的“更多”、标题栏的面包屑，名单见 [architecture/files.md](architecture/files.md) 的菜单一节。
 - 画在窗口里的面板要磨砂用 `Element.Material` + `plugins/glass`（v0.9.0，和 mygo 同一个模块，不加依赖）：`glass.Blur{Radius}` 只糊不上色，
   `Material` 顶替 `Background`，所以底色要么另铺一层半透明的子元素，要么（现在的做法，`ui/frost.go` 的 `frostMaterial`）自己写个 `Material`：
   `PaintMaterial` 里先调 `glass.Blur.PaintMaterial` 再 `p.FillRadii` 盖底色。铺子元素的办法在有 `Gap` / `Padding` 的面板（对话框、命令面板）里会被挤、占一格间距；`glass.Glass{}` 是 macOS 26 那种带亮边的玻璃。

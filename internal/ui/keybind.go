@@ -31,7 +31,7 @@ func onKey(c *wui.Context, h *wui.Handle, id string, f func()) {
 }
 
 // keysPage 是设置里"快捷键"页的号（settingsPages 的最后一个）。
-const keysPage = 8
+const keysPage = 9
 
 // keysResultsMax 是设置的搜索结果里最多列几条命令，多了给一个"在快捷键页里看全部"。
 const keysResultsMax = 20

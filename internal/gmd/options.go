@@ -57,7 +57,7 @@ type Options struct {
 	// 自己不再 Selectable、不接复制。
 	ShareSelection bool
 
-	// CSS 是全文的样式表（mdprep 收的所有 <style>）：HTML 块按它、再加上块里自己的 <style> 排。
+	// CSS 是全文的样式表（DocCSS 收的 HTML 块里所有的 <style>）：HTML 块按它、再加上块里自己的 <style> 排。
 	CSS string
 
 	// Strings 是视图里的几句文案（Grove 给译好的），空的用英文。

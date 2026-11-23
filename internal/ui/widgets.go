@@ -381,7 +381,7 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 	b := wui.Row(c).Height(headerHeight).Padding(0, 4, 0, 10).Gap(6).AlignItems(wui.Center).Shrink(0).Cursor(wui.CursorPointer).
 		BorderWidth(0, 1, 0, 0).BorderColor(cardLine(t))
 	switch {
-	case active && vscode(): // VS Code 2026：当前标签顶上一道线（tab.activeBorderTop：浅色黑、深色 #3994BC）
+	case active && vscode(): // VS Code 2026：当前标签顶上一道线（tab.activeBorderTop：浅色黑；深色不用 2026 的 #3994BC，用正文色，见 vsActiveLine）
 		b.Background(t.Background).Draw(func(p *wui.Painter, r wui.Rect) { p.Fill(wui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, vsActiveLine(t), 0) })
 	case active:
 		b.Background(t.Background)
@@ -392,7 +392,7 @@ func panelTab(c *wui.Context, active bool) wui.Element {
 }
 
 // panelTitle 是底栏标题行里的标签（终端、输出、问题）。Grove 风格同 panelTab；VS Code 风格照它面板的标题：
-// 不分格、不垫底色，当前的那个字深、底下一道 1 pt 的线（panelTitle.activeBorder：浅色黑、深色 #3994BC），别的字淡、悬停变深。
+// 不分格、不垫底色，当前的那个字深、底下一道 1 pt 的线（panelTitle.activeBorder：浅色黑、深色正文色，见 vsActiveLine），别的字淡、悬停变深。
 func panelTitle(c *wui.Context, active bool) wui.Element {
 	if !vscode() {
 		return panelTab(c, active)

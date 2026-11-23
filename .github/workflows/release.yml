@@ -1,0 +1,124 @@
+# Grove 的发布：推一个 v* 标签（和 mygo.json 的 version 一致）→ 建草稿 Release → macOS 上测试、构建、签名、
+# 把 DMG、更新包（tar.gz、增量包）、update-darwin-arm64.json、install.sh、SHA256SUMS 传到草稿里。
+# 草稿看过以后在 GitHub 上点 Publish，装好的 Grove 才会看到新版本（install.sh 也只装发布了的）。
+#
+# 没有 Apple 开发者账号：不公证。签名二选一——
+#   - 设了 MACOS_CERTIFICATE（自签的“代码签名”证书 .p12，base64）和 MACOS_CERTIFICATE_PASSWORD、MACOS_SIGN_IDENTITY：
+#     用它签。签名身份每次一样，系统的权限（辅助功能、完全磁盘访问……）更新后不用重新给。
+#   - 没设：ad hoc 签名（-sign -）。也能装、能自动更新，只是每个版本在系统眼里都是新应用，权限要重新给。
+# 更新包一律用 MYGO_UPDATER_PRIVATE_KEY 签（Ed25519，公钥在 mygo.json 的 updates.publicKey），没设就不发。
+# 细节见 docs/release.md。
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # 建草稿 Release、往里传文件
+
+env:
+  GOTOOLCHAIN: auto # go.mod 要的 Go 可能比 runner 上的新；mygo 锁在 go.mod 里的版本
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  draft-release:
+    name: 核对版本、建草稿
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 标签、mygo.json、CHANGELOG 对得上
+        run: |
+          version="$(jq -r .version mygo.json)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::标签 $GITHUB_REF_NAME 和 mygo.json 的 version $version 对不上"
+            exit 1
+          fi
+          # 更新窗口里的“改了什么”取 CHANGELOG.md 里这个版本的那一节（## v1.2.3 — 日期）
+          if ! grep -Eq "^## \[?v?${version//./\\.}\]?([[:space:]]|$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md 里没有 ## v$version 这一节（把“## 未发布”改成它再打标签）"
+            exit 1
+          fi
+
+      - name: 建草稿 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --draft --verify-tag --title "Grove ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
+
+  build:
+    name: 构建、签名、上传（macOS）
+    needs: draft-release
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 版本
+        run: |
+          go version
+          go list -m github.com/egoist/mygo
+
+      - name: 更新签名的私钥在不在
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: |
+          if [ -z "$MYGO_UPDATER_PRIVATE_KEY" ]; then
+            echo "::error::没设 MYGO_UPDATER_PRIVATE_KEY：gh secret set MYGO_UPDATER_PRIVATE_KEY < mygo-update.key"
+            exit 1
+          fi
+
+      - name: go vet / go test
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+
+      - name: 导入自签名证书（设了才导）
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "没设 MACOS_CERTIFICATE：ad hoc 签名"
+            echo "SIGN_IDENTITY=-" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -base64 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain
+          # 自签的证书系统不信任，find-identity 会标 CSSMERR_TP_NOT_TRUSTED，codesign 照样能签
+          security find-identity -p codesigning "$keychain"
+          echo "SIGN_IDENTITY=${MACOS_SIGN_IDENTITY:-Grove Self-Signed}" >> "$GITHUB_ENV"
+
+      - name: 构建并传到草稿 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -skip-notarize -sign "$SIGN_IDENTITY" -upload
+
+      - name: 签名看一眼
+        run: |
+          codesign -dvv build/darwin-arm64/Grove.app 2>&1 | grep -E 'Identifier|Authority|Signature|flags' || true
+          codesign -d -r- build/darwin-arm64/Grove.app 2>&1 | tail -1
+          ls -la build/darwin-arm64 build

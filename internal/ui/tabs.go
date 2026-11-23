@@ -774,7 +774,7 @@ func diffContent(a *app.App, c *wui.Context, d *docs.Doc) {
 		if !d.DiffSt.LineSelection {
 			app.ClearSelectedLines(d)
 		}
-		if useGed(d) { // 试做：Grove 自己画的 Diff（并排、统一）
+		if useGed(d) { // Grove 自己画的 Diff（并排、统一、就地编辑），WORKBENCH_GED=off 退回 mygo 的
 			gedDiff(a, c, d)
 		} else {
 			restingDiff(c, d, d.DiffSt, &d.Rest).Grow(1).MinHeight(0)

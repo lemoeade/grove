@@ -21,7 +21,7 @@ import (
 //     PopMenu.AddTarget）；左键和别的键点外面只关、被吞掉。
 //   - 文件树有键盘时 ⇧F10 / 菜单键在光标那一行下面打开它（openTreeMenuByKey），第一项高亮着。
 //   - 建菜单的函数和 mygo 的菜单共用（menus.go 用 menu / menuItem 接口）。还是 mygo 菜单的：编辑器的右键菜单、
-//     设置窗口的“更多”、标题栏的面包屑（为什么见 docs/architecture.md）。
+//     设置窗口的“更多”、标题栏的面包屑（为什么见 docs/architecture/menus.md）。
 //
 // 为什么不用 mygo 的 PopoverMenu：它不能按住右键拖到项上松开，子菜单没有悬停延迟和安全三角，灰着的项说不了原因，
 // 点外面的那一下还会落到底下。见 docs/mygo-pitfalls.md。

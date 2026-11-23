@@ -16,6 +16,7 @@ import (
 	"github.com/lemoeade/grove/internal/highlight"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/snippets"
+	"github.com/lemoeade/grove/internal/version"
 	"github.com/lemoeade/grove/internal/workspace"
 )
 
@@ -39,7 +40,7 @@ var (
 )
 
 // settingsPages 是设置窗口顶上的分组。
-var settingsPages = []string{"外观", "编辑器", "格式化", "文件树", "终端", "Git", "片段", "语言", "快捷键"}
+var settingsPages = []string{"外观", "编辑器", "格式化", "文件树", "终端", "Git", "片段", "语言", "更新", "快捷键"}
 
 // SettingsView 是设置窗口（⌘,）的内容：顶上分组和搜索框（⌘F 到框里，Esc 清空），下面这一组的设置；搜着的时候是
 // 所有组里对得上的几项，按组分开。改了马上生效（主窗口、开着的终端跟着变），并存进 state.json。
@@ -347,6 +348,14 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 			}},
 			{6, "片段目录", snippetDirDesc, func(c *wui.Context, l, d string) { snippetDirField(a, c, l, d) }},
 			{7, "界面语言", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Lang, i18n.Langs, langNames, done) }},
+			{8, "自动检查更新", "每天在后台看一次 GitHub 上有没有新版本，有就弹窗说改了什么，装不装由你", func(c *wui.Context, l, d string) {
+				updateToggle(c, l, d, func(u *app.UpdateHooks) func() bool { return u.AutoCheck }, func(u *app.UpdateHooks) func(bool) { return u.SetAutoCheck }, nil)
+			}},
+			{8, "自动下载并安装更新", "有新版本不问就下载、验签、装好，下次启动时生效", func(c *wui.Context, l, d string) {
+				updateToggle(c, l, d, func(u *app.UpdateHooks) func() bool { return u.AutoDownload }, func(u *app.UpdateHooks) func(bool) { return u.SetAutoDownload },
+					func(u *app.UpdateHooks) bool { return u.AutoCheck != nil && u.AutoCheck() })
+			}},
+			{8, "版本", "", func(c *wui.Context, l, _ string) { updateStatusField(a, c, l) }},
 		}
 		q := strings.ToLower(strings.TrimSpace(query))
 		c.OnShortcut(wui.Cmd, wui.KeyF, func() { box.Focus(c) })
@@ -1083,4 +1092,45 @@ func settingsCard(c *wui.Context, title string, body func()) {
 // settingsSep 是一块里两项之间的细线（两头空 14）。
 func settingsSep(c *wui.Context) {
 	wui.Box(c).Height(1).Margin(0, 14).Background(c.Theme().Border.Alpha(0.5))
+}
+
+// updateToggle 是“更新”页的一项开关，值在 mygo 的 updater 插件里（PathUserData 的 updater.json），不进 state.json。
+// 这个构建不能自己更新（go run、开发构建、测试里没接上）时灰着；on 给了时还要它为真才能开（自动安装要先开着自动检查）。
+func updateToggle(c *wui.Context, label, desc string, get func(*app.UpdateHooks) func() bool, set func(*app.UpdateHooks) func(bool), on func(*app.UpdateHooks) bool) {
+	u := app.Updates
+	usable := u != nil && u.Enabled != nil && u.Enabled() && get(u) != nil && set(u) != nil
+	v := usable && get(u)()
+	row := settingField(c, label, desc, func() {
+		sw := settingControl(wui.Switch(c, &v))
+		if usable && sw.Changed() {
+			set(u)(v)
+		}
+	})
+	if !usable || (on != nil && !on(u)) {
+		row.Disabled(true)
+	}
+}
+
+// updateStatusField 是“更新”页的“版本”：现在的版本、上次检查、找到的新版本，和“检查更新…”（开更新窗口，
+// 最新、出错、这个构建不能自己更新都在窗口里说）。
+func updateStatusField(a *app.App, c *wui.Context, label string) {
+	t := c.Theme()
+	u := app.Updates
+	msg := version.App
+	switch {
+	case u == nil || u.Enabled == nil || !u.Enabled():
+		msg += " · " + i18n.T("这个构建不能自己更新")
+	case u.Available != nil && u.Available() != "":
+		msg += " · " + i18n.Tf("%s 可以更新", u.Available())
+	case u.LastCheck != nil && !u.LastCheck().IsZero():
+		msg += " · " + i18n.Tf("%s检查过", git.Ago(u.LastCheck()))
+	}
+	settingField(c, label, "", func() {
+		wui.Row(c).Gap(10).AlignItems(wui.Center).Children(func() {
+			wui.Text(c, msg).FontSize(bodyFont).TextColor(t.TextMuted)
+			if wui.Button(c, i18n.T("检查更新…")).Disabled(u == nil).Tooltip(i18n.T("现在就去 GitHub 看有没有新版本")).Clicked() {
+				a.Update(a.CheckUpdates)
+			}
+		})
+	})
 }

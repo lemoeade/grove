@@ -1,8 +1,9 @@
 // Package ged 是 Grove 自己的编辑器部件，只用 mygo 公开的接口（ui.ShapeRichText / Painter / HandleInput），
 // 不走 mygo 的 ui/editor：那个编辑器的底色、行间的块、装订线都改不了（见 docs/mygo-pitfalls.md）。
 //
-// 现在只有只读的 Diff（View，并排和统一）；这个文件是它的模型：两边按行对齐、改了的行里改了哪几个字、
-// 没改的长段折起来、排成统一的一栏。不碰界面，单独测。
+// 它画 Diff（View：并排、统一、就地编辑）和文件标签的单栏编辑器（NewEditor：一边的 Diff，编辑、查找、小地图、
+// 粘性滚动都在这个包里）；Grove 主题的样子由调用方（internal/ui）传进来。
+// 这个文件是 Diff 的模型：两边按行对齐、改了的行里改了哪几个字、没改的长段折起来、排成统一的一栏。不碰界面，单独测。
 package ged
 
 import (

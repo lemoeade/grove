@@ -68,10 +68,31 @@ about 79 MiB of memory when idle.
 - **Other features**: Chinese and English UI (Chinese by default; change it in Settings), light and dark themes, and
   customizable shortcuts.
 
+## Installing
+
+Requires a Mac with Apple Silicon running macOS 13 or later. Run this in Terminal:
+
+```bash
+curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh
+```
+
+It downloads the latest version, verifies its signature, installs it in Applications (or `~/Applications` if you
+can't write there) and opens it. To uninstall:
+`curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh -s -- --uninstall` (your settings
+and data are kept).
+
+You can also download the DMG from [Releases](https://github.com/lemoeade/grove/releases/latest) and drag Grove into
+Applications. Grove isn't notarized by Apple yet, so macOS blocks it the first time you open it: go to System Settings →
+Privacy & Security and click "Open Anyway" at the bottom, or run `xattr -dr com.apple.quarantine /Applications/Grove.app`
+in Terminal. You only need to do this once.
+
+Once installed, Grove checks for updates once a day and shows what changed when a new version is out; installing it
+is up to you. Use Grove → Check for Updates… to check right away. Settings → Update turns automatic checks off, or
+automatic downloads on.
+
 ## Building
 
-Requires a Mac with Apple Silicon running macOS 13 or later. There are no prebuilt downloads yet, so you'll need to
-build Grove yourself:
+You can also build Grove yourself:
 
 ```bash
 git clone https://github.com/lemoeade/grove.git
@@ -81,8 +102,8 @@ open build/darwin-arm64/Grove.app
 ```
 
 mygo is listed in `go.mod` and doesn't need a separate installation. If your Go version is too old,
-`GOTOOLCHAIN=auto` downloads the required version. See [docs/release.md](docs/release.md) (Chinese) for signing,
-notarization and DMG packaging instructions.
+`GOTOOLCHAIN=auto` downloads the required version. See [docs/release.md](docs/release.md) (Chinese) for the release
+workflow, auto-updates, signing and DMG packaging.
 
 ## Usage
 

@@ -23,7 +23,7 @@ open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WOR
 
 截图无法验证的部分（系统菜单、原生对话框、毛玻璃、输入法、原生拖放、真实窗口中的快捷键）需要手动测试，并在 PR 中说明测试内容和方法。
 
-行为变更后，同步更新 README（功能、快捷键）、`CHANGELOG.md` 的“## 未发布”、`docs/architecture.md`、
+行为变更后，同步更新 README（功能、快捷键）、`CHANGELOG.md` 的“## 未发布”、`docs/architecture.md` 或 `docs/architecture/` 下对应的那篇、
 `docs/shortcuts.md`（`go test -run TestShortcutDoc ./internal/app/ -update`）。新遇到的问题记入 [mygo-pitfalls.md](mygo-pitfalls.md)。
 
 整套测试并行运行且机器负载较高时，部分计时测试偶尔会超时（`internal/watch` 的监听测试）。
