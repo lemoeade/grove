@@ -12,6 +12,7 @@ import (
 
 	"github.com/lemoeade/grove/internal/app"
 	"github.com/lemoeade/grove/internal/docs"
+	"github.com/lemoeade/grove/internal/gmd"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/mdprep"
 )
@@ -46,21 +47,23 @@ type mdView struct {
 	seek      int  // 跳转（#标题、行）滚到了第几段还没放上记号的帧数
 	env       mdEnv
 	// 并排同步（照 VS Code 的 scroll-sync：按源码行在块里按比例对齐，两边谁被滚了另一边跟过去）
-	srcTop   float64   // 上一帧源文件编辑器顶上那一行（带小数）；变了预览跟过去
-	srcSeen  bool      // srcTop 记过了
-	pvTop    float64   // 上一帧预览顶上对着源码的哪一行（带小数）；指针在预览上、它变了编辑器跟过去
-	pvSeen   bool      //
-	edQuiet  time.Time // 编辑器是预览拖过去的：到这时之前编辑器的变化不往回传（不然两边来回拉）
-	pvQuiet  time.Time // 预览是编辑器拖过去的：到这时之前预览的变化不往回传
-	frac     float64   // AnchorLine 的小数部分（编辑器顶上那一行滚上去了几分之几），只对 fracLine 那个 AnchorLine 算
-	fracLine int       //
-	blocks   []mdBlock // 这一帧排到的顶层块（源码行的范围、上一帧在窗口里的位置）：同步、双击、光标标记看它
-	prev     []mdBlock // 上一帧的 blocks：放跳转记号时找下一块的位置
-	src      *docs.Doc // 并排预览的源文件（就地预览为空）：按它编辑器的屏幕行对齐
-	ptr      wui.Point // 指针在预览上的位置（窗口坐标）；ptrOK 为 false 是不在
-	ptrOK    bool      //
-	dblY     float32   // 双击的地方（窗口坐标的 Y），下一帧回到源码那一行
-	dblOK    bool      //
+	srcTop   float64     // 上一帧源文件编辑器顶上那一行（带小数）；变了预览跟过去
+	srcSeen  bool        // srcTop 记过了
+	pvTop    float64     // 上一帧预览顶上对着源码的哪一行（带小数）；指针在预览上、它变了编辑器跟过去
+	pvSeen   bool        //
+	edQuiet  time.Time   // 编辑器是预览拖过去的：到这时之前编辑器的变化不往回传（不然两边来回拉）
+	pvQuiet  time.Time   // 预览是编辑器拖过去的：到这时之前预览的变化不往回传
+	frac     float64     // AnchorLine 的小数部分（编辑器顶上那一行滚上去了几分之几），只对 fracLine 那个 AnchorLine 算
+	fracLine int         //
+	blocks   []mdBlock   // 这一帧排到的顶层块（源码行的范围、上一帧在窗口里的位置）：同步、双击、光标标记看它
+	prev     []mdBlock   // 上一帧的 blocks：放跳转记号时找下一块的位置
+	src      *docs.Doc   // 并排预览的源文件（就地预览为空）：按它编辑器的屏幕行对齐
+	ptr      wui.Point   // 指针在预览上的位置（窗口坐标）；ptrOK 为 false 是不在
+	ptrOK    bool        //
+	dblY     float32     // 双击的地方（窗口坐标的 Y），下一帧回到源码那一行
+	dblOK    bool        //
+	cssPrep  *mdprep.Doc // css 是从哪一份整理结果收的
+	css      string      // 全文的 <style>
 }
 
 // mdBlock 是预览里一个顶层块：源码的第 line 行到第 next 行之前（从 0 起），r 是它上一帧在窗口里的框（还没排过是空的）。
@@ -97,7 +100,8 @@ type mdEnv struct {
 	// 留到下一帧再放记号（点击在这一帧排版后才处理，这一帧放的记号滚不过去）
 	anchor string
 	line   int
-	o      *markdown.Options // setup 挂上钩子的那份
+	o      *gmd.Options // setup 挂上钩子的那份
+	css    string       // 全文的 <style>（HTML 块按它排，见 gmd.Options.CSS）
 }
 
 // mdViewOf 是 d 的预览状态，没有就建一个。
@@ -128,7 +132,7 @@ func mdPreviewSource(a *app.App, d *docs.Doc) (string, bool) {
 	return "", false
 }
 
-// markdownPreview 是 Markdown 的预览：居中的一栏（大文件是虚拟列表），点链接见 App.MarkdownLink。
+// markdownPreview 是 Markdown 的预览：铺满标签的一栏，照 VS Code 不限宽（大文件是虚拟列表），点链接见 App.MarkdownLink。
 // 点了 #标题 的链接（d.Anchor）、大纲里点了一项或旁边的编辑器滚了（d.AnchorLine）后，在那一块上放一个看不见、
 // 比窗口还高的记号，让它出现在视图里——视图只滚到刚好露出它，记号比视图高，那一块就到了最上面；没有这个标题就提示。
 func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
@@ -158,7 +162,11 @@ func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
 		}
 	}
 	if d.Kind == docs.MDPreview { // 跟着源文件的编辑器滚：顶上那一行变了，预览把它在块里按比例滚到顶上
-		if L, ok := d.MDSource.TopLine(); ok {
+		// 源文件的编辑器看不见（预览拖进了同一组、源文件在显示就地预览）时不跟：它不排版，TopLine 停在最后画的那一帧，
+		// 预览一滚、过了安静期就被拉回那儿。再看得见的第一帧只记下来，不跟
+		if !a.EditorShown(d.MDSource) {
+			v.srcSeen = false
+		} else if L, ok := d.MDSource.TopLine(); ok {
 			if v.srcSeen && abs64(L-v.srcTop) > 1e-3 && now.After(v.edQuiet) && !a.St.Settings.NoPreviewSync {
 				d.AnchorLine = int(L) + 1
 				v.frac, v.fracLine = L-float64(int(L)), d.AnchorLine
@@ -199,7 +207,7 @@ func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
 	v.remoteOff = off
 	o := a.MarkdownOptions(d)
 	e := &v.env
-	*e = mdEnv{a: a, d: d, prep: v.prep, th: mdTheme(a, c), v: v, links: e.links}
+	*e = mdEnv{a: a, d: d, prep: v.prep, th: mdTheme(a, c), v: v, links: e.links, css: v.styles()}
 	if e.links == nil || len(e.links) > 512 {
 		e.links = map[string]string{}
 	}
@@ -225,12 +233,12 @@ func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
 			if i == len(v.chunks)-1 {
 				bottom = 48
 			}
-			wui.Column(c.Key(previewGen{d, gen})).FillWidth().MaxWidth(860).AlignSelf(wui.Center).Padding(top, 32, bottom).Children(func() {
+			wui.Column(c.Key(previewGen{d, gen})).FillWidth().Padding(top, 32, bottom).Children(func() {
 				e.base, e.cur, e.end = ch.start, ch.src, ch.end
 				if i == len(v.chunks)-1 {
 					e.end = -1
 				}
-				markdown.View(c, ch.src, o)
+				mdShow(c, ch.src, o)
 			})
 		})
 		list.Grow(1).MinHeight(0).Selectable().Label(label)
@@ -240,9 +248,9 @@ func markdownPreview(a *app.App, c *wui.Context, d *docs.Doc) {
 		sc := wui.Scroll(c.Key(previewKey{d})).Grow(1).MinHeight(0).Label(label)
 		v.track(sc)
 		sc.Children(func() {
-			wui.Column(c.Key(previewGen{d, gen})).FillWidth().MaxWidth(860).AlignSelf(wui.Center).Padding(20, 32, 48).Children(func() {
+			wui.Column(c.Key(previewGen{d, gen})).FillWidth().Padding(20, 32, 48).Children(func() {
 				e.base, e.cur, e.end = 0, v.prep.Src, -1
-				markdown.View(c, v.prep.Src, o)
+				mdShow(c, v.prep.Src, o)
 			})
 		})
 		v.sync(a, c, d, sc)
@@ -383,10 +391,10 @@ func (v *mdView) laidOut(line int) bool {
 }
 
 // setup 给 o 挂上这个预览的钩子，返回行内公式的代数（见 mdRender）。
-func (e *mdEnv) setup(c *wui.Context, o *markdown.Options) uint64 {
+func (e *mdEnv) setup(c *wui.Context, o *gmd.Options) uint64 {
 	gen := mdRender(e.a, c, o)
 	e.o = o
-	o.Theme = e.th
+	o.Theme, o.CSS, o.Strings = e.th, e.css, mdStrings()
 	o.HTML = func(c *wui.Context, html string) { mdHTML(c, e, html) }
 	o.CodeBlock = e.codeBlock
 	o.Block = e.block
@@ -432,9 +440,9 @@ func (e *mdEnv) block(c *wui.Context, doc *parser.Document, i int) bool {
 }
 
 // options 是给表格单元格里的小 View 用的选项模板（mdImageTable 拷字段）：图片、链接、钩子照这个预览的。
-func (e *mdEnv) options() *markdown.Options {
-	o := &markdown.Options{}
-	ne := &mdEnv{a: e.a, d: e.d, prep: &mdprep.Doc{}, th: e.th, depth: e.depth + 1, links: e.links, anchor: e.anchor}
+func (e *mdEnv) options() *gmd.Options {
+	o := &gmd.Options{}
+	ne := &mdEnv{a: e.a, d: e.d, prep: &mdprep.Doc{}, th: e.th, depth: e.depth + 1, links: e.links, anchor: e.anchor, o: o, css: e.css}
 	o.Theme, o.LoadImage = e.th, e.a.ImageLoader(e.d)
 	if e.o != nil {
 		o.Extensions, o.InlineMath, o.LinkMenu, o.Preview = e.o.Extensions, e.o.InlineMath, e.o.LinkMenu, e.o.Preview
@@ -457,21 +465,21 @@ func mdMarker(c *wui.Context, off float32) {
 
 // nested 在 el 里画一段嵌套的 Markdown（<details> 的正文、HTML 里的段落）：选项、整理结果留在 el 上，和外面共用选区。
 func (e *mdEnv) nested(c *wui.Context, el wui.Element, src string, align wui.Align) {
-	st := *wui.Local(el, mdNestKey{}, func() *mdNest { return &mdNest{o: &markdown.Options{ShareSelection: true}} })
+	st := *wui.Local(el, mdNestKey{}, func() *mdNest { return &mdNest{o: &gmd.Options{ShareSelection: true}} })
 	if st.prep == nil || st.src != src {
 		st.src, st.prep = src, mdprep.Prepare(src)
 	}
 	if st.remoteOff != e.a.St.Settings.NoRemoteImages {
 		st.remoteOff = !st.remoteOff
-		st.o = &markdown.Options{ShareSelection: true}
+		st.o = &gmd.Options{ShareSelection: true}
 	}
 	o := st.o
 	o.LoadImage = e.a.ImageLoader(e.d)
 	a, d := e.a, e.d
 	o.OnLink = func(u string) { a.MarkdownLink(d, u) }
-	ne := &mdEnv{a: a, d: d, prep: st.prep, th: e.th, depth: e.depth + 1, align: align, links: e.links, anchor: e.anchor}
+	ne := &mdEnv{a: a, d: d, prep: st.prep, th: e.th, depth: e.depth + 1, align: align, links: e.links, anchor: e.anchor, css: e.css}
 	ne.setup(c, o)
-	el.Children(func() { markdown.View(c, st.prep.Src, o) })
+	el.Children(func() { mdShow(c, st.prep.Src, o) })
 }
 
 type mdNestKey struct{}
@@ -479,6 +487,6 @@ type mdNestKey struct{}
 type mdNest struct {
 	src       string
 	prep      *mdprep.Doc
-	o         *markdown.Options
+	o         *gmd.Options
 	remoteOff bool
 }

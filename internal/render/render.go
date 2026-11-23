@@ -106,6 +106,10 @@ type Output struct {
 // SourceError 是源码本身的错（Mermaid 语法错、TeX 错）：后端照常能用，只是这一张画不了。别的错当后端坏了，关掉再建。
 type SourceError struct{ Msg string }
 
+// OldWebKit 是 Result.Err 的一个值：系统的 WebKit 太老（Mermaid 12 要 Safari 17.4 起的），画不了 Mermaid 图。
+// 渲染页（page.html 的 mermaidSVG）抛的就是这一句，界面认出来换成说明。当源码错算（后端没坏，公式照常画）。
+const OldWebKit = "grove:old-webkit"
+
 func (e *SourceError) Error() string { return e.Msg }
 
 // Backend 渲染一张。真的是 web.go 的 WebView，测试里换成假的。方法在后台 goroutine 里调。

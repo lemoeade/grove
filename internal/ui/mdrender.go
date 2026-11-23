@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	wui "github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 	"github.com/egoist/mygo/ui/markdown/parser"
 
 	"github.com/lemoeade/grove/internal/app"
+	"github.com/lemoeade/grove/internal/gmd"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/render"
 )
@@ -18,7 +18,7 @@ import (
 
 // mdRender 给 o 挂上（或摘掉）钩子，返回行内公式的代数（预览拿它当 key：有了新的行内结果，段落重排）。
 // 渲染器没有（设置里关了、测试里没给）时摘掉，$…$ 也不认（照旧是字）。
-func mdRender(a *app.App, c *wui.Context, o *markdown.Options) uint64 {
+func mdRender(a *app.App, c *wui.Context, o *gmd.Options) uint64 {
 	r := a.Renderer()
 	if r == nil {
 		o.Code, o.Math, o.InlineMath, o.Extensions = nil, nil, nil, 0
@@ -34,10 +34,10 @@ func mdRender(a *app.App, c *wui.Context, o *markdown.Options) uint64 {
 		size = 14
 	}
 	o.Extensions = parser.Default | parser.ExtDollarMath
-	o.Code = map[string]func(*wui.Context, *markdown.CodeBlockView){
-		"mermaid": func(c *wui.Context, b *markdown.CodeBlockView) {
+	o.Code = map[string]func(*wui.Context, *gmd.CodeBlockView){
+		"mermaid": func(c *wui.Context, b *gmd.CodeBlockView) {
 			q := render.Request{Kind: render.Mermaid, Src: b.Code(), Dark: dark, Scale: scale, Palette: pal}
-			renderedBlock(c, r, q, zoom, i18n.T("Mermaid 图"), func() { markdown.DefaultCodeBlock(c, b) })
+			renderedBlock(c, r, q, zoom, i18n.T("Mermaid 图"), func() { gmd.DefaultCodeBlock(c, b) })
 		},
 	}
 	o.Math = func(c *wui.Context, tex string) {
@@ -49,13 +49,13 @@ func mdRender(a *app.App, c *wui.Context, o *markdown.Options) uint64 {
 			})
 		})
 	}
-	o.InlineMath = func(tex string, size float32) (markdown.InlineObject, bool) {
+	o.InlineMath = func(tex string, size float32) (gmd.InlineObject, bool) {
 		q := render.Request{Kind: render.Inline, Src: tex, Dark: dark, Scale: scale, Size: size, Color: color}
 		res, ok := r.Get(q)
 		if !ok || res.Image() == nil {
-			return markdown.InlineObject{}, false // 先按 TeX 显示；好了 Gen 变，段落重排
+			return gmd.InlineObject{}, false // 先按 TeX 显示；好了 Gen 变，段落重排
 		}
-		return markdown.InlineObject{Width: res.W, Height: res.H - res.Depth, Depth: res.Depth, Draw: func(p *wui.Painter, rc wui.Rect) {
+		return gmd.InlineObject{Width: res.W, Height: res.H - res.Depth, Depth: res.Depth, Draw: func(p *wui.Painter, rc wui.Rect) {
 			drawRendered(p, r, q, res, rc, zoom)
 		}}, true
 	}
@@ -72,8 +72,12 @@ func renderedBlock(c *wui.Context, r *render.Renderer, q render.Request, zoom fl
 		wui.Box(c).AlignSelf(wui.Center).FillWidth().MaxWidth(res.W).AspectRatio(res.W / res.H).Shrink(0).
 			Role(wui.RoleImage).Label(label).Draw(func(p *wui.Painter, rc wui.Rect) { drawRendered(p, r, q, res, rc, zoom) })
 	case ok && res.Err != "":
+		msg := i18n.Tf("画不出来：%s", res.Err)
+		if res.Err == render.OldWebKit {
+			msg = i18n.T("画 Mermaid 图要 Safari 17.4 或更新的版本：在“系统设置 → 通用 → 软件更新”里更新")
+		}
 		wui.Column(c).AlignSelf(wui.Stretch).Gap(6).Children(func() {
-			wui.Text(c, i18n.Tf("画不出来：%s", res.Err)).FontSize(noteFont).TextColor(t.Danger).Selectable()
+			wui.Text(c, msg).FontSize(noteFont).TextColor(t.Danger).Selectable()
 			fallback()
 		})
 	default:

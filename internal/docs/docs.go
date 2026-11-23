@@ -18,10 +18,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-	"github.com/egoist/mygo/ui/markdown"
 
 	"github.com/lemoeade/grove/internal/ged"
 	"github.com/lemoeade/grove/internal/git"
+	"github.com/lemoeade/grove/internal/gmd"
 	"github.com/lemoeade/grove/internal/highlight"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/outline"
@@ -180,8 +180,8 @@ type Doc struct {
 
 	// Markdown 预览（⇧⌘V）
 	Preview bool
-	MD      *markdown.Options // 预览的选项和读好的图片；第一次预览时建，改名后重建
-	Anchor  string            // 预览里点了 #标题 的链接，下一帧滚到那个标题
+	MD      *gmd.Options // 预览的选项和读好的图片；第一次预览时建，改名后重建
+	Anchor  string       // 预览里点了 #标题 的链接，下一帧滚到那个标题
 	// AnchorLine 是要滚到的源码行加一（0 是没有）：预览里点大纲、并排预览跟着编辑器时滚到这一行所在的块
 	AnchorLine int
 	// MDView 是预览界面自己留着的状态（internal/ui 的 mdView：整理过的源码、分块、滚动位置），切回源码再切回来接着用

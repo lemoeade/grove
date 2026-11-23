@@ -276,3 +276,56 @@ func testPreviewSmooth(t *testing.T, n int) {
 		last = last[:0]
 	}
 }
+
+// 并排预览拖进源文件那一组（源文件的标签看不见了）：在预览上滚，滚到哪停在哪，不被源文件编辑器停在最后一帧的位置拉回去。
+func TestMarkdownPreviewSameGroup(t *testing.T) {
+	root, ws := testutil.TempRepo(t)
+	var b strings.Builder
+	b.WriteString("# 开头\n\n")
+	for i := range 160 {
+		b.WriteString("第 " + itoa(i+1) + " 段。\n\n")
+	}
+	writeDoc(t, root, "guide.md", b.String())
+	a, tt, wait := newUI(t, ws, "")
+	guide := a.OpenFile(a.Repos[0], "guide.md", true)
+	a.FocusDoc = true
+	wait("打开 guide.md", func() bool { return tt.Focused("编辑 guide.md") })
+	a.Exec("view.markdownSidePreview")
+	var pv *docs.Doc
+	wait("并排预览", func() bool { pv = a.SidePreviewOf(guide); return pv != nil && tt.HasText("第 3 段。") })
+	a.MoveDocTo(pv, a.GroupOf(guide), -1)
+	wait("预览搬进源文件那一组", func() bool {
+		return a.GroupOf(pv) == a.GroupOf(guide) && a.CurrentDoc() == pv && !a.EditorShown(guide) && tt.HasText("第 3 段。")
+	})
+	rc, ok := tt.Find("第 3 段。")
+	if !ok {
+		t.Fatal("预览里没有第 3 段")
+	}
+	tt.Move(rc.X+4, rc.Y+rc.H/2)
+	tt.Frame()
+	tt.Move(rc.X+6, rc.Y+rc.H/2)
+	tt.Frame()
+	for range 8 { // 一格一格地滚，每格之间停一会儿（下一帧在安静期以后才来，源文件的编辑器停着的位置才会拉回来）
+		tt.Scroll(rc.X+6, rc.Y+rc.H/2, 0, 200)
+		tt.Advance(mdSyncQuiet + 50*time.Millisecond)
+		tt.Frame()
+	}
+	v := mdViewOf(pv)
+	wait("预览滚下去", func() bool { return v.pvSeen && v.pvTop > 30 })
+	at := v.pvTop
+	// 真窗口里滚完的最后一帧是预览把行推给源文件编辑器（srcTop = 那一行），下一帧要等指针动了、光标闪了才来，
+	// 常常过了安静期；看不见的编辑器 TopLine 还是最后画的那一帧的。Tester 每次 Frame 都紧跟着再跑一帧，
+	// 这里直接摆出那一刻
+	v.srcTop, v.srcSeen = at, true
+	for range 3 {
+		tt.Advance(mdSyncQuiet + 50*time.Millisecond)
+		tt.Move(rc.X+8, rc.Y+rc.H/2)
+		tt.Frame()
+	}
+	if v.pvTop < at-1 {
+		t.Fatalf("预览被拉回去了：滚到 %v，过一会儿 %v", at, v.pvTop)
+	}
+	if r, ok := tt.Find("第 3 段。"); ok && r.Y > rc.Y-100 {
+		t.Fatalf("预览回到了开头：第 3 段在 %v", r)
+	}
+}

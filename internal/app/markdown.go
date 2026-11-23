@@ -8,10 +8,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
-	"github.com/egoist/mygo/ui/markdown"
 
 	"github.com/lemoeade/grove/internal/docs"
 	"github.com/lemoeade/grove/internal/fonts"
+	"github.com/lemoeade/grove/internal/gmd"
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
@@ -30,9 +30,9 @@ func (a *App) TogglePreview() {
 }
 
 // MarkdownOptions 是 d 的预览选项：图片从文件所在的目录读（网上的见 ImageLoader），链接交给 MarkdownLink。
-func (a *App) MarkdownOptions(d *docs.Doc) *markdown.Options {
+func (a *App) MarkdownOptions(d *docs.Doc) *gmd.Options {
 	if d.MD == nil {
-		d.MD = &markdown.Options{
+		d.MD = &gmd.Options{
 			LoadImage: a.ImageLoader(d),
 			OnLink:    func(u string) { a.MarkdownLink(d, u) },
 		}

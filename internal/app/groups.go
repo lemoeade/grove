@@ -154,6 +154,17 @@ func (a *App) GroupOf(d *docs.Doc) *Group {
 	return nil
 }
 
+// EditorShown 是 d 的编辑器看得见：它是所在那组选中的标签，而且没在显示就地预览。看不见的编辑器不排版，
+// 它的 TopLine 停在最后画的那一帧（并排预览拖进同一组后别拿它当编辑器滚了）。
+func (a *App) EditorShown(d *docs.Doc) bool {
+	g := a.GroupOf(d)
+	if g == nil {
+		return false
+	}
+	ds, sel := a.GroupDocs(g)
+	return sel >= 0 && sel < len(ds) && ds[sel] == d && !(d.Preview && d.CanPreview())
+}
+
 // locate 是 k 那个标签在哪一组的第几个；没开着为 nil, -1。
 func (a *App) locate(k docs.Key) (*Group, int) {
 	for _, g := range a.Groups() {

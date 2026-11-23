@@ -6,6 +6,8 @@ import (
 	wui "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 	"github.com/egoist/mygo/ui/markdown/parser"
+
+	"github.com/lemoeade/grove/internal/gmd"
 )
 
 // 这个文件是 Markdown 预览里带图片的表格。mygo 的表格单元格只排字，图片显示成 [说明]；
@@ -22,7 +24,7 @@ type mdTableKey struct{}
 
 // mdImageTable 在第 i 块是带图片的表格时画出来，返回 true；不是返回 false，交给 mygo。
 // 全空的表头行（并排放图时常写 | | |）不画。
-func mdImageTable(c *wui.Context, o *markdown.Options, doc *parser.Document, i int) bool {
+func mdImageTable(c *wui.Context, o *gmd.Options, doc *parser.Document, i int) bool {
 	b := doc.Block(i)
 	if b.Kind != parser.Table || !tableHasImage(doc, i) {
 		return false
@@ -36,7 +38,7 @@ func mdImageTable(c *wui.Context, o *markdown.Options, doc *parser.Document, i i
 	src := doc.Source()
 	cols := len(b.Align)
 	grid := wui.Column(c).AlignSelf(wui.Stretch).Border(1, th.TableBorder).Radius(em(0.3)).Clip().Role(wui.RoleTable)
-	co := *wui.Local(grid, mdTableKey{}, func() *markdown.Options { return &markdown.Options{ShareSelection: true} })
+	co := *wui.Local(grid, mdTableKey{}, func() *gmd.Options { return &gmd.Options{ShareSelection: true} })
 	co.Theme, co.Extensions, co.LoadImage, co.OnLink, co.InlineMath = o.Theme, o.Extensions, o.LoadImage, o.OnLink, o.InlineMath
 	co.Block, co.HTML, co.CodeLink, co.LinkMenu, co.Preview = o.Block, o.HTML, o.CodeLink, o.LinkMenu, o.Preview
 	grid.Children(func() {
@@ -77,7 +79,7 @@ func mdImageTable(c *wui.Context, o *markdown.Options, doc *parser.Document, i i
 					}
 					cb := doc.Block(cell)
 					text := cellSource(src[cb.Start:cb.End])
-					box.Children(func() { markdown.View(c, text, co) })
+					box.Children(func() { mdShow(c, text, co) })
 					k++
 				}
 			})

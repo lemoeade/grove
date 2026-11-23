@@ -45,101 +45,68 @@ function mix(a, b, t) {
   return "#" + x.map((v, i) => Math.round(v * t + y[i] * (1 - t)).toString(16).padStart(2, "0")).join("");
 }
 
-// groveConfig 是 Grove 自己的 Mermaid 外观：base 主题，照 GitHub Primer / Linear / Tailwind 一类的做法——
-// 节点是强调色的淡底、半透明的描边、圆角，连线是中性灰的细线，边上的字小一号、用次要字色，注释是淡琥珀色；
-// 饼图、甘特图的一串颜色第一个就是强调色。颜色都从 Grove 的主题（pal）来，换深色、换强调色跟着变。
+// groveConfig 是 Mermaid 的配置：Mermaid 12 自带的排法（流程图 / 状态图 / 类图 / ER 图用 ELK，线走直角、拐角带圆）和 classic 的
+// 形状，配色是黑白灰的文档风（照 VS Code 里 Markdown 预览常见的那种）：节点白底（深色是比底亮一档的灰）、深色细边，连线是字色，
+// 边上的字垫浅灰底，节点带 Mermaid 自己那种往右下偏的淡影子。颜色都从 Grove 的主题（pal）来，换深色跟着变。
+// 分颜色的图（饼图、思维导图、git 图、甘特图）用一套低饱和的颜色（蓝、绿、琥珀、红、紫、橄榄）：浅色是淡的、深色是暗的，上面都压正文色的字。
+// （VS Code 2026 的 charts.* 和 Mermaid 自己的 default 主题都太艳，跟黑白的节点放在一起扎眼。）
 function groveConfig(pal, dark) {
-  const bg = pal.bg, fg = pal.fg, acc = pal.accent;
-  const c = {
-    node: mix(acc, bg, dark ? 0.17 : 0.075), nodeBorder: mix(acc, bg, dark ? 0.6 : 0.45),
-    node2: mix(fg, bg, dark ? 0.07 : 0.04), node2Border: mix(fg, bg, dark ? 0.28 : 0.22),
-    line: mix(fg, bg, dark ? 0.5 : 0.45), muted: pal.muted || mix(fg, bg, 0.6),
-    cluster: mix(fg, bg, dark ? 0.045 : 0.025), clusterBorder: mix(fg, bg, dark ? 0.16 : 0.13),
-    note: dark ? mix("#d29922", bg, 0.18) : mix("#e3b341", bg, 0.16),
-    noteBorder: dark ? mix("#d29922", bg, 0.55) : mix("#d4a72c", bg, 0.6),
+  const bg = pal.bg, fg = pal.fg;
+  const node = dark ? mix(fg, bg, 0.07) : bg, border = mix(fg, bg, dark ? 0.55 : 0.85), line = mix(fg, bg, dark ? 0.7 : 0.9);
+  const chip = mix(fg, bg, dark ? 0.16 : 0.1), quote = pal.surface2 || mix(fg, bg, 0.08);
+  const shadow = dark ? "drop-shadow(1px 2px 2px rgba(0,0,0,0.55))" : "drop-shadow(1px 2px 2px rgba(185,185,185,1))";
+  const charts = dark ? ["#2F4A6E", "#33553A", "#6B5226", "#6E3A36", "#4F416C", "#555A30"]
+    : ["#B6CDEE", "#BFDDB8", "#F1D5A3", "#F0BDB7", "#D3C3E8", "#DDE2B0"];
+  const v = {
+    darkMode: dark, fontFamily: FONT, fontSize: "14px", background: bg, useGradient: false, dropShadow: shadow,
+    textColor: fg, lineColor: line, primaryColor: node, primaryTextColor: fg, primaryBorderColor: border, mainBkg: node, nodeBorder: border,
+    secondaryColor: quote, secondaryTextColor: fg, secondaryBorderColor: border,
+    tertiaryColor: bg, tertiaryTextColor: fg, tertiaryBorderColor: border,
+    clusterBkg: dark ? mix(fg, bg, 0.03) : mix(fg, bg, 0.02), clusterBorder: border,
+    noteBkgColor: quote, noteTextColor: fg, noteBorderColor: border,
+    titleColor: fg, edgeLabelBackground: chip, labelBackgroundColor: chip,
+    actorBkg: node, actorBorder: border, actorTextColor: fg, actorLineColor: border, signalColor: line, signalTextColor: fg,
+    labelBoxBkgColor: chip, labelBoxBorderColor: border, labelTextColor: fg, loopTextColor: fg,
+    activationBkgColor: quote, activationBorderColor: border,
+    pieStrokeColor: bg, pieOuterStrokeColor: bg, pieOpacity: "1",
   };
-  // 饼图、甘特图、思维导图、git 图要一串分得清的颜色（白字压得住）
-  const series = dark ? [acc, "#10b981", "#f59e0b", "#f05d5e", "#8b5cf6", "#06b6d4", "#ec4899", "#64748b"]
-    : [acc, "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#475569"];
-  const v = {};
-  series.forEach((s, i) => {
-    v["pie" + (i + 1)] = s;
-    v["cScale" + i] = s;
-    v["cScaleLabel" + i] = "#ffffff";
-    v["git" + i] = s;
-    v["fillType" + i] = s;
-    v["gitBranchLabel" + i] = "#ffffff"; // git 图的分支名、思维导图的根
+  // 分颜色的：饼图、思维导图（cScale；节点下面那道线是 cScaleInv，给同色，不然是撞色的一道）、git 图。字都是正文色
+  const onChart = fg;
+  charts.forEach((c, i) => {
+    v["pie" + (i + 1)] = c; v["cScale" + i] = c; v["cScaleLabel" + i] = onChart; v["cScaleInv" + i] = c;
+    v["git" + i] = c; v["gitBranchLabel" + i] = onChart;
   });
+  v.pieSectionTextColor = onChart;
+  // 甘特图：普通的条是浅灰，进行中 / 关键的是上面那套蓝 / 红，边往字色压一点，字都是正文色
+  const edge = (c) => mix(fg, c, dark ? 0.3 : 0.35); // 色块的边：往字色压一点
   Object.assign(v, {
-    darkMode: dark, fontFamily: FONT, fontSize: "14px", background: bg,
-    primaryColor: c.node, primaryTextColor: fg, primaryBorderColor: c.nodeBorder,
-    secondaryColor: c.node2, secondaryBorderColor: c.node2Border, secondaryTextColor: fg,
-    tertiaryColor: c.cluster, tertiaryBorderColor: c.clusterBorder, tertiaryTextColor: fg,
-    lineColor: c.line, textColor: fg, mainBkg: c.node, nodeBorder: c.nodeBorder, nodeTextColor: fg,
-    clusterBkg: c.cluster, clusterBorder: c.clusterBorder, titleColor: fg, edgeLabelBackground: bg, labelBackgroundColor: bg,
-    noteBkgColor: c.note, noteTextColor: fg, noteBorderColor: c.noteBorder,
-    actorBkg: c.node, actorBorder: c.nodeBorder, actorTextColor: fg, actorLineColor: c.clusterBorder,
-    signalColor: c.line, signalTextColor: fg, labelBoxBkgColor: c.node2, labelBoxBorderColor: c.node2Border, labelTextColor: fg,
-    loopTextColor: c.muted, activationBkgColor: c.node2, activationBorderColor: c.node2Border, sequenceNumberColor: bg,
-    pieStrokeColor: bg, pieOuterStrokeColor: bg, pieOuterStrokeWidth: "0px", pieSectionTextColor: "#ffffff", pieSectionTextSize: "13px",
-    pieTitleTextColor: fg, pieTitleTextSize: "16px", pieLegendTextColor: fg, pieLegendTextSize: "13px", pieStrokeWidth: "2px", pieOpacity: "1",
-    taskBkgColor: acc, taskBorderColor: acc, taskTextColor: "#ffffff", taskTextDarkColor: fg, taskTextOutsideColor: fg, taskTextLightColor: "#ffffff",
-    activeTaskBkgColor: series[1], activeTaskBorderColor: series[1], doneTaskBkgColor: c.node2Border, doneTaskBorderColor: c.node2Border,
-    critBkgColor: series[3], critBorderColor: series[3], sectionBkgColor: c.cluster, altSectionBkgColor: bg, sectionBkgColor2: c.cluster,
-    gridColor: c.clusterBorder, todayLineColor: series[3], excludeBkgColor: c.cluster,
-    stateBkg: c.node, stateLabelColor: fg, compositeBackground: c.cluster, compositeTitleBackground: c.cluster, altBackground: c.cluster,
-    specialStateColor: fg, innerEndBackground: fg, transitionColor: c.line, transitionLabelColor: c.muted,
-    classText: fg, attributeBackgroundColorOdd: bg, attributeBackgroundColorEven: c.cluster,
-    relationColor: c.line, relationLabelColor: c.muted, relationLabelBackground: bg,
-    commitLabelColor: fg, commitLabelBackground: c.node2, tagLabelColor: fg, tagLabelBackground: c.node, tagLabelBorder: c.nodeBorder,
-    xyChart: {
-      backgroundColor: bg, titleColor: fg, plotColorPalette: series.join(","),
-      xAxisLabelColor: c.muted, xAxisTitleColor: c.muted, xAxisTickColor: c.clusterBorder, xAxisLineColor: c.clusterBorder,
-      yAxisLabelColor: c.muted, yAxisTitleColor: c.muted, yAxisTickColor: c.clusterBorder, yAxisLineColor: c.clusterBorder,
-    },
+    taskBkgColor: quote, taskBorderColor: border, taskTextColor: fg, taskTextDarkColor: fg, taskTextLightColor: fg, taskTextOutsideColor: fg,
+    activeTaskBkgColor: charts[0], activeTaskBorderColor: edge(charts[0]), critBkgColor: charts[3], critBorderColor: edge(charts[3]),
+    doneTaskBkgColor: mix(fg, bg, 0.22), doneTaskBorderColor: border, gridColor: mix(fg, bg, 0.15), todayLineColor: edge(charts[3]),
+    sectionBkgColor: bg, altSectionBkgColor: bg, sectionBkgColor2: bg, excludeBkgColor: quote,
+    // ER 图 / 类图的属性行：一行节点底、一行深一点点（深色时 Mermaid 自己推出来的是黑的）
+    rowOdd: node, rowEven: mix(fg, bg, dark ? 0.11 : 0.035), attributeBackgroundColorOdd: node, attributeBackgroundColorEven: mix(fg, bg, dark ? 0.11 : 0.035),
   });
-  // themeCSS：mermaid 把它套在这张图的 id 下面
+  // 影子只给节点的形状（不给整个节点，不然字也带影子）；边上字的底是实的（classic 默认半透明）
   const css = `
-    .node rect, .node polygon, .node circle, .node ellipse, .node path { stroke-width: 1.25px; }
-    .nodeLabel, .node .label text, .node text { font-weight: 500; }
-    .flowchart-link, .edgePath .path, .transition, .relation, .messageLine0, .messageLine1 { stroke-width: 1.5px; }
-    .edgeLabel, .edgeLabel text, .edgeLabel tspan { fill: ${c.muted}; color: ${c.muted}; font-size: 12.5px; }
-    .edgeLabel rect, .labelBkg { fill: ${bg}; background: ${bg}; opacity: 1; }
-    .cluster rect { stroke-width: 1px; }
-    .cluster-label text, .cluster text { fill: ${c.muted}; font-weight: 600; font-size: 12.5px; }
-    .actor { stroke-width: 1.25px; } text.actor > tspan { font-weight: 500; }
-    .actor-line { stroke-dasharray: 3 4; stroke-width: 1px; }
-    .messageText { font-size: 13px; }
-    .note { stroke-width: 1px; } .noteText > tspan { font-size: 13px; }
-    .loopLine { stroke: ${c.node2Border}; stroke-width: 1px; stroke-dasharray: 3 3; }
-    .pieTitleText { font-weight: 600; } .slice { font-weight: 600; }
-    .task { stroke-width: 0; } .taskText, .taskTextOutsideRight, .taskTextOutsideLeft { font-size: 12px; font-weight: 500; }
-    .grid .tick line { stroke: ${c.clusterBorder}; opacity: .6; } .grid path { stroke-width: 0; }
-    .grid .tick text { fill: ${c.muted}; font-size: 12px; }
-    .sectionTitle { fill: ${c.muted}; font-weight: 600; }
-    .titleText { fill: ${fg}; font-weight: 600; font-size: 15px; }
-    .divider { stroke: ${c.nodeBorder}; }
+    .node > rect, .node > path, .node > polygon, .node > ellipse, .node > circle, .node > .label-container, .node > g.basic,
+    rect.actor, .classGroup > rect, .entityBox, rect.note { filter: ${shadow}; }
+    .edgeLabel rect, .labelBkg { opacity: 1; }
   `;
   // htmlLabels: false 是关键：有 foreignObject 的 SVG 画到 canvas 上算跨域，canvas 被污染、取不出 PNG
+  // （Mermaid 12 起只认根上的 htmlLabels，flowchart.htmlLabels 废了）。layout 不写：12 按图挑（全局写 elk 思维导图就画不出来）。
+  // 用户在 front matter 里写 look / layout 照样管用。minNodeWidth（12 新加，默认 120，短字的节点撑成一样宽）关掉：
+  // 菱形、圆柱跟着撑得很大，状态图的字还会靠左。甘特图的宽和条高是 Grove 的：渲染页没有真的宽度，不给 useWidth 就按 #box 的 960 排。
   return {
-    startOnLoad: false, theme: "base", darkMode: dark, securityLevel: "strict", suppressErrorRendering: true,
+    startOnLoad: false, theme: "base", look: "classic", darkMode: dark, securityLevel: "strict", suppressErrorRendering: true,
     htmlLabels: false, fontFamily: FONT, themeVariables: v, themeCSS: css,
-    flowchart: { htmlLabels: false, curve: "basis", padding: 14, nodeSpacing: 44, rankSpacing: 48 },
-    sequence: { actorMargin: 60, boxMargin: 8, noteMargin: 10, messageMargin: 36 },
+    flowchart: { minNodeWidth: 0 }, state: { minNodeWidth: 0 },
     gantt: { useWidth: 760, barHeight: 22, barGap: 6, fontSize: 12, sectionFontSize: 12 },
   };
 }
 
-// polish 是画完以后再改的几处：节点、参与者、注释、子图、甘特图的条都换成圆角（mermaid 的配置里没有这一项）。
+// polish 是画完以后再改的一处：思维导图的圆形节点（根）不用 HTML 标签时字从圆心往右排（mermaid 11、12 都这样），挪回正中。
 function polish(el) {
-  const round = (q, r) => el.querySelectorAll(q).forEach((n) => { n.setAttribute("rx", r); n.setAttribute("ry", r) });
-  round(".node rect.label-container, .node rect.basic, .node > rect, .statediagram-state rect", 8);
-  round("rect.actor", 8);
-  round("rect.note", 6);
-  round(".cluster rect", 10);
-  round("rect.labelBox, .edgeLabel rect", 4);
-  round("rect.task", 5);
-  // 思维导图的圆形节点（根）：mermaid 11 不用 HTML 标签时字从圆心往右排，挪回正中
   el.querySelectorAll(".mindmap-node > circle + g.label").forEach((g) => {
     if (/^translate\(0[ ,]/.test(g.getAttribute("transform") || "")) g.querySelectorAll("text").forEach((t) => t.setAttribute("text-anchor", "middle"));
   });
@@ -149,6 +116,9 @@ let theme = "", seq = 0;
 
 // mermaidSVG 是 mermaid.js 画的 SVG 文本，Grove 的外观。
 async function mermaidSVG(src, pal, dark) {
+  // Mermaid 12 要 ES2024（Safari 17.4 / macOS 14.4 起的 WebKit）；macOS 13 没更新 Safari 的，它的脚本加载了也跑不起来。
+  // 先查一下，抛一个 Go 那边认得的错（render.OldWebKit），界面换成一句看得懂的
+  if (typeof Object.groupBy !== "function" || typeof Promise.withResolvers !== "function") throw new Error("grove:old-webkit");
   await load("mermaid.min.js");
   const t = JSON.stringify(pal) + dark;
   if (theme !== t) {

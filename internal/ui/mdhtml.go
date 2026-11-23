@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
+	"github.com/lemoeade/grove/internal/gmd"
 	"github.com/lemoeade/grove/internal/i18n"
 )
 
@@ -27,6 +28,12 @@ var mdBody = &html.Node{Type: html.ElementNode, Data: "body", DataAtom: atom.Bod
 
 // mdHTML 画一个 HTML 块。解析结果留在外面那个 Column 上，源码不变不重新解析。
 func mdHTML(c *wui.Context, e *mdEnv, src string) {
+	if gmdOn && e.o != nil && gmd.WantsCSS(src, e.css) {
+		// 带样式的 HTML（<style>、class、style= 里的底色、边框、grid……）：照 CSS 排，像 VS Code 的预览
+		box := e.o.HTMLView(c, src).AlignSelf(wui.Stretch)
+		mdAlign(box, e.align)
+		return
+	}
 	box := wui.Column(c).AlignSelf(wui.Stretch).Gap(mdEm(e.th, 0.5))
 	st := *wui.Local(box, mdHTMLKey{}, func() *mdHTMLState { return &mdHTMLState{} })
 	if st.nodes == nil || st.src != src {

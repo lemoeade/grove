@@ -4,7 +4,7 @@ Third-party files in this directory
 The scripts are stored gzipped (<name>.js.gz, gzip -9 -n of the file named below); internal/render/web.go
 serves them decompressed. Nothing was changed inside them.
 
-mermaid.min.js — Mermaid 11.17.2 (https://github.com/mermaid-js/mermaid), MIT License.
+mermaid.min.js — Mermaid 12.3.0 (https://github.com/mermaid-js/mermaid), MIT License.
 The bundle carries the notices of the libraries it includes in its own comments.
 
 mathjax/ — MathJax 4.1.3 (https://github.com/mathjax/MathJax), Apache License 2.0:

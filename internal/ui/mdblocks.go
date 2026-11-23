@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	wui "github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/markdown"
 	"github.com/egoist/mygo/ui/markdown/parser"
 
 	"github.com/lemoeade/grove/internal/app"
+	"github.com/lemoeade/grove/internal/gmd"
 	"github.com/lemoeade/grove/internal/i18n"
 	"github.com/lemoeade/grove/internal/mdprep"
 )
@@ -21,7 +21,7 @@ import (
 // 只有图片的段落（徽章一排、截图；包在链接里的也是图片，按 HTML 写的宽高）、代码里的路径链接。
 
 // codeBlock 是 CodeBlock 钩子：mdprep 的围栏画成卡片、折叠块，别的照 mygo 的。
-func (e *mdEnv) codeBlock(c *wui.Context, b *markdown.CodeBlockView) {
+func (e *mdEnv) codeBlock(c *wui.Context, b *gmd.CodeBlockView) {
 	if b.Language == mdprep.Lang {
 		if r := e.prep.Region(b.Info, b.Code()); r != nil {
 			switch r.Kind {
@@ -33,7 +33,7 @@ func (e *mdEnv) codeBlock(c *wui.Context, b *markdown.CodeBlockView) {
 			return
 		}
 	}
-	markdown.DefaultCodeBlock(c, b)
+	gmd.DefaultCodeBlock(c, b)
 }
 
 type mdOpenKey struct{}
@@ -154,7 +154,7 @@ func (e *mdEnv) containerBody(c *wui.Context, el wui.Element, head, body string,
 	mdAlign(el, align)
 	el.Children(func() {
 		if strings.TrimSpace(head) != "" {
-			mdHTML(c, &mdEnv{a: e.a, d: e.d, prep: e.prep, th: e.th, depth: e.depth, align: align, links: e.links, anchor: e.anchor}, strings.TrimSpace(head))
+			mdHTML(c, &mdEnv{a: e.a, d: e.d, prep: e.prep, th: e.th, depth: e.depth, align: align, links: e.links, anchor: e.anchor, o: e.o, css: e.css}, strings.TrimSpace(head))
 		}
 		e.nested(c, wui.Column(c).AlignSelf(wui.Stretch), body, align)
 	})

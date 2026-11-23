@@ -271,3 +271,33 @@ func TestMarkdownLinkPath(t *testing.T) {
 		}
 	}
 }
+
+// 带样式的 HTML（<style> 里的 class、grid）在预览里照 CSS 排：三张卡片一行；WORKBENCH_GMD=off（gmdOn = false）时退回 mygo 的视图，字照样在。
+func TestMarkdownStyledHTML(t *testing.T) {
+	root, ws := testutil.TempRepo(t)
+	writeDoc(t, root, "arch.md", "# 架构\n\n<style>\n.g { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }\n"+
+		".c { background: #e8f1ff; border: 1px solid #9ab8e8; border-radius: 8px; padding: 10px; }\n</style>\n\n"+
+		"<div class=\"g\">\n  <div class=\"c\">接入层</div>\n  <div class=\"c\">服务层</div>\n  <div class=\"c\">存储层</div>\n</div>\n\n正文。\n")
+	for _, on := range []bool{true, false} {
+		keep := gmdOn
+		gmdOn = on
+		a, tt, wait := newUI(t, ws, "")
+		a.OpenFile(a.Repos[0], "arch.md", true)
+		d := a.CurrentDoc()
+		wait("读好 arch.md", func() bool { return d.Buf != nil })
+		a.Exec("view.markdownPreview")
+		wait("预览", func() bool { return d.Preview && tt.HasText("存储层") && tt.HasText("正文。") })
+		x, _ := tt.Find("接入层")
+		y, _ := tt.Find("服务层")
+		z, _ := tt.Find("存储层")
+		if on {
+			if !(x.X < y.X && y.X < z.X) || x.Y != y.Y || y.Y != z.Y {
+				t.Fatalf("grid 的卡片没排成一行：%v %v %v", x, y, z)
+			}
+			if dir := os.Getenv("WORKBENCH_SHOT"); dir != "" {
+				writeShot(t, tt, dir, "md-styled-html.png")
+			}
+		}
+		gmdOn = keep
+	}
+}

@@ -130,7 +130,7 @@ func (a *App) PreviewImage(d *docs.Doc, u string) (*MDImage, bool) {
 	return nil, false
 }
 
-// ImageLoader 是给 mygo 的 markdown.Options.LoadImage（预览里自己没接手的图片走它）：在 mygo 的 goroutine 里同步读。
+// ImageLoader 是给预览的 gmd.Options.LoadImage（预览里自己没接手的图片走它）：在后台 goroutine 里同步读。
 func (a *App) ImageLoader(d *docs.Doc) func(string) (ui.ImageSource, error) {
 	dir := d.Dir()
 	off := a.St.Settings.NoRemoteImages
