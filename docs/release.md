@@ -1,55 +1,71 @@
-# 打包与发布
+# Packaging and releases
 
-本文介绍 Grove 的版本号规则、构建、DMG 打包、发布（GitHub Actions）、自动更新、签名、公证和 CI。日常开发使用
-`go tool mygo build -skip-dmg -skip-notarize -sign -` 即可，见 README 的“构建”一节。
+This doc covers Grove's versioning rules, builds, DMG packaging, releases (GitHub Actions), auto-updates, signing,
+notarization and CI. For everyday development, `go tool mygo build -skip-dmg -skip-notarize -sign -` is all you need;
+see the "Building" section of the README.
 
-## 版本号
+## Versions
 
-版本号统一取自 `mygo.json` 的 `version`，公开版本从 0.1.0 开始。
+The version number always comes from `version` in `mygo.json`; public versions start at 0.1.0.
 
-- `mygo build` 把它写进 Info.plist（`CFBundleShortVersionString` / `CFBundleVersion`），并用
-  `-ldflags -X github.com/egoist/mygo.packageVersion=…` 编进二进制；`main` 启动时
-  `version.App = mygo.App.Version()`。`go run` 和测试没有注入版本号，显示为 `dev`。
-- 关于窗口显示“版本 x.y.z”，下方列出编译时使用的 mygo 和 Go 版本。首次启动或更新后，
-  状态栏提示“欢迎使用 Grove x.y.z” / “已更新到 Grove x.y.z”（记录在 state.json 的 `appVersion` 中，同一版本不再提示）。
-  崩溃日志和 `workbench.log` 的第一行也会记录版本号。
-- `TestVersions`（`internal/version`）检查两项：根目录 `CHANGELOG.md` 中必须有以 `## v<版本> ` 开头的小节；
-  编译时使用的 mygo 版本必须与 go.mod 中锁定的版本一致。
+- `mygo build` writes it into Info.plist (`CFBundleShortVersionString` / `CFBundleVersion`) and compiles it into the
+  binary with `-ldflags -X github.com/egoist/mygo.packageVersion=…`; at startup `main` sets
+  `version.App = mygo.App.Version()`. `go run` and tests don't inject a version, so it shows as `dev`.
+- The About window shows "Version x.y.z", with the mygo and Go versions it was built with below. On first launch or
+  after an update, the status bar shows "Welcome to Grove x.y.z" / "Updated to Grove x.y.z" (recorded as `appVersion`
+  in state.json, so the same version isn't announced twice). The first line of crash logs and `workbench.log` also
+  records the version.
+- `TestVersions` (`internal/version`) checks two things: the root `CHANGELOG.md` must have a section starting with
+  `## v<version> `, and the mygo version compiled in must match the one pinned in go.mod.
 
-1.0 之前，仅修复问题时递增补丁版本号（0.1.0 → 0.1.1）；新增功能或改变行为时递增次版本号（0.1.x → 0.2.0）。
+Before 1.0, bump the patch version for fixes only (0.1.0 → 0.1.1) and the minor version for new features or behavior
+changes (0.1.x → 0.2.0).
 
-日常改动不修改版本号。涉及行为变化的 PR 在 `CHANGELOG.md` 顶部的 `## 未发布` 中补充记录，`mygo.json` 保持上次发布的版本号。
+Everyday changes don't touch the version number. PRs that change behavior add an entry under `## Unreleased` at the
+top of `CHANGELOG.md`, and `mygo.json` keeps the version of the last release.
 
-发布新版本的步骤：
+Changelog sections are headed `## vX.Y.Z — YYYY-MM-DD`, with the unreleased section `## Unreleased` above them.
 
-1. 改 `mygo.json` 的 `version`；
-2. 把 `CHANGELOG.md` 的 `## 未发布` 改成 `## v<版本> — <日期>`，在上方新增一个空的 `## 未发布`。
-   这一节就是更新窗口里“改了什么”的内容（mygo 把它写进更新清单），写给用户看；
-3. `GOTOOLCHAIN=auto go vet ./... && GOTOOLCHAIN=auto go test -count=1 ./... && GOTOOLCHAIN=auto go test -race ./...`；
-4. 按下文构建，在真实窗口中手动检查截图无法验证的部分（菜单、对话框、毛玻璃、拖放、终端）；
-5. 提交、推到 main，在该提交上打标签并推上去：`git tag v<版本> && git push origin v<版本>`；
-6. `release.yml` 建好草稿 Release、传完文件后（十来分钟），在 GitHub 的 Releases 页看一眼草稿，点 Publish。
-   发布之后装好的 Grove 才看得到新版本，`install.sh` 也才装它。
+To release a new version:
 
-## 构建
+1. Change `version` in `mygo.json`.
+2. Rename `## Unreleased` in `CHANGELOG.md` to `## v<version> — <date>`, and add a new empty `## Unreleased` above it.
+   This section is the "what changed" text in the update window (mygo writes it into the update manifest), so write it
+   for users.
+3. `GOTOOLCHAIN=auto go vet ./... && GOTOOLCHAIN=auto go test -count=1 ./... && GOTOOLCHAIN=auto go test -race ./...`
+4. Build as described below, and manually check in a real window what screenshots can't verify (menus, dialogs,
+   vibrancy, drag and drop, terminal).
+5. Commit (`chore(release): v<version>`), push to main, then tag that commit and push the tag:
+   `git tag v<version> && git push origin v<version>`.
+6. Once `release.yml` has created the draft Release and uploaded the files (ten minutes or so), look over the draft on
+   the GitHub Releases page and click Publish. Only after publishing do installed copies of Grove see the new version,
+   and only then does `install.sh` install it.
+
+## Building
 
 ```bash
 GOTOOLCHAIN=auto go tool mygo build -skip-dmg -skip-notarize -sign -
 ```
 
-构建产物为 `build/darwin-arm64/Grove.app`（约 30 MB），使用 ad hoc 签名，可在构建机器上打开。
-`mygo.json` 中的应用名为 Grove，bundle id 为 `io.github.lemoeade.grove`，可执行文件为 `Contents/MacOS/Grove`，DMG 文件名为 `grove-<版本>-arm64.dmg`（mygo 使用应用名的 slug）。
-源码中的 `cmd/workbench`、`WORKBENCH_*` 沿用了项目旧名，保留原因见 `AGENTS.md`。
-复制到其他 Mac 后会被 Gatekeeper 拦截（见下文“没有 Apple 开发者账号时怎么装”）。
+The output is `build/darwin-arm64/Grove.app` (about 30 MB), ad hoc signed, which opens on the machine that built it.
+In `mygo.json` the app name is Grove, the bundle id is `io.github.lemoeade.grove`, the executable is
+`Contents/MacOS/Grove`, and the DMG file name is `grove-<version>-arm64.dmg` (mygo uses the slug of the app name).
+`cmd/workbench` and `WORKBENCH_*` in the source keep the project's old name; `AGENTS.md` explains why.
+Copied to another Mac, it is blocked by Gatekeeper (see
+"[Installing without an Apple Developer account](#installing-without-an-apple-developer-account)" below).
 
-终端后台进程（termd）不单独打包。同一个可执行文件带上 `termd` 参数（`Grove termd <套接字> <日志>`）后，`main` 在第一行将其交给后台进程入口，
-不打开窗口，也不显示在 Dock 中。因此，签名和公证仍只需处理这一个可执行文件。
+The terminal background process (termd) isn't packaged separately. Given the `termd` argument
+(`Grove termd <socket> <log>`), the same executable hands off to the background process entry point on the very first
+line of `main`, opens no window and doesn't appear in the Dock. So signing and notarization still only deal with this
+one executable.
 
-应用图标是 `assets/icon.png`（1024×1024，`mygo.json` 的 `icon`，mygo 转成 `AppIcon.icns`）。它是
-`internal/appicon` 用代码绘制的：修改绘制代码后，运行 `go test ./internal/appicon -update` 重新生成；关于窗口使用同一套绘制代码。
-图标不放在 `resources/` 中，因为该目录会原样复制到 `Contents/Resources`，放入图标会导致重复打包。
+The app icon is `assets/icon.png` (1024×1024, `icon` in `mygo.json`, which mygo converts to `AppIcon.icns`). It is drawn
+in code by `internal/appicon`: after changing the drawing code, run `go test ./internal/appicon -update` to regenerate
+it; the About window uses the same drawing code. The icon isn't kept in `resources/`, because that directory is copied
+verbatim into `Contents/Resources`, and putting the icon there would package it twice.
 
-`resources/` 里有字体（JetBrains Mono Nerd Font）和 `licenses/`（第三方许可证全文，关于窗口的"查看许可证全文"打开它）。
+`resources/` holds the font (JetBrains Mono Nerd Font) and `licenses/` (full texts of third-party licenses, opened by
+"View Full Licenses" in the About window).
 
 ## DMG
 
@@ -57,97 +73,124 @@ GOTOOLCHAIN=auto go tool mygo build -skip-dmg -skip-notarize -sign -
 GOTOOLCHAIN=auto go tool mygo build -skip-notarize -sign -
 ```
 
-这条命令会额外生成 `build/darwin-arm64/grove-<版本>-arm64.dmg`，包含“拖到应用程序”的窗口布局。
-mygo 的处理流程：`hdiutil create` 创建可写镜像 → `hdiutil attach -readwrite` 挂载并写入 `.DS_Store`（图标位置）→
-`detach` → 转成只读的 ULMO 格式。系统有 `diskutil image create from` 时用它转，没有才用 `hdiutil convert`
-（macOS 27 上 `hdiutil convert` 会失败）。
+This also produces `build/darwin-arm64/grove-<version>-arm64.dmg`, with a "drag to Applications" window layout.
+mygo's steps: `hdiutil create` makes a writable image → `hdiutil attach -readwrite` mounts it and writes `.DS_Store`
+(icon positions) → `detach` → convert to read-only ULMO. It converts with `diskutil image create from` when the system
+has it, and falls back to `hdiutil convert` only otherwise (`hdiutil convert` fails on macOS 27).
 
-部分机器会因挂载权限拦截 `attach`，因此 README 的日常构建命令带有 `-skip-dmg`。遇到这种情况，可以跳过挂载，
-直接从目录创建只读镜像，但这样生成的镜像没有窗口布局：
+Some machines block `attach` because of mount permissions, which is why the README's everyday build command has
+`-skip-dmg`. In that case you can skip mounting and create a read-only image straight from a directory, though the
+resulting image has no window layout:
 
 ```bash
 mkdir -p dist/stage && ditto build/darwin-arm64/Grove.app dist/stage/Grove.app && ln -s /Applications dist/stage/Applications
-hdiutil create -srcfolder dist/stage -volname Grove -fs HFS+ -format ULMO -ov dist/Grove-<版本>-arm64.dmg
-hdiutil verify dist/Grove-<版本>-arm64.dmg
+hdiutil create -srcfolder dist/stage -volname Grove -fs HFS+ -format ULMO -ov dist/Grove-<version>-arm64.dmg
+hdiutil verify dist/Grove-<version>-arm64.dmg
 ```
 
-新系统会提示 `hdiutil create -volname -format` 已弃用，建议使用 `diskutil image create`；目前该命令仍可用。
-这样生成的 DMG 也可以按下文公证：先运行 `xcrun notarytool submit … --wait`，再运行 `xcrun stapler staple`。
+Newer systems warn that `hdiutil create -volname -format` is deprecated and suggest `diskutil image create`; the
+command still works for now. A DMG made this way can be notarized as described below as well: first run
+`xcrun notarytool submit … --wait`, then `xcrun stapler staple`.
 
-## 发布（GitHub Actions）
+## Releasing (GitHub Actions)
 
-`.github/workflows/release.yml`，推 `v*` 标签时跑：
+`.github/workflows/release.yml` runs when a `v*` tag is pushed:
 
-1. **核对、建草稿**（ubuntu）：标签必须等于 `v` + `mygo.json` 的 `version`，`CHANGELOG.md` 里必须有 `## v<版本>` 这一节，
-   对不上就停（什么都不建）；然后 `gh release create --draft --verify-tag --generate-notes` 建草稿 Release
-   （Release 页的说明是 GitHub 按 PR 生成的，可以在草稿里改；更新窗口用的是 CHANGELOG 那一节，两者不相干）。
-2. **构建、上传**（`macos-latest`）：`go vet`、`go test`，按 secrets 选签名身份（下一节），然后
+1. **Check, create the draft** (ubuntu): the tag must equal `v` + `version` from `mygo.json`, and `CHANGELOG.md` must
+   have a `## v<version>` section; if either doesn't match, it stops (creating nothing). Then
+   `gh release create --draft --verify-tag --generate-notes` creates a draft Release (the notes on the Release page are
+   generated by GitHub from PRs and can be edited in the draft; the update window uses the CHANGELOG section, and the
+   two are unrelated).
+2. **Build, upload** (`macos-latest`): `go vet`, `go test`, picks the signing identity based on secrets (next section),
+   then
 
    ```bash
    go tool mygo build -skip-notarize -sign "$SIGN_IDENTITY" -upload
    ```
 
-   传到草稿里的文件：`grove-<版本>-arm64.dmg`、`grove-<版本>-darwin-arm64.tar.gz`（更新包）、
-   `grove-<旧版本>-to-<版本>-darwin-arm64.delta` 这样的增量包（从之前发布过的版本，bsdiff）、`update-darwin-arm64.json`（更新清单：
-   版本、CHANGELOG 那一节、各个包的地址、大小、Ed25519 签名）、`install.sh`、`SHA256SUMS`。
+   Files uploaded to the draft: `grove-<version>-arm64.dmg`, `grove-<version>-darwin-arm64.tar.gz` (the update
+   package), delta packages like `grove-<old version>-to-<version>-darwin-arm64.delta` (from previously released
+   versions, bsdiff), `update-darwin-arm64.json` (the update manifest: version, the CHANGELOG section, each package's
+   URL, size and Ed25519 signature), `install.sh` and `SHA256SUMS`.
 
-草稿不会自动发布：看过再点 Publish。重跑这个工作流（Re-run）会替换草稿里的文件。
+The draft isn't published automatically: review it, then click Publish. Re-running the workflow replaces the files in
+the draft.
 
-要设的 secrets（在仓库根目录，用自己的终端跑；私钥、证书、密码都别贴到聊天、issue 或日志里）：
+Secrets to set (from the repo root, in your own terminal; never paste private keys, certificates or passwords into
+chats, issues or logs):
 
 ```bash
 gh secret set MYGO_UPDATER_PRIVATE_KEY < "$HOME/Library/Application Support/mygo/update-keys/mygo-update.key"
-# 可选：自签名证书（见下一节）
+# optional: a self-signed certificate (see the next section)
 base64 -i grove-sign.p12 | gh secret set MACOS_CERTIFICATE
 gh secret set MACOS_CERTIFICATE_PASSWORD
 gh secret set MACOS_SIGN_IDENTITY --body "Grove Self-Signed"
 ```
 
-## 自动更新
+## Auto-updates
 
-用 mygo 的 updater（`mygo.json` 的 `updates`，插件 `plugins/updater/native`，原生窗口）：
+Grove uses mygo's updater (`updates` in `mygo.json`, plugin `plugins/updater/native`, a native window):
 
-- **密钥**：`go tool mygo keygen` 生成 Ed25519 密钥对，默认写到 `~/Library/Application Support/mygo/update-keys/`。
-  公钥（`mygo-update.pub` 的内容）写在 `mygo.json` 的 `updates.publicKey`，编进应用；私钥（`mygo-update.key`）不进仓库，
-  存进密码管理器，再设成 secret `MYGO_UPDATER_PRIVATE_KEY`。**私钥丢了，装好的 Grove 就再也收不到更新**（只认这把钥匙签的包），
-  只能让用户重新用 install.sh 装一个换了公钥的版本；私钥泄露了，别人就能给 Grove 用户推“更新”。
-- **检查**：正式构建每天在后台查一次 `https://github.com/lemoeade/grove/releases/latest/download/update-darwin-arm64.json`
-  （只看发布了的 Release，草稿和预发布不算），有新版本就弹窗显示 CHANGELOG 那一节，用户选“安装”“跳过这个版本”“以后提醒”。
-  菜单 Grove → “检查更新…”（命令面板里也有）随时查。设置 → 更新：自动检查、自动下载并安装（下次启动生效）、当前版本和上次检查的时间。
-  这两个开关存在 mygo 的 `updater.json`（`~/Library/Application Support/Grove/`），不在 state.json 里。
-- **安装**：下载（有增量包先用增量包）→ 验 Ed25519 签名 → 换掉 `/Applications/Grove.app`（或用户装的地方）→ 重启。
-  更新包是 curl 式的下载，没有隔离属性（quarantine），所以不经过 Gatekeeper：没公证的构建也能一路自动更新。
-- **不检查的情况**：`go run`、`mygo dev` 的开发构建（设置页写“这个构建不能自己更新”，菜单项点了窗口里也这么说）；
-  设了 `WORKBENCH_STATE` 的实例不在后台查（量内存、冒烟时不弹窗抢前台），手动“检查更新…”照旧能用。
-- 代码：`internal/app/updates.go`（界面只经 `app.Updates` 这组钩子，测试里为 nil）、`cmd/workbench/main.go` 的 `setupUpdates`、
-  `internal/ui/settings.go` 的“更新”页。
+- **Keys**: `go tool mygo keygen` generates an Ed25519 key pair, written by default to
+  `~/Library/Application Support/mygo/update-keys/`. The public key (the contents of `mygo-update.pub`) goes in
+  `updates.publicKey` in `mygo.json` and is compiled into the app; the private key (`mygo-update.key`) never goes into
+  the repo: store it in a password manager, then set it as the secret `MYGO_UPDATER_PRIVATE_KEY`. **If the private key
+  is lost, installed copies of Grove can never receive updates again** (they only accept packages signed with this
+  key); users would have to reinstall, via install.sh, a version with a new public key. If the private key leaks,
+  anyone can push "updates" to Grove users.
+- **Checking**: release builds check
+  `https://github.com/lemoeade/grove/releases/latest/download/update-darwin-arm64.json` once a day in the background
+  (only published Releases count, not drafts or pre-releases). When there is a new version, a window shows the
+  CHANGELOG section, and the user picks Install, Skip This Version or Remind Me Later. Grove → "Check for Updates…" in
+  the menu (also in the Command Palette) checks at any time. Settings → Update has "Automatically check for updates",
+  "Automatically download and install updates" (takes effect on next launch), the current version and the time of the
+  last check. These two toggles are stored in mygo's `updater.json` (`~/Library/Application Support/Grove/`), not in
+  state.json.
+- **Installing**: download (a delta package first, when available) → verify the Ed25519 signature → replace
+  `/Applications/Grove.app` (or wherever the user installed it) → relaunch. Update packages are downloaded curl-style,
+  without the quarantine attribute, so they don't go through Gatekeeper: even un-notarized builds update themselves all
+  the way.
+- **When it doesn't check**: dev builds from `go run` and `mygo dev` (the Settings page says "this build can't update
+  itself", and so does the window when you click the menu item); instances with `WORKBENCH_STATE` set don't check in
+  the background (so no window steals the front during memory measurement or smoke tests), though a manual "Check for
+  Updates…" still works.
+- Code: `internal/app/updates.go` (the UI only goes through the `app.Updates` hooks, which are nil in tests),
+  `setupUpdates` in `cmd/workbench/main.go`, and the "Update" page in `internal/ui/settings.go`.
 
-## 没有 Apple 开发者账号时怎么装
+## Installing without an Apple Developer account
 
-没有账号就不能用 Developer ID 签名、不能公证。Grove 现在就是这样发的：
+Without an account you can't sign with Developer ID or notarize. That is how Grove ships today:
 
-- **主推 install.sh**（README 里那一行）：
+- **install.sh is the main route** (the one-liner in the README):
 
   ```bash
   curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh
   ```
 
-  它读最新发布的更新清单，下载 tar.gz、验 Ed25519 签名，装到 `/Applications`（写不进去就 `~/Applications`）再打开。
-  curl 下的文件没有隔离属性，Gatekeeper 不拦，用户不用点任何“仍要打开”。`sh install.sh --uninstall` 卸载（设置和数据留着）。
-- **DMG**：浏览器下载的 DMG 带隔离属性，Gatekeeper 会拦（“无法验证开发者”或“已损坏”）。macOS 15 起右键“打开”不再能绕过，
-  要么拖进“应用程序”后先双击一次被拦，再到 系统设置 → 隐私与安全性 → 最下面点“仍要打开”；要么在终端里
-  `xattr -dr com.apple.quarantine /Applications/Grove.app`。只第一次需要，之后的自动更新都不经过 Gatekeeper。
+  It reads the latest published update manifest, downloads the tar.gz, verifies the Ed25519 signature, installs it in
+  `/Applications` (or `~/Applications` if it can't write there) and opens it. Files downloaded with curl have no
+  quarantine attribute, so Gatekeeper doesn't block them and users don't have to click any "Open Anyway".
+  `sh install.sh --uninstall` uninstalls (settings and data are kept).
+- **DMG**: a DMG downloaded in a browser carries the quarantine attribute, and Gatekeeper blocks it ("developer cannot
+  be verified" or "is damaged"). Since macOS 15, right-click → Open no longer gets around it. Either drag it into
+  Applications, double-click once to get blocked, then go to System Settings → Privacy & Security and click "Open
+  Anyway" at the bottom; or run `xattr -dr com.apple.quarantine /Applications/Grove.app` in Terminal. Only the first
+  time needs this; later auto-updates never go through Gatekeeper.
 
-### 签名身份：ad hoc 还是自签名证书
+### Signing identity: ad hoc or a self-signed certificate
 
-- **ad hoc**（`-sign -`，没设证书 secrets 时）：能装、能跑、能自动更新。但 ad hoc 签名的“指定要求”是可执行文件的哈希，
-  每个版本都不一样：系统眼里每次更新都是新应用，给过的权限（辅助功能、完全磁盘访问、访问“文稿”等文件夹的提示……）要重新给，
-  钥匙串里存的东西也可能再问一次。
-- **自签名“代码签名”证书**（推荐）：指定要求钉在证书上（`certificate leaf = H"…"`），每个版本一样，权限给一次就行。
-  不需要任何账号，证书系统不信任也没关系（codesign 照签，`find-identity` 标 `CSSMERR_TP_NOT_TRUSTED` 是正常的）；
-  它不能让 Gatekeeper 放行，首次安装的方式和 ad hoc 一样。
+- **ad hoc** (`-sign -`, when no certificate secrets are set): installs, runs and auto-updates. But the "designated
+  requirement" of an ad hoc signature is the executable's hash, which differs in every version: to the system every
+  update is a new app, so permissions already granted (Accessibility, Full Disk Access, the prompts for folders like
+  Documents…) have to be granted again, and items stored in the keychain may ask again too.
+- **A self-signed "Code Signing" certificate** (recommended): the designated requirement is pinned to the certificate
+  (`certificate leaf = H"…"`), the same in every version, so permissions only need granting once. No account is needed,
+  and it doesn't matter that the system doesn't trust the certificate (codesign signs anyway, and `find-identity`
+  flagging it `CSSMERR_TP_NOT_TRUSTED` is normal). It doesn't get Gatekeeper to let the app through; first installs work
+  the same as with ad hoc.
 
-  用 macOS 自带的 `/usr/bin/openssl`（LibreSSL；Homebrew 的 OpenSSL 3 导出 .p12 时要加 `-legacy`，不然 `security import` 认不出）：
+  Use macOS's own `/usr/bin/openssl` (LibreSSL; Homebrew's OpenSSL 3 needs `-legacy` when exporting the .p12, or
+  `security import` won't recognize it):
 
   ```bash
   cat > grove-sign.cnf <<'EOF'
@@ -163,96 +206,122 @@ gh secret set MACOS_SIGN_IDENTITY --body "Grove Self-Signed"
   extendedKeyUsage=critical,codeSigning
   EOF
   /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -keyout grove-sign.key -out grove-sign.crt -days 7300 -config grove-sign.cnf
-  /usr/bin/openssl pkcs12 -export -inkey grove-sign.key -in grove-sign.crt -out grove-sign.p12   # 提示时设一个密码
+  /usr/bin/openssl pkcs12 -export -inkey grove-sign.key -in grove-sign.crt -out grove-sign.p12   # set a password when prompted
   ```
 
-  按上一节设 `MACOS_CERTIFICATE` / `MACOS_CERTIFICATE_PASSWORD` / `MACOS_SIGN_IDENTITY`，然后把 `grove-sign.p12` 和密码存进密码管理器，
-  删掉 `grove-sign.key` 和 .p12 的本地副本。换证书等于换签名身份，用户要重新给一次权限，所以别轻易换。
-  从 ad hoc 切到自签名的那一次更新，用户也要重新给一次。
+  Set `MACOS_CERTIFICATE` / `MACOS_CERTIFICATE_PASSWORD` / `MACOS_SIGN_IDENTITY` as in the previous section, then store
+  `grove-sign.p12` and its password in a password manager and delete the local copies of `grove-sign.key` and the
+  .p12. Changing the certificate means changing the signing identity, and users have to grant permissions again, so
+  don't change it lightly. The one update that switches from ad hoc to self-signed also makes users grant them again.
 
-用真身份（自签名或 Developer ID）签名时，mygo 给 .app 和 `Contents/Resources` 里的代码加 hardened runtime 和安全时间戳。
-hardened runtime 默认开库验证：只许加载同一 Team ID 签的库，而自签名证书没有 Team ID，purego 加载 `libghostty-vt.dylib` 就会失败
-（终端“启动失败”，“mapping process and mapped file (non-platform) have different Team IDs”）。所以 `mygo.json` 的
-`macos.entitlements` 指向 `assets/entitlements.plist`，里面是 `com.apple.security.cs.disable-library-validation`。
-本机用自签名证书 + hardened runtime + 这个 entitlement 签过一份，终端能起 shell、单实例锁正常；去掉 entitlement 终端就起不来。
-ad hoc 签名不加 hardened runtime，这个 entitlement 对它没有影响。
+When signing with a real identity (self-signed or Developer ID), mygo adds the hardened runtime and a secure timestamp
+to the .app and the code in `Contents/Resources`. The hardened runtime turns on library validation by default: only
+libraries signed with the same Team ID may load, and a self-signed certificate has no Team ID, so purego fails to load
+`libghostty-vt.dylib` (the terminal shows "Failed to start", with "mapping process and mapped file (non-platform) have
+different Team IDs"). That's why `macos.entitlements` in `mygo.json` points to `assets/entitlements.plist`, which
+contains `com.apple.security.cs.disable-library-validation`. A local build signed with a self-signed certificate +
+hardened runtime + this entitlement was verified: the terminal starts a shell and the single-instance lock works;
+without the entitlement the terminal doesn't start. Ad hoc signatures don't get the hardened runtime, so the
+entitlement has no effect on them.
 
-## 签名和公证（以后有了 Apple 开发者账号）
+## Signing and notarization (once there is an Apple Developer account)
 
-需要付费的 Apple Developer 账号。以下步骤尚未实际验证，是根据 mygo 代码
-（`cmd/mygo/dmg.go`、`bundle.go`）和 Apple 的流程整理的。
+This needs a paid Apple Developer account. The steps below haven't been verified in practice; they are put together
+from mygo's code (`cmd/mygo/dmg.go`, `bundle.go`) and Apple's process.
 
-1. **证书**：在钥匙串中安装 “Developer ID Application: 名字 (TEAMID)” 证书，用 `security find-identity -v -p codesigning` 确认。
-2. **公证凭据**：将凭据存入钥匙串（只需一次；密码使用 appleid.apple.com 生成的 App 专用密码）：
+1. **Certificate**: install a "Developer ID Application: Name (TEAMID)" certificate in the keychain and confirm with
+   `security find-identity -v -p codesigning`.
+2. **Notarization credentials**: store them in the keychain (once only; the password is an app-specific password
+   generated at appleid.apple.com):
 
    ```bash
-   xcrun notarytool store-credentials grove-notary --apple-id 你的AppleID --team-id TEAMID
+   xcrun notarytool store-credentials grove-notary --apple-id YourAppleID --team-id TEAMID
    ```
 
-3. **mygo.json**：在 `macos` 中添加以下字段（签名身份也可以不写入文件，构建时通过 `-sign "Developer ID Application: …"` 传入）：
+3. **mygo.json**: add these fields under `macos` (the signing identity can also stay out of the file and be passed at
+   build time with `-sign "Developer ID Application: …"`):
 
    ```json
-   "signingIdentity": "Developer ID Application: 名字 (TEAMID)",
+   "signingIdentity": "Developer ID Application: Name (TEAMID)",
    "notarize": { "keychainProfile": "grove-notary" }
    ```
 
-   配置 `notarize` 后，使用 ad hoc 签名（`-sign -`）构建时必须带 `-skip-notarize`，否则 mygo 会报错。
-   README 和 CI 中的命令已包含该参数。
-4. **构建**：`GOTOOLCHAIN=auto go tool mygo build`。mygo 用 Developer ID 签名时加 hardened runtime 和安全时间戳，
-   同时签名 `Contents/Resources` 中的可执行文件和 dylib（mygo 放入的 libghostty-vt），生成 DMG，再运行 `notarytool submit --wait`。
-   通过后，用 `stapler staple` 将公证票据附加到 DMG 和 .app。
-5. **核对**：
+   Once `notarize` is configured, builds with an ad hoc signature (`-sign -`) must pass `-skip-notarize`, or mygo
+   reports an error. The commands in the README and CI already include it.
+4. **Build**: `GOTOOLCHAIN=auto go tool mygo build`. When signing with Developer ID, mygo adds the hardened runtime and
+   a secure timestamp, also signs the executables and dylibs in `Contents/Resources` (the libghostty-vt mygo puts
+   there), produces the DMG, then runs `notarytool submit --wait`. Once it passes, `stapler staple` attaches the
+   notarization ticket to the DMG and the .app.
+5. **Verify**:
 
    ```bash
    codesign -dv --verbose=4 build/darwin-arm64/Grove.app
-   spctl -a -vv -t install build/darwin-arm64/grove-<版本>-arm64.dmg
-   xcrun stapler validate build/darwin-arm64/grove-<版本>-arm64.dmg
+   spctl -a -vv -t install build/darwin-arm64/grove-<version>-arm64.dmg
+   xcrun stapler validate build/darwin-arm64/grove-<version>-arm64.dmg
    ```
 
-   验证失败时，用 `xcrun notarytool log <提交 ID> --keychain-profile grove-notary` 查看日志（mygo 出错时会输出这条命令）。
+   If verification fails, view the log with `xcrun notarytool log <submission ID> --keychain-profile grove-notary`
+   (mygo prints this command when it fails).
 
-`assets/entitlements.plist` 里关掉库验证是为自签名证书加的；用 Developer ID 时库和应用同一个 Team ID，可以去掉
-（公证允许这个 entitlement，留着也能过）。CI 里换成 Developer ID：照 mygo 的 `docs/github-actions.md`，导入 Developer ID 的 .p12
-和公证凭据，`release.yml` 的构建去掉 `-skip-notarize`。换签名身份后用户要重新给一次权限；更新包的 Ed25519 密钥不用换。
+Disabling library validation in `assets/entitlements.plist` was added for the self-signed certificate; with Developer
+ID the libraries and the app share a Team ID, so it can be removed (notarization allows this entitlement, so keeping it
+also passes). To switch CI to Developer ID: follow mygo's `docs/github-actions.md` to import the Developer ID .p12 and
+notarization credentials, and drop `-skip-notarize` from the build in `release.yml`. After changing the signing
+identity, users have to grant permissions again; the Ed25519 key for update packages doesn't need to change.
 
-## 打开方式和单实例
+## Opening files and single instance
 
-`mygo.json` 的 `macos.infoPlist` 加了 `CFBundleDocumentTypes`：文件夹（`public.folder`）和任何文件（`public.item`），
-`LSHandlerRank` 为 `Alternate`：访达的“打开方式”中会列出 Grove，也可以将文件拖到 Dock 图标上，但不会将 Grove 设为默认程序。
-系统可能需要等待片刻，或在 .app 移入“应用程序”后，才会识别这些类型。
+`macos.infoPlist` in `mygo.json` adds `CFBundleDocumentTypes`: folders (`public.folder`) and any file (`public.item`),
+with `LSHandlerRank` set to `Alternate`: Grove shows up in Finder's "Open With" and files can be dragged onto its Dock
+icon, but Grove doesn't become the default app. The system may take a moment, or need the .app moved into
+Applications, before it recognizes these types.
 
-单实例由 `mygo.App.RequestSingleInstanceLock()` 实现，按应用名和 identifier 创建 unix socket。
-第二个 `Grove 路径` 进程把参数和工作目录交给已运行的实例后退出；`open -a Grove 路径` 和拖到 Dock 的文件通过
-`OnOpenFile` 处理。测量内存或测试时，设置 `WORKBENCH_STATE` 后默认不获取单实例锁，以免把参数交给日常使用的实例。
-测试单实例本身时再加 `WORKBENCH_SINGLE=1`，并先用 `pgrep -fl Grove` 确认没有其他实例。
+Single instance is implemented by `mygo.App.RequestSingleInstanceLock()`, which creates a unix socket keyed by the app
+name and identifier. A second `Grove <path>` process hands its arguments and working directory to the running instance
+and exits; `open -a Grove <path>` and files dragged onto the Dock icon are handled through `OnOpenFile`. When measuring
+memory or testing, setting `WORKBENCH_STATE` skips the single-instance lock by default, so arguments don't go to the
+instance you use every day. Add `WORKBENCH_SINGLE=1` only when testing single instance itself, and first check with
+`pgrep -fl Grove` that no other instance is running.
 
 ## CI
 
-发布用的 `release.yml` 见上文“发布（GitHub Actions）”。日常的 `.github/workflows/ci.yml`，`macos-latest`：
+For the release workflow `release.yml`, see "[Releasing (GitHub Actions)](#releasing-github-actions)" above. The
+everyday `.github/workflows/ci.yml` runs on `macos-latest`:
 
-- 每次推送到 main 或提交 PR 时，运行 gofmt、`go vet ./...`、`go test -count=1 ./...`、`mygo build -skip-dmg -skip-notarize -sign -`，
-  将 .app 打包为 zip，作为构建产物保留 14 天；
-- `go test -race ./internal/...` 耗时较长，仅在手动触发时勾选 `race`，或每周一运行一次。
+- On every push to main and every PR, it runs gofmt, `go vet ./...`, `go test -count=1 ./...` and
+  `mygo build -skip-dmg -skip-notarize -sign -`, zips the .app and keeps it as a build artifact for 14 days.
+- `go test -race ./internal/...` takes longer, so it only runs when triggered manually with `race` checked, or once a
+  week on Monday.
 
-env 中设置了 `GOTOOLCHAIN=auto`（go.mod 要求 1.27.3）；mygo 使用 go.mod 锁定的版本，CI 中不要运行 `go get -u`。
-UI 测试和终端测试在 GitHub runner 上运行不稳定时，先检查环境差异：runner 没有登录会话，shell 为 `/bin/zsh`。
-CI 未设置 `WORKBENCH_TEST_WS`，因此会跳过读取真实工作区的只读测试。
+`GOTOOLCHAIN=auto` is set in env (go.mod requires 1.27.3); mygo uses the version pinned in go.mod, and CI must not run
+`go get -u`. If UI tests and terminal tests are flaky on GitHub runners, check environment differences first: runners
+have no login session, and the shell is `/bin/zsh`. CI doesn't set `WORKBENCH_TEST_WS`, so the read-only tests against
+a real workspace are skipped.
 
-`.github/workflows/claude.yml`：仓库的 owner、成员或协作者在 issue 或 PR 评论里写 `@claude`，就会在 `macos-latest` 上运行 Claude。
-用的是 Claude Agent SDK（`.github/claude/agent.mjs`，版本锁在同目录的 `package-lock.json`），不是 `claude-code-action`：
-后者按 Claude Code 计费，console 里的赠送额度不能用。Claude 能读写文件、运行任意命令（Bash 不按命令名细分：它能 `go run` 任意代码，细分拦不住什么，只会白耗轮数），
-但那一步拿不到 GitHub token，推不了代码。推送和开 PR 由 `finish.sh` 做：issue 上开新分支 `claude/issue-<号>-<时间>` 并开 PR，同仓库的 PR 上推到 PR 的分支，fork 的 PR 不处理。
-没跑完（到了上限或出错）时，做了一半的改动也推到分支上留着（PR 上另开 `claude/wip-pr-<号>-<时间>`），但不开 PR，评论里给看改动的链接。
-仓库设置里没开 "Allow GitHub Actions to create and approve pull requests" 时开不了 PR，评论里会给一个手动开 PR 的链接。
-需要把 Anthropic API 密钥保存为 Secret `ANTHROPIC_API_KEY`（只给 Claude 那一步；GitHub token 只给准备和收尾两步，`persist-credentials: false`）。
-这类事件只读取默认分支上的工作流文件和脚本，所以要合并到 main 后才生效。每次最多 100 轮、约 5 美元（`agent.mjs` 的 `maxTurns`、`maxBudgetUsd`）、60 分钟。
-仓库公开，运行日志里只打工具名，Claude 的回复贴回 issue / PR 的评论。
-Claude 会跑 `go test`，等于执行 PR 里的代码，所以别在不认识的人提的 PR 上 `@claude`。
+`.github/workflows/claude.yml`: when the repo's owner, a member or a collaborator writes `@claude` in an issue or PR
+comment, Claude runs on `macos-latest`. It uses the Claude Agent SDK (`.github/claude/agent.mjs`, versions pinned by
+the `package-lock.json` in the same directory), not `claude-code-action`: the latter is billed as Claude Code, and the
+console's free credits can't be used for it. Claude can read and write files and run any command (Bash isn't
+restricted per command: it can `go run` arbitrary code, so finer restrictions block nothing and only waste turns), but
+that step gets no GitHub token and can't push code. Pushing and opening PRs is done by `finish.sh`: on an issue it
+creates a new branch `claude/issue-<number>-<time>` and opens a PR; on a PR from the same repo it pushes to the PR's
+branch; PRs from forks aren't handled. If the run doesn't finish (it hits a limit or errors out), the half-done changes
+are still pushed to a branch (on a PR, a separate `claude/wip-pr-<number>-<time>`), but no PR is opened, and the comment
+links to the changes. If "Allow GitHub Actions to create and approve pull requests" isn't enabled in the repo settings,
+it can't open a PR, and the comment gives a link to open one by hand.
+The Anthropic API key must be saved as the secret `ANTHROPIC_API_KEY` (given only to the Claude step; the GitHub token
+is given only to the prepare and finish steps, with `persist-credentials: false`). These events only read the workflow
+file and scripts from the default branch, so changes take effect only after merging to main. Each run is capped at 100
+turns, about $5 (`maxTurns`, `maxBudgetUsd` in `agent.mjs`) and 60 minutes. The repo is public, so the run log only
+prints tool names; Claude's replies are posted back as issue / PR comments.
+Claude runs `go test`, which means executing the PR's code, so don't `@claude` on PRs from people you don't know.
 
-## 许可
+## Licenses
 
-- 第三方组件的许可证全文位于 `resources/licenses/`（清单见 `README.txt`），可以从关于窗口打开。
-- `ghostty.txt` 里是来源说明（libghostty-vt 所用的 Ghostty 提交）和那个提交上 LICENSE 的全文（MIT 要求附上原文）。
-  mygo 换了 Ghostty 的提交（`plugins/terminal/mygo-plugin.json`）时，对着新提交的 LICENSE 核一遍。
-- Grove 使用 MIT 许可证（根目录 `LICENSE`）。如需在 Info.plist 中写入版权信息，在 `mygo.json` 中添加 `copyright`
-  字段，对应 `NSHumanReadableCopyright`。
+- Full texts of third-party licenses are in `resources/licenses/` (listed in `README.txt`) and can be opened from the
+  About window.
+- `ghostty.txt` contains the provenance note (the Ghostty commit libghostty-vt comes from) and the full LICENSE text at
+  that commit (MIT requires including the original). When mygo moves to a different Ghostty commit
+  (`plugins/terminal/mygo-plugin.json`), check it against the LICENSE at the new commit.
+- Grove is under the MIT license (`LICENSE` at the root). To put copyright information in Info.plist, add a
+  `copyright` field to `mygo.json`, which maps to `NSHumanReadableCopyright`.

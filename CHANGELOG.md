@@ -1,381 +1,689 @@
-# 更新记录
+# Changelog
 
-每个版本改了什么，新的在上面。
+What changed in each version, newest first.
 
-## 未发布
+## Unreleased
+
+- The interface now defaults to English. Installs that already have a state file from an earlier version keep Chinese
+  (the state format moves to version 5 and fills in `"lang": "zh"` for them); Settings → Interface language switches
+  between English and 中文 at any time.
+- Documentation is now written in English: README.md is English with a Chinese copy in README.zh-CN.md, and AGENTS.md,
+  CHANGELOG.md and everything under docs/ (architecture, pitfalls, testing, release, terms) were rewritten in English.
+  docs/shortcuts.md is generated in English from the command registry.
+- Commit messages follow Conventional Commits; the existing history was reworded accordingly.
 
 ## v0.3.0 — 2026-11-23
 
-- 自动更新：Grove 每天在后台看一次 GitHub Releases 上有没有新版本，有就弹窗列出这一版改了什么，选“安装”就下载（有增量包先用增量包）、
-  验签名、装好重启，也可以跳过这一版或以后再提醒。菜单 Grove → “检查更新…”（命令面板里也有）随时手动查；设置里新加“更新”一页：
-  自动检查、自动下载并安装（下次启动时生效）、当前版本和上次检查的时间。`go run` 和开发构建不检查。
-- 安装：`curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh` 下载最新版、验签名、装进“应用程序”；
-  也可以下 DMG。还没有经过 Apple 公证，DMG 第一次打开要到 系统设置 → 隐私与安全性 点“仍要打开”（install.sh 装的不用）。
-  推 `v*` 标签由 GitHub Actions 构建、签名，把 DMG、更新包、更新清单和 install.sh 传到草稿 Release，看过再发布。
+- Automatic updates: once a day Grove checks GitHub Releases in the background for a new version. If there is one, a window lists what
+  changed in that release; choose “Install” to download it (using a delta update when available), verify its signature, install it and
+  relaunch. You can also skip that version or be reminded later. Grove → “Check for Updates…” (also in the Command Palette) checks by hand at
+  any time; Settings has a new “Update” page: check automatically, download and install automatically (takes effect on the next launch),
+  the current version, and when it last checked. `go run` and development builds don't check.
+- Installing: `curl -fsSL https://github.com/lemoeade/grove/releases/latest/download/install.sh | sh` downloads the latest version,
+  verifies its signature and installs it into Applications; you can also download the DMG. Grove isn't notarized by Apple yet, so the
+  first time you open the DMG you need to click “Open Anyway” in System Settings → Privacy & Security (not needed when installed with
+  install.sh). Pushing a `v*` tag has GitHub Actions build and sign the app and upload the DMG, update packages, update manifest and
+  install.sh to a draft Release, which is published after review.
 
-- Markdown 预览改由 Grove 自己画（`internal/gmd`，照编辑器换成 `internal/ged` 的做法：解析还用 mygo 的，排版、绘制、选择、复制都是 Grove 的），
-  文档里带样式的 HTML 照 VS Code 的预览画出来：`<style>` 里的 class 和 `style=` 按选择器、优先级层叠（新的 `internal/css`），
-  grid / flex 排版、底色和渐变、边框（实线、虚线、单边着色）、圆角、阴影、内外边距、`::before` / `::after`、`display: none`、带样式的表格和列表，
-  以前这类架构图只剩一串字。作者写的浅底配上暗色主题的浅色字时自动换成看得清的颜色。没写样式的 README HTML（居中、`<details>`、徽章）照旧。
-  `WORKBENCH_GMD=off` 退回 mygo 的预览。
-- Markdown 预览铺满标签的宽（照 VS Code），不再限在中间 860 点的一栏；表格照浏览器的自动表格布局排：放得下按内容宽，放不下时整张表就是一栏宽、
-  长的那列多折几行，不再每列撑到上限、整张表横着滚出去、最后一列挤成一字一行；只有折不开的长串放不下才横着滚。
-- 并排预览拖进源文件那一组（源文件的标签看不见）后，在预览上滚一下、停一会儿不再被拉回原来的地方。
+- Grove now draws the Markdown preview itself (`internal/gmd`, the same approach as replacing the editor with `internal/ged`: parsing still
+  uses mygo, while layout, drawing, selection and copying are Grove's). Styled HTML in a document renders the way VS Code's preview renders it:
+  classes from `<style>` and `style=` attributes cascade by selector and specificity (the new `internal/css`), with grid / flex layout,
+  background colors and gradients, borders (solid, dashed, single-side colors), rounded corners, shadows, padding and margins,
+  `::before` / `::after`, `display: none`, and styled tables and lists. Architecture diagrams like these used to come out as a run of text.
+  When an author's light background ends up under the dark theme's light text, the text switches to a readable color automatically.
+  Unstyled README HTML (centering, `<details>`, badges) works as before. `WORKBENCH_GMD=off` goes back to mygo's preview.
+- The Markdown preview fills the width of the tab (like VS Code) instead of a centered 860-pt column. Tables use the browser's automatic
+  table layout: if they fit they take their content width; if not, the whole table is one column wide and the long columns wrap onto more
+  lines. Columns no longer each stretch to the maximum, the whole table no longer scrolls off sideways, and the last column is no longer
+  squeezed to one character per line. Only unbreakable long strings that don't fit scroll horizontally.
+- After dragging a side-by-side preview into the source file's group (so the source file's tab is hidden), scrolling the preview and then
+  pausing no longer snaps it back to where it was.
 
-- 编辑器和 Diff 里鼠标滚轮一格不再一下跳 40 点：照 Grove 别处（和浏览器）的滚动在 150 ms 里缓出地滑过去，连着滚几格接在一起、往回滚立刻掉头；
-  并排的 Markdown 预览跟着一起滑。触控板照旧跟手；系统开了“减少动态效果”时照旧一格一下跳。
-- 命令面板：输入 `>` 时左边不再把放大镜换成 ›（输入框里已经有 `>`，以前成了“› >”）；出滚动条时行右边让出滚动条的宽，快捷键不再贴着滑块；
-  鼠标和键盘共用一个选中（像 Spotlight）：指针在面板里动了选中才跟到它那行，不再另画一块悬停的灰，以前键盘选中一行、指针停在另一行时看着像选中了两行。
-  面板开在不动的指针下面、上下键、滚轮都不会把选中拽到指针那行。
-- Markdown 并排预览照 VS Code 补齐：编辑器和预览互相跟着滚，按块里的位置算到行内（以前只按块对齐、只从编辑器到预览），一边拖着另一边走时不来回拉；按编辑器的屏幕行对齐（折成几行的行占几行，折起来的不占），触控板一甩时预览跟着顺顺地慢下来，不再一帧快一帧慢地抖；大文件（分块排的预览）跟着编辑器滚时不再每步先闪回那块的块首；折行的行一律按估的行数算，行滚进来排好时预览不跟着跳；
-  源文件光标所在的块左边一道竖条；双击预览回到源码那一行；键盘换到另一个 Markdown 标签时预览跟过去，“锁定 Markdown 预览”（标签右键菜单里也有）锁定了就不跟，标题写成“[预览] x”；
-  两个方向各有开关（设置 → 编辑器：并排预览跟着编辑器滚 / 编辑器跟着并排预览滚）。预览里 `:tada:` 这样的 GitHub emoji 短代码换成 emoji（代码里的不换），
-  标题左边悬停出 🔗，点了复制这个标题的链接；VS Code 风格的预览照它用 14 号字、1.6 倍行高。Markdown 标签条上照 VS Code 只放“在旁边打开预览”的按钮（左右并排），不再有眼睛（就地预览照旧 ⇧⌘V，在就地预览里留回源码的按钮）；
-  源文件是预览标签、被别的文件顶掉时，并排预览不再停在“源文件的标签关了”，顶上来的是 Markdown 就跟过去，不是就等下一个 Markdown 文件。VS Code 的 ⌘K V 没加：⌘K 已经是“运行 git 命令…”，快捷键也不支持连按。
-- 文件标签的编辑器默认也换成 Grove 自己画的（`internal/ged`）：和 Diff 同一套排字、配色、缩进参考线、粘性滚动、查找替换、折叠、软换行、
-  编辑键；补全列表、悬停提示（声明 + 诊断）、⌘点跳到定义、⌥点击加光标的多光标照旧；行号右边照 VS Code 画改动竖条（加绿、改蓝、删的红三角），
-  点它开那一块的就地卡；诊断画波浪线；行内 blame 在行尾。十六进制、大文件、只读、有冲突标记、开着 blame 栏、超过 5 万行的文件照旧用 mygo 的编辑器；
-  文件比一屏长时最后一行能滚到顶上（照 VS Code）。`WORKBENCH_GED_EDITOR=off` 全退回 mygo 的（对比、排查用）。
-  照 VS Code 再补几处：右键菜单和 VS Code 编辑器的一样只到命令面板（跳到定义 F12、查找引用、更改所有匹配项、格式化文档、剪切 / 复制 / 粘贴、命令面板），
-  拆分、本地历史、在 Finder 中显示、复制路径在标签的右键菜单里；括号按层轮着上三种色（VS Code 风格）；没有键盘时光标那一行照样垫一层；
-  右边加了小地图（VS Code 风格）：整个文件按词的颜色缩成细条，当前一屏的滑块一直淡淡地画着（指针在上面深一档），点、拖都能滚。
-  菜单上的键照 VS Code 写：更改所有匹配项写 ⌘F2（⇧⌘L 照样能用）。
-- 浮层磨砂，照 VS Code 的 frosted glass：Grove 画的菜单、命令面板 / 快速打开、对话框、编辑器的悬停提示和补全列表，底下窗口里的内容糊开透出来，
-  上面盖一层原来底色的 80%（照 VS Code 默认；更透的话底下糊开的代码一团团带颜色透上来，显得脏）；设置 → 外观 → 浮层不透明度能改（50–100，100 不透）。
-  VS Code 风格也磨砂了（以前是不透的）；菜单、命令面板、对话框、悬停提示、补全用 VS Code 2026 的浮层底色（浅色 #FAFAFD，深色 #202122）。
-  系统开了“减少透明度”或“增强对比度”时照旧是不透的纯色。
-- Diff 默认换成 Grove 自己画的（`internal/ged`，下面“试做”那条）：Diff 标签、比较标签、替换预览、就地编辑都走它；
-  全文打开时滚到第一处改动。`WORKBENCH_GED=off` 退回 mygo 的 Diff（对比、排查用）。
-- 默认换成 VS Code 风格（设置 → 外观 → 风格）：照 VS Code 1.147 起的默认主题 Light 2026 / Dark 2026——标题栏、侧栏、标签条、终端、右栏、
-  状态栏是不透明的 #FAFAFD（深色 #191A1B），编辑器白底（深色 #121314），区域之间一道 #F0F1F2（#2A2B2C）的细线，不要圆角卡片、阴影、缝、色斑和毛玻璃；
-  字色 #202020 / 次要字色 #606060（深色 #BFBFBF / #8C8C8C）、弹出层的底跟着换；界面基本是中性的灰：当前标签顶上、底栏当前标题底下一道黑线（深色是浅灰 #BFBFBF，不用 VS Code 深色的蓝）；
-  代码是 VS Code 经典的 Light+ / Dark+ 配色（Light Modern / Dark Modern 用的那套：关键字蓝、类型青、函数黄褐、变量深蓝、字符串红褐、数字和注释绿；不用 2026 主题的 GitHub 配色），行号、光标、选中（强调色 25%，深色 33%；深色里强调色是灰的时叠浅灰）、
-  查找命中、配对括号、缩进参考线、空白符号也照它；Diff 的红绿、改了的字照它（深色的红绿也换了），斜线留空照 VS Code 默认值，
-  行号不再跟着变色；滚动条是 VS Code 那种方的、贴边的，轨道透明、滑块是淡淡的灰（25%，悬停、拖着时深一档；不照 2026 那块几乎不透的）；侧栏照 VS Code 的 13 号字、22 高的行，
-  右栏历史一个提交一行 22 高。侧栏顶上的视图切换照 VS Code 的活动栏：没有胶囊，图标平放，当前那个字深、底下一道黑线；
-  侧栏的列表行满宽、方的，悬停、没有键盘时的选中、有键盘时的选中都是灰的（黑 8% / #DADADA 60% / 黑 15%，深色是白的），
-  有键盘时只是深一档的灰（不描 VS Code 的蓝框，也不再是左边的竖条），悬停块也是满行、方的（以前是圆角的）；
-  文件树的缩进参考线照 VS Code 的 tree.indentGuidesStroke（选中行的上一级 #A9A9A9，别的淡到 40%；以前那条近黑，别的不透的浅线会把选中的灰底切成一条条）；文件树吸顶栈和侧栏一色；快速打开、筛选的命中只加粗（VS Code 是蓝的粗字，这里不要蓝）、不垫底色；
-  菜单 #FAFAFD（深色 #202122）、#E4E5E6 的框、#EEEEF1 的分隔线，悬停、键盘挪到的那项只垫一层灰的半透明底（黑 8%，深色白 10%），不描框、字不变；
-  标题栏的快速打开照命令中心是白底细框，输入框白底；对话框的次要按钮浅灰；底栏的终端 / 输出 / 问题标签不分格、
-  不垫底，当前那个底下一道线。悬停提示照 VS Code 是浅色的（浅色 #FAFAFD、深色 #202122 的底，正文的字色，一道 #E2E2E5 / #2A2B2C 的细框），
-  不再是反色的深底白字；标题栏的分支胶囊是平的（不垫底、字不加粗，悬停才垫一层淡灰），像 VS Code 状态栏的分支那样。
-  Git 栏的提交框照 VS Code 源代码管理：白底细框的输入框，下面一个满宽的“✓ 提交 N 个文件”主按钮（右边分出 ▾），没写信息时也在、灰着，点它把键盘给输入框；
-  Python 的 docstring 照 VS Code 是字符串色（Grove 风格还是注释色）；命令面板、大纲、Diff 折叠条上符号的小字照 VS Code 的符号图标上色
-  （类橙、函数和方法紫、变量蓝，标题、类型、常量灰）；侧栏的视图标题（仓库、变更、大纲、打开的编辑器）照 VS Code 是 11 号半粗。
-  原来的样子留作「风格：Grove」，窗口底和材质只在 Grove 风格里用。
-- 强调色默认换成「黑」（浅色 #333333 白字，深色中灰 #5C5C61 白字）：按钮、开关、选中的文字、编辑器的选中和查找命中都是中性的灰黑，界面里不剩蓝；
-  另加了「蓝」（VS Code 2026 的 #0069CC，深色 #297AA0），想要 VS Code 原样的蓝选它。以前存成默认（森绿）的读回来是黑，想要森绿再选一次。
-  Diff 行号旁「改了」的竖条、诊断里的“信息”还是蓝的（表示意思的颜色，和强调色无关）。
+- One mouse-wheel notch in the editor and the Diff no longer jumps 40 pt at once: like scrolling elsewhere in Grove (and in browsers) it eases
+  over 150 ms; several notches in a row join up, and scrolling back reverses immediately. A side-by-side Markdown preview glides along with it.
+  The trackpad still tracks your fingers directly; with “Reduce motion” on in System Settings, each notch still jumps.
+- Command Palette: typing `>` no longer swaps the magnifier on the left for › (the field already shows `>`, so it used to read “› >”); when a
+  scroll bar appears, rows leave room for it on the right so shortcuts no longer touch the thumb. The mouse and the keyboard share one
+  selection (like Spotlight): the selection follows the pointer only when the pointer moves within the palette, and there's no separate gray
+  hover highlight anymore. Previously, with the keyboard on one row and the pointer resting on another, it looked as if two rows were
+  selected. Opening the palette under a still pointer, the arrow keys and the scroll wheel never drag the selection to the pointer's row.
+- The side-by-side Markdown preview catches up with VS Code: the editor and preview scroll each other, mapped to the line within a block
+  (previously it only aligned by block, and only from editor to preview), without tugging back and forth while you drag one side. It aligns by
+  the editor's screen lines (a wrapped line takes as many lines as it wraps to, folded lines take none); after a trackpad flick the preview
+  slows down smoothly with it instead of juddering fast-slow frame to frame; large files (whose preview is laid out in chunks) no longer
+  flash back to the start of the chunk at each step while following the editor; wrapped lines are always counted by their estimated line
+  count, so the preview doesn't jump when a line scrolls in and gets laid out.
+  The block containing the source cursor gets a vertical bar on its left; double-click the preview to go back to that source line; switching
+  to another Markdown tab with the keyboard makes the preview follow it, unless “Lock Markdown Preview” (also in the tab's context menu) is on,
+  in which case the title reads “[Preview] x”.
+  Each direction has its own switch (Settings → Editor: Scroll Preview with Editor / Scroll Editor with Preview). GitHub emoji shortcodes such
+  as `:tada:` in the preview become emoji (not inside code); hovering to the left of a heading shows 🔗, which copies a link to that heading.
+  The VS Code style preview uses 14-pt text and 1.6 line height, like VS Code. Like VS Code, the Markdown tab bar has only the “Open Preview to
+  the Side” button (left and right), no more eye button (in-place preview is still ⇧⌘V, and the in-place preview keeps a button back to the
+  source).
+  When the source file is a preview tab and another file replaces it, the side-by-side preview no longer gets stuck on “The source file's tab is
+  closed”: if the replacement is Markdown it follows it, otherwise it waits for the next Markdown file. VS Code's ⌘K V wasn't added: ⌘K is
+  already “Run Git Command…”, and shortcuts don't support chords.
+- File tabs now also use Grove's own editor by default (`internal/ged`): the same text layout, colors, indent guides, sticky scroll,
+  find and replace, folding, soft wrap and editing keys as the Diff. The completion list, hovers (declaration + diagnostics), ⌘-click to go to
+  definition, and ⌥-click to add cursors still work. Like VS Code, change bars are drawn to the right of the line numbers (green for added, blue
+  for modified, a red triangle for deleted); clicking one opens that hunk's inline card. Diagnostics get squiggly underlines; inline blame sits
+  at the end of the line. Hex, large, read-only files, files with conflict markers, files with the blame column open and files over 50,000
+  lines still use mygo's editor. When a file is longer than a screen, its last line can scroll to the top (like VS Code).
+  `WORKBENCH_GED_EDITOR=off` goes back to mygo's everywhere (for comparison and troubleshooting).
+  A few more VS Code touches: the context menu matches VS Code's editor menu and goes only as far as the Command Palette (Go to Definition F12,
+  Find References, Change All Occurrences, Format Document, Cut / Copy / Paste, Command Palette); Split, local history, Reveal in Finder and
+  Copy Path are in the tab's context menu. Brackets cycle through three colors by nesting level (VS Code style); the cursor line is
+  highlighted even without keyboard focus.
+  A minimap on the right (VS Code style): the whole file shrunk into thin strips in token colors, with a slider for the current screen always
+  drawn faintly (one shade darker under the pointer); click or drag to scroll.
+  Menu shortcuts are written the VS Code way: Change All Occurrences shows ⌘F2 (⇧⌘L still works).
+- Frosted overlays, following VS Code's frosted glass: Grove's menus, the Command Palette / Quick Open, dialogs, and the editor's hovers and
+  completion list blur the window content beneath them so it shows through, under a layer of 80% of their original background (VS Code's
+  default; more transparent than that lets blurred code bleed through in colored blotches and looks dirty). Settings → Appearance →
+  Overlay Opacity changes it (50–100; 100 is opaque).
+  The VS Code style is frosted too now (it used to be opaque); menus, the Command Palette, dialogs, hovers and completions use VS Code 2026's
+  overlay background (light #FAFAFD, dark #202122).
+  With “Reduce transparency” or “Increase contrast” on in System Settings, they're still solid and opaque.
+- The Diff now uses Grove's own renderer by default (`internal/ged`, the “experimental” entry below): Diff tabs, compare tabs, replace
+  previews and inline editing all go through it; in full-file mode it scrolls to the first change. `WORKBENCH_GED=off` goes back to mygo's
+  Diff (for comparison and troubleshooting).
+- The VS Code style is now the default (Settings → Appearance → Style), following the default themes from VS Code 1.147 on, Light 2026 /
+  Dark 2026: the title bar, sidebar, tab bar, terminal, right panel and status bar are opaque #FAFAFD (dark #191A1B), the editor is white
+  (dark #121314), and areas are separated by a thin #F0F1F2 (#2A2B2C) line, with no rounded cards, shadows, gaps, color patches or frosted
+  glass. Text is #202020 / secondary text #606060 (dark #BFBFBF / #8C8C8C), and popup backgrounds change to match. The interface is mostly
+  neutral gray: a black line on top of the active tab and under the active title in the bottom panel (light gray #BFBFBF in dark, not VS Code
+  dark's blue).
+  Code uses VS Code's classic Light+ / Dark+ colors (the ones Light Modern / Dark Modern use: keywords blue, types teal, functions yellow-brown,
+  variables dark blue, strings red-brown, numbers and comments green; not the 2026 themes' GitHub colors). Line numbers, the cursor, the
+  selection (25% of the accent color, 33% in dark; in dark, a gray accent color gets a light-gray overlay), find matches, matching brackets,
+  indent guides and whitespace markers follow it too. The Diff's reds and greens and changed characters follow it (the dark reds and greens
+  changed as well), the diagonal-hatch filler uses VS Code's default, and line numbers no longer change color. Scroll bars are VS Code's
+  square, edge-hugging kind, with a transparent track and a faint gray thumb (25%, one shade darker on hover and while dragging; not 2026's
+  nearly opaque thumb). The sidebar uses VS Code's 13-pt text and 22-pt rows.
+  The right panel's history shows one commit per 22-pt row. The view switcher at the top of the sidebar follows VS Code's activity bar: no
+  pill, icons laid flat, with the active one darker and underlined in black.
+  Sidebar list rows are full width and square; hover, selection without keyboard focus and selection with keyboard focus are all gray
+  (black 8% / #DADADA 60% / black 15%; white in dark). With keyboard focus the selection is just one shade darker gray (no VS Code blue
+  outline, and no longer a bar on the left); the hover block is also full row and square (it used to be rounded).
+  The file tree's indent guides follow VS Code's tree.indentGuidesStroke (#A9A9A9 for the selected row's parent level, others faded to 40%;
+  previously that guide was near-black and the other opaque light lines cut the selected row's gray background into strips). The file tree's
+  sticky stack matches the sidebar color. Quick Open and filter matches are only bold (VS Code uses bold blue; no blue here), with no
+  background.
+  Menus are #FAFAFD (dark #202122) with a #E4E5E6 border and #EEEEF1 separators; the hovered or keyboard-selected item gets only a gray
+  translucent background (black 8%, white 10% in dark), with no outline and unchanged text.
+  The title bar's Quick Open looks like the Command Center, white with a thin border, and input fields are white; secondary buttons in
+  dialogs are light gray; the bottom panel's Terminal / Output / Problems tabs aren't boxed or filled, and the active one is underlined.
+  Hovers are light, like VS Code (#FAFAFD background in light, #202122 in dark, body text color, a thin #E2E2E5 / #2A2B2C border), no longer
+  inverted dark with white text. The title bar's branch pill is flat (no background, text not bold, a faint gray background only on hover),
+  like the branch in VS Code's status bar.
+  The Git view's commit box follows VS Code's Source Control: a white input field with a thin border, and below it a full-width
+  “✓ Commit N Files” primary button (with a ▾ split off on the right). It's there even without a message, grayed out, and clicking it gives
+  the keyboard to the input field.
+  Python docstrings use the string color like VS Code (the Grove style still uses the comment color); the small symbol-kind labels in the
+  Command Palette, Outline and Diff fold bars are colored like VS Code's symbol icons (classes orange, functions and methods purple, variables
+  blue; headings, types and constants gray). Sidebar view titles (Repository, Changes, Outline, Open Editors) are 11-pt semibold like VS Code.
+  The old look stays as “Style: Grove”; window background and material apply only in the Grove style.
+- The default accent color is now “Black” (#333333 with white text in light, mid gray #5C5C61 with white text in dark): buttons, switches,
+  selected text, and the editor's selection and find matches are all a neutral gray-black, with no blue left in the interface.
+  “Blue” was added too (VS Code 2026's #0069CC, dark #297AA0) for anyone who wants VS Code's original blue. Settings saved with the old default
+  (Forest) read back as Black; pick Forest again if you want it.
+  The “modified” bar next to Diff line numbers and “info” in diagnostics are still blue (they're colors with meaning, unrelated to the accent).
 
-- Diff 的折叠条照 VS Code 折起来的未修改区：整行一条淡底，左边“N 行未修改”，后面写下面那段改动所在的函数 / 类 / 标题那一行
-  （像 GitHub 块头 `@@` 后面那段，前面带大纲里的种类小字），指针停上去看全文。按改动那一行认、支持大纲的语言才有；
-  改动在两个函数之间（注释、空行）或文件结尾那条不写。
-- Diff 的红绿照 VS Code 的浓淡重画：改了的行整行涂上 VS Code 默认主题那样的红 / 绿底（以前淡得几乎看不出），
-  行里改了的词再深一层（以前是灰的，看不出改了哪几个字），行首一根红 / 绿竖条（删掉的那边是虚线）；深浅色一样醒目，
-  浅色里改了的行号用深一点的绿，叠在绿底上也看得清。
-- 试做 Grove 自己的 Diff（`internal/ged`，只用 mygo 公开的排字、画图、输入接口，不改 mygo）：设了 `WORKBENCH_GED=1` 时，
-  只看的 Diff 换成它画——两边一行对一行（一处删 d 行加 a 行时前几行配成对，多的对面画斜线留空）、改了的整行红 / 绿底、
-  行里改了的字再深一层（整行都换了时只涂到缩进后面）、行号和 + − 跟着变色、离改动三行外的未修改段折起来（点了展开；折叠条上“N 行未修改”后面写下面那处改动所在的函数，和原来的一样）、
-  右边的概览条标出改动在哪、按住拖动滚。只排、只画看得见的行。指针移到一处改动上（或用上 / 下一处跳到那里），
-  它右上角跟着出“暂存这一块 / 取消暂存这一块 / 丢弃这一块”，滚动时贴在那一块的顶上；标签条的上 / 下一处、底栏的
-  “第 i / n 处改动”、J / K 按它的改动走，“只看改动附近”切到全文时不再折。拖着选字（到上下边自动滚）、双击选词、
-  三击选行、⇧ 点击接着选，⌘C 复制、⌘A 全选这一边，Esc 取消；点过以后 ↑ ↓ ← →、翻页、空格、Home / End 滚动。
-  点行号选行（拖着选几行、⇧ 点扩大到那一行，选中的行左边一道强调色竖条），底下那栏照旧暂存 / 取消暂存 / 丢弃选中的行，
-  哪行配哪行按它对齐的算（和看到的一样）。统一视图也换成它画：一处改动先列删掉的行再列加的行，左边两列行号（旧 / 新），
-  改了的字照样再深一层，两边的行都能点行号选、暂存。就地编辑（点了铅笔）也是它画：新的一边点一下放光标（不闪，空闲时不多画帧），
-  打字、⌫ / ⌦（⌥ 按词、⌘ 到行头）、回车照抄这一行的缩进、Tab、← → ↑ ↓（⌥ 按词、⌘ 到行头行尾 / 文件头尾，⇧ 接着选）、
-  Home 先到缩进后面、翻页；输入法的组字画在光标处、候选窗跟着光标；⌘X / ⌘V / ⌘Z / ⇧⌘Z 走编辑菜单，连着打的字一步撤销；
-  diff 跟着打的字重新对齐，折叠、滚动、光标都不乱跳。改的还是文件标签的缓冲区，⌘S 照旧。
-  ⌥Z 软换行也管用：长行按那一格的宽折成几行，并排时一行占的高按两边折得多的那边算，点、选、↑ ↓ 按折出来的行走；
-  ⌘F 在 Diff 里查找（右上角一条，选中一行之内的字时拿它当要找的）：两边看得见的字都找（没改的行算一处），不分大小写，
-  找到的都涂上，当前那处深一层；回车 / ⌘G 下一处、⇧↩ 上一处，到头绕回，在折起来的段里时展开，Esc 关。
-  右键（或 ⇧F10）有菜单了（mygo 的 Diff 没有）：对着按下的那一行、那处改动——剪切 / 复制 / 粘贴（就地编辑时才有剪切、粘贴）、
-  暂存 / 取消暂存 / 丢弃这一块、选中的行的那几项、复制这一行（旧的一边是“复制旧版本的这一行”）、查找、上 / 下一处改动、
-  在编辑器中打开这一行、统一 / 全文 / 软换行 / 就地编辑的开关、全选、在 Finder 中显示、复制路径；按在选中的字外面时选择挪到那里。  折叠条照 VS Code / GitHub：行号那格里有箭头，点一下接着上面那处改动往下、或接着下面那处往上再露 20 行（开头那段只能往上、结尾只能往下），
-  点条上别处整段展开；右键折叠条也有“展开这 N 行 / 往下展开 20 行 / 往上展开 20 行”。
-  “忽略行首行尾空白”（视图菜单、命令面板、右键菜单，记在 state.json，所有 Diff 标签跟着）：只改了缩进、行尾空格的行不算改动，
-  暂存 / 丢弃这一块只动看得见的那处。⌃G 跳到行也管用（跳新的一边的行，折着的展开）；就地编辑时右键菜单有撤销、重做。选中一行之内的字时，两边别处一样的字淡淡地涂一层（VS Code 那样）。并排时拖中间那道线改两边的宽，双击还原成一半；就地编辑时光标那一行垫一层、行号亮一点。就地编辑时编辑器那套键也管用（和文件标签共用键位表，改过的键一起变）：⌥↑ ↓ 挪行、⇧⌥↑ ↓ 复制行、⇧⌘K 删行、⌘↩ / ⇧⌘↩ 上下开一行、⌘] / ⌘[ 和 Tab / ⇧Tab 缩进、⌘/ 注释、⌃J 接行、⌃T 对调、⌃K 剪到行尾、⌘L 选行、⌘D 选词 / 选下一处一样的、⇧⌘\ 跳到配对括号、⌃↑ ↓ 按段走；回车接着缩进，开括号后多缩一级，夹在一对括号中间时拆成三行；打括号、引号补上另一半（字符串里的引号不补），打右边那个跳过去，选了字时括起来，退格删空的一对；光标挨着括号时两个括号各画一个框；空白按设置里的「显示空白」画（空格点、Tab 箭头）；⌥⌘F 在查找条下面开替换，↩ 换一处跳下一处，“全部替换”一步撤销（旧的一边只找不换）。画缩进参考线（每级缩进一道，空行接着上下的；就地编辑时光标所在那一块的线深一点）；
-  粘性滚动跟着设置：两边各把包着顶上那几行的函数 / 类吸在顶上（按各自的大纲，最多 5 行），点一行跳过去；滚到一半时最后一行不再画到下面那栏上。默认还是 mygo 的。
-- ⌥Z 软换行在 Diff 标签里也管用：长行折到下一行，不用横着滚；和文件标签一样按设置（默认 Markdown、纯文本换），只切这一个标签。
-- 升到 mygo v0.10.0（以下照 mygo 的改动）：按住 ⌘ 时指针下能跳到定义的名字画成链接；
-  光标挪到窗口边上时上下留三行再滚；大的 Diff（两边合起来过 1 万行或 1 MB）在后台比，比完之前先显示原文、不卡住界面；
-  窄的编辑器里查找栏先收起计数、再只留输入框；读屏能读出折叠条藏的是第几行到第几行；
-  混着几种换行（LF / CRLF / CR）的文件保存时每行保留原来的换行，改哪行只动哪行（以前整个文件统一成一种），
-  状态栏换行选了以后所有行都换过来。
-- Markdown 预览：
-  - 文件开头的 front matter（YAML / TOML）画成一张能收起的元数据卡片，不再是一条线加一段字。
-  - README 常用的 HTML 照 GitHub 的样子画：`<p align="center">` / `<div align>` 居中，`<details>` 折叠（点 `<summary>` 展开），
-    `<img width>` 按写的大小，`<picture>` 按深浅色挑图，`<b>`、`<a>`、`<code>`、`<br>` 这些行内标签照常排；`<script>`、`<style>`、注释不显示。
-  - 网上的图片（https 的徽章、截图）取来显示，SVG 徽章也行；只取图片本身、不带 Cookie，一张最多 8 MB。
-    设置里“Markdown 预览里显示网上的图片”关掉后只显示说明文字。
-  - 排版重新调过：正文大一号、行距宽一些，标题、代码块、引用、表格的间距和 GitHub 接近。
-  - 链接的右键菜单：打开链接、复制链接，指向本地文件的还有复制路径、在访达中显示；指针停在本地文件的链接上显示它在仓库里的路径，找不到的说一声。
-    行内代码里像路径的（`docs/a.md`、`src/x.go:12`）能点开那个文件。
-  - 预览开着时点侧栏大纲，预览滚到那一节（以前跳回源码）。
-  - ⌥⇧⌘V（视图 › 在旁边预览 Markdown）：在旁边一组开一个跟着源文件的预览，键盘留在源文件；编辑器滚到哪预览跟到哪，
-    打字停一下预览才重排。再按一次、或点预览标签头上的按钮关掉；源文件关了预览跟着关。
-  - 大文件的预览分段画在虚拟列表里，打开、滚动不卡；`#标题` 链接和大纲照样滚得到还没排出来的地方。在源码和预览之间切换时不重新解析、分段。
-  - Mermaid 升到 12.3：流程图、状态图、类图、ER 图默认用 ELK 排，线走直角、拐角带圆，交叉少一些（排出来和以前不一样；
-    想要以前那样在 front matter 里写 `layout: dagre`）。外观照 VS Code 里 Markdown 预览常见的黑白文档风：节点白底（深色是比底亮一档的灰）、
-    深色细边、往右下偏的淡影子，连线用字色，边上的字垫浅灰底，数据库画成圆柱；饼图、思维导图、git 图、甘特图用一套低饱和的蓝、绿、琥珀、红、紫、橄榄（浅色淡、深色暗，字都是正文色）。
-    颜色跟着界面主题的深浅色。思维导图根节点的字不再偏到圆外。系统的 WebKit 太老（Safari 17.4 以前）画不了 Mermaid 12 时，
-    预览里说要更新系统，不再报一串看不懂的错。
-  - 公式换成 MathJax 4：新的 New Computer Modern 字体，多数公式画成矢量（多大都清楚，换主题、挪显示器不用重画），
-    `\text{}` 里有中文这类字体里没有的字时还是位图。认 `\ce{}`（化学式）、`\mathbbm`、`\mathds`。字体都在应用里，不上网取。
-  - 渲染用的脚本压缩后放进应用（18 MB 压到 5.5 MB），和以前（Mermaid 11 + MathJax 3，5.8 MB）差不多。
-- 跳到定义：⌘点击、F12 或编辑器右键“跳到定义”，按光标下的名字在大纲里找声明——这个文件、开着的文件（没存的改动也算）和所有仓库的符号索引。
-  好几处同名的先缩：`util.Parse` 挑 util 目录里的，没限定词时这个文件、同一目录的优先；还剩好几处时开面板只列同名的、离得近的在前，
-  本身就是定义、哪里都没有的提示一下。索引还没建好时先记下，建好了接着跳。不靠语言服务器，所以是按名字猜的。
-- 词补全：代码文件里敲字时补全列表里有这个文件（离光标近的在前，函数、类型带图标）、开着的同一种语言的文件、
-  同一仓库符号索引里的词，和代码片段一起列；⌃Space 随时手动提示，Markdown、纯文本只在 ⌃Space 时给。
-  打完一个整词时列表里拿掉它，回车照常换行。设置的“编辑器”页“敲字时提示补全”可以关掉（默认开）。
-- 悬停提示：指针停在代码里的名字上（看光标处的用命令面板里的“显示悬停提示”；mygo 的 ⌘K ⌘I 被菜单栏的 ⌘K 先接走了，可以在快捷键设置里另配一个键），按跳到定义的办法找到声明，给出声明那一行（参数折行的连着几行，函数体截掉）、
-  它上面的注释（Python 是文档字符串）和在哪个仓库哪个文件哪一行，点位置打开；同名的还有别处时写“还有 N 处”，点了列出来挑。
-  停在声明本身上、哪里都找不到的不出。设置的“编辑器”页“悬停时显示定义”可以关掉（默认开），检查报的问题照样悬停显示。
-- 查找引用：⇧F12 或编辑器右键“查找引用”，在侧栏搜索里按整词、区分大小写搜光标下的名字，只搜同一种语言的文件（TypeScript 连 .tsx、.js 一起），
-  所有仓库的结果都在里面。也是按名字搜的，注释、字符串里的同名词也算。
+- Diff fold bars follow VS Code's collapsed unchanged regions: a faint full-width bar with “N unchanged lines” on the left, followed by the
+  line of the function / class / heading containing the change below it (like the part after `@@` in a GitHub hunk header, preceded by the
+  small kind label from the outline); rest the pointer on it to see the full text. It's matched by the changed line and only appears for
+  languages with outline support; it's omitted when the change falls between two functions (comments, blank lines) and on the bar at the end
+  of the file.
+- Diff reds and greens are redrawn at VS Code's intensity: changed lines get a full-line red / green background like VS Code's default theme
+  (it used to be so faint you could barely see it), changed words within a line get a deeper layer (they used to be gray, so you couldn't
+  tell which characters changed), and each line starts with a red / green bar (dashed on the deleted side). It stands out equally in light and
+  dark; in light, changed line numbers use a darker green so they're readable on the green background.
+- An experimental Diff of Grove's own (`internal/ged`, using only mygo's public text layout, drawing and input APIs, without changing mygo):
+  with `WORKBENCH_GED=1`, read-only Diffs are drawn by it — the two sides line up line for line (when a change deletes d lines and adds a, the
+  first lines are paired and the extras get a diagonal-hatch filler on the other side), changed lines get a full red / green background,
+  changed characters within a line a deeper layer (when the whole line changed, only from the indentation on), line numbers and + − change
+  color with them, unchanged stretches more than three lines from a change are folded (click to expand; the fold bar shows the function
+  containing the change below after “N unchanged lines”, as before), and the overview strip on the right marks where the changes are and
+  scrolls when dragged. Only visible lines are laid out and drawn. When the pointer moves onto a change (or you jump there with previous /
+  next change), “Stage Hunk / Unstage Hunk / Discard Hunk” appears at its top right and sticks to the top of the hunk while scrolling; the
+  tab bar's previous / next change, the bottom panel's “Change i of n”, and J / K follow its changes, and switching “Show only the lines
+  around changes” to full file no longer folds. Drag to select text (auto-scrolling at the top and bottom edges), double-click to select a
+  word, triple-click to select a line, ⇧-click to extend; ⌘C copies, ⌘A selects all of that side, Esc cancels; after clicking, ↑ ↓ ← →, Page
+  Up / Down, Space and Home / End scroll.
+  Click line numbers to select lines (drag to select several, ⇧-click to extend to that line; selected lines get an accent-colored bar on the
+  left); the panel below still stages / unstages / discards the selected lines, and which line pairs with which follows its alignment (as you
+  see it). The unified view is drawn by it too: each change lists the deleted lines and then the added ones, with two line-number columns on
+  the left (old / new), changed characters still get the deeper layer, and lines on both sides can be selected by line number and staged.
+  Inline editing (after clicking the pencil) is drawn by it as well: click on the new side to place the cursor (it doesn't blink, and no extra
+  frames are drawn while idle); typing, ⌫ / ⌦ (⌥ by word, ⌘ to line start), Return copying the line's indentation, Tab, ← → ↑ ↓ (⌥ by word,
+  ⌘ to line start / end and file start / end, ⇧ to extend the selection), Home going to after the indentation first, and Page Up / Down; IME
+  composition is drawn at the cursor and the candidate window follows the cursor; ⌘X / ⌘V / ⌘Z / ⇧⌘Z go through the Edit menu, and a run of
+  typing undoes in one step. The diff realigns as you type, without folds, scrolling or the cursor jumping around. It still edits the file
+  tab's buffer, and ⌘S works as before.
+  ⌥Z soft wrap works too: long lines wrap at the column's width, in side-by-side mode a line's height is whichever side wraps more, and
+  clicking, selecting and ↑ ↓ move by wrapped lines.
+  ⌘F finds in the Diff (a bar at the top right; if text within one line is selected, that's what it searches for): it searches the visible
+  text on both sides (an unchanged line counts as one match), case-insensitively, highlights every match and the current one a shade darker;
+  Return / ⌘G goes to the next, ⇧↩ to the previous, wrapping around at the ends and expanding folded stretches; Esc closes.
+  There's a context menu now (mygo's Diff had none), on right-click (or ⇧F10), for the line and change under the click: Cut / Copy / Paste (Cut
+  and Paste only while editing inline), Stage / Unstage / Discard Hunk, the selected-lines items, Copy Line (“Copy Original Line” on the old
+  side), Find, Previous / Next Change, Open Line in Editor, toggles for unified / full file / soft wrap / inline editing, Select All, Reveal in
+  Finder and Copy Path; right-clicking outside the selected text moves the selection there.
+  Fold bars follow VS Code / GitHub: the line-number cell has arrows; clicking one reveals 20 more lines continuing down from the change above
+  or up from the change below (the first stretch can only expand up, the last only down); clicking elsewhere on the bar expands the whole
+  stretch; the fold bar's context menu also has “Show All N Lines / Expand 20 Lines Down / Expand 20 Lines Up”.
+  “Ignore Leading/Trailing Whitespace” (View menu, Command Palette, context menu; saved in state.json and applied to every Diff tab): lines
+  where only indentation or trailing spaces changed don't count as changes, and staging / discarding a hunk touches only the visible change.
+  ⌃G go to line works too (it goes to the line on the new side, expanding folds); while editing inline, the context menu has Undo and Redo.
+  When text within one line is selected, the same text elsewhere on both sides is faintly highlighted (as in VS Code). In side-by-side mode,
+  drag the middle divider to change the widths of the two sides, and double-click it to reset to half and half; while editing inline, the
+  cursor line is highlighted and its line number is brighter.
+  While editing inline the editor's keys work too (sharing the keymap with file tabs, so remapped keys change together): ⌥↑ ↓ move lines,
+  ⇧⌥↑ ↓ copy lines, ⇧⌘K deletes a line, ⌘↩ / ⇧⌘↩ insert a line below / above, ⌘] / ⌘[ and Tab / ⇧Tab indent, ⌘/ comments, ⌃J joins lines,
+  ⌃T transposes, ⌃K cuts to end of line, ⌘L selects the line, ⌘D selects the word / the next identical occurrence, ⇧⌘\ jumps to the matching
+  bracket, ⌃↑ ↓ move by paragraph. Return keeps the indentation, indents one more level after an opening bracket, and splits into three lines
+  between a pair of brackets; typing a bracket or quote adds the other half (not for quotes inside strings), typing the closing one skips over
+  it, typing with text selected wraps it, and Backspace deletes an empty pair. When the cursor is next to a bracket, both brackets get a box;
+  whitespace is drawn per the “Show Whitespace” setting (dots for spaces, arrows for tabs); ⌥⌘F opens replace below the find bar, ↩ replaces
+  one and goes to the next, and “Replace All” undoes in one step (the old side only finds, never replaces).
+  Indent guides are drawn (one per indentation level, continuing across blank lines; while editing inline, the guide of the block containing
+  the cursor is a bit darker).
+  Sticky scroll follows the setting: each side pins the functions / classes enclosing its top lines (from its own outline, at most 5 lines),
+  and clicking one jumps there; when scrolled partway, the last line is no longer drawn over the panel below. mygo's Diff is still the default.
+- ⌥Z soft wrap now works in Diff tabs too: long lines wrap to the next line instead of scrolling sideways. Like file tabs it follows the
+  setting (Markdown and plain text wrap by default) and toggles only that tab.
+- Upgraded to mygo v0.10.0 (the following come from mygo's changes): holding ⌘ draws the name under the pointer as a link when it can go to a
+  definition. When the cursor moves to the window edge, three lines of margin are kept above and below before scrolling. Large Diffs (over
+  10,000 lines or 1 MB combined) are computed in the background, showing the original text first without blocking the interface. In a narrow
+  editor the find bar first hides its count, then keeps only the input field. Screen readers can read which lines a fold bar hides.
+  Files with mixed line endings (LF / CRLF / CR) keep each line's original ending when saved, and editing a line touches only that line
+  (previously the whole file was unified to one kind); choosing a line ending in the status bar converts every line.
+- Markdown preview:
+  - Front matter (YAML / TOML) at the top of a file is drawn as a collapsible metadata card instead of a rule followed by a paragraph.
+  - HTML common in READMEs renders the way GitHub renders it: `<p align="center">` / `<div align>` center, `<details>` collapses (click
+    `<summary>` to expand), `<img width>` uses the given size, `<picture>` picks the image for light or dark, and inline tags such as `<b>`,
+    `<a>`, `<code>` and `<br>` lay out normally; `<script>`, `<style>` and comments aren't shown.
+  - Remote images (https badges, screenshots) are fetched and shown, SVG badges included; only the image itself is fetched, without cookies,
+    up to 8 MB per image. Turning off “Show remote images in Markdown preview” in Settings shows just the alt text.
+  - The typography was retuned: body text one size larger with more line spacing, and spacing around headings, code blocks, quotes and tables
+    close to GitHub's.
+  - Links have a context menu: Open Link, Copy Link, plus Copy Path and Show in Finder for links to local files; resting the pointer on a link
+    to a local file shows its path in the repository, or says it can't be found.
+    Path-like inline code (`docs/a.md`, `src/x.go:12`) can be clicked to open that file.
+  - With the preview open, clicking the sidebar Outline scrolls the preview to that section (it used to jump back to the source).
+  - ⌥⇧⌘V (View › Preview Markdown to the Side): opens a preview that follows the source file in the group beside it, keeping the keyboard in
+    the source file; the preview follows wherever the editor scrolls, and re-lays out only after you pause typing. Press it again, or click the
+    button on the preview tab's header, to close it; closing the source file closes the preview too.
+  - Previews of large files are drawn in sections in a virtual list, so opening and scrolling don't stutter; `#heading` links and the Outline
+    still scroll to parts that haven't been laid out yet. Switching between source and preview doesn't re-parse or re-section.
+  - Mermaid upgraded to 12.3: flowcharts, state diagrams, class diagrams and ER diagrams are laid out with ELK by default, with right-angle
+    edges with rounded corners and fewer crossings (the layout differs from before; to get the old one, write `layout: dagre` in the front
+    matter). The look follows the black-and-white document style common in VS Code's Markdown preview: white nodes (in dark, a gray one shade
+    lighter than the background), thin dark borders, a faint shadow offset to the bottom right, edges in the text color, edge labels on a
+    light-gray background, and databases drawn as cylinders; pie charts, mind maps, git graphs and Gantt charts use a set of muted blue, green,
+    amber, red, purple and olive (light in light mode, dark in dark mode, with text in the body color).
+    Colors follow the interface theme's light or dark mode. The mind map root node's text no longer drifts outside the circle. When the
+    system WebKit is too old (before Safari 17.4) to render Mermaid 12, the preview says to update macOS instead of showing an
+    incomprehensible error.
+  - Math switched to MathJax 4: the new New Computer Modern font, and most formulas drawn as vectors (sharp at any size, no redraw when
+    switching themes or moving between displays); characters the font lacks, such as Chinese inside `\text{}`, still produce bitmaps.
+    `\ce{}` (chemical formulas), `\mathbbm` and `\mathds` are supported. All fonts ship inside the app; nothing is fetched from the network.
+  - The rendering scripts ship compressed inside the app (18 MB down to 5.5 MB), about the same as before (Mermaid 11 + MathJax 3, 5.8 MB).
+- Go to Definition: ⌘-click, F12 or “Go to Definition” in the editor's context menu looks up a declaration for the name under the cursor in
+  the outline: this file, open files (unsaved changes included) and every repository's symbol index.
+  Multiple matches with the same name are narrowed first: `util.Parse` prefers the one in a util folder; without a qualifier, this file and
+  the same folder come first. If several remain, a palette opens listing just those, nearest first. If the name is itself the definition or
+  isn't found anywhere, a notice says so. If the index isn't built yet, the request is remembered and the jump happens once it's built. It
+  doesn't use a language server, so it's a guess by name.
+- Word completion: while typing in a code file, the completion list includes words from this file (nearest the cursor first, functions and
+  types with icons), open files of the same language and the same repository's symbol index, listed together with snippets; ⌃Space
+  suggests by hand at any time, and Markdown and plain text offer suggestions only on ⌃Space.
+  Once you've typed a whole word, it's dropped from the list, and Return inserts a newline as usual. “Suggest While Typing” on the Settings
+  “Editor” page turns it off (on by default).
+- Hovers: rest the pointer on a name in code (for the name at the cursor, use “Show Hover” in the Command Palette; mygo's ⌘K ⌘I is taken
+  first by the menu bar's ⌘K, but you can assign another key in the shortcut settings). The declaration is found the same way as Go to
+  Definition, and the hover shows the declaration line (several lines when parameters wrap, with the function body cut off), the comment
+  above it (the docstring for Python), and the repository, file and line it's in; click the location to open it. If the same name exists
+  elsewhere it says “N more”, and clicking lists them to pick from.
+  Nothing appears on the declaration itself or when nothing is found. “Show Definition on Hover” on the Settings “Editor” page turns it off
+  (on by default); problems reported by linters still show on hover.
+- Find References: ⇧F12 or “Find References” in the editor's context menu searches the sidebar Search for the name under the cursor as a
+  whole word, case-sensitive, only in files of the same language (TypeScript includes .tsx and .js), with results from every repository.
+  It's a search by name too, so matches in comments and strings count.
 
-- Grove 画的菜单（文件树和 Git 栏的右键菜单、状态栏的语言菜单、分支按钮的菜单）面板是磨砂的：窗口里它底下的内容糊开，
-  上面盖一层半透明的底色（浅色 44%、深色 60% 不透明、模糊半径 12：底下是主题自己的底色时字够 4.5:1，底下再亮再暗也够 3:1）。糊的是窗口自己画的内容，不是窗口后面的桌面；
-  系统开了“减少透明度”或“增强对比度”时还是原来不透明的面板。mygo 画的菜单（编辑器、文本框的右键菜单）不变。
-- 改写推送过的提交时一律是红的确认：交互式变基、变基到某个分支里有推送过的提交时（以前只有修改、撤销上一次提交是红的），
-  还有进行到一半时“跳过”停住的那个提交（它的改动不进结果）。
-- 修：Git 栏段头和分支菜单里的“新建分支…”建在那个仓库里（以前建在当前仓库，在别的仓库的菜单里点了会建错地方）。
-- 修：起始页上点开某个仓库的改动，当前仓库（终端、历史、标题栏的分支胶囊）跟到那个仓库（以前停在原来的）。
-- 终端标签认 agent 认得更准：node 跑的脚本、改过进程名的、Python 框架里跑的、路径带空格的程序都按名字认得出（关标签时问“还在跑什么”也一样）。
-- 家目录本身在最近的工作区菜单、目录显示里写成 “~”（以前是完整路径）。
-- 英文界面里不再夹着全角的冒号、问号、括号、顿号（队列、图片、blame、替换、拖放、子模块这些拼出来的提示）。
-- 编辑器命令“还原这处改动”改名“丢弃这一块”、就地卡上的按钮“还原”改成“丢弃”，和 Git 栏的叫法一样。
-- 工作区里不止一个仓库时，作用于整个仓库的红色确认（丢弃全部改动、强制推送、重置、撤销 / 修改推送过的提交、变基到分支、
-  删除分支 / 远程分支 / 远程、丢弃贮藏、应用贮藏里的文件盖掉改动）标题前写上仓库名，菜单栏里点的时候知道是哪个仓库。
-- 恢复本地历史时文件有没保存的改动、重置全部快捷键、导入设置（整份换掉现在的）改成红的确认，和恢复默认设置一样。
-- 替换预览读不开着的文件前先看大小，搜索之后长过了搜索上限的不读。
-- 工作树行、已暂存组头勾选框的绿色改用主题的成功色，和 Git 栏里已暂存的点、+N 同一个绿；编辑器速览卡片的阴影和浮条一样。
-- 加目录时有目录没加进来，提示改成 Grove 自己的提示框（以前弹系统对话框），和别的出错提示一样。
+- Menus drawn by Grove (context menus in the file tree and Git view, the status bar's language menu, the branch button's menu) have frosted
+  panels: the window content beneath blurs, under a translucent background layer (44% opaque in light, 60% in dark, blur radius 12: over the
+  theme's own background, text reaches 4.5:1, and at least 3:1 however bright or dark the content beneath). What blurs is the window's own
+  content, not the desktop behind the window.
+  With “Reduce transparency” or “Increase contrast” on in System Settings, the panels are the old opaque ones. Menus drawn by mygo (context
+  menus in the editor and text fields) are unchanged.
+- Rewriting pushed commits always asks with a red confirmation: interactive rebase and rebasing onto a branch when pushed commits are
+  involved (previously only amending and undoing the last commit were red), and also the commit at which a rebase stops when you choose
+  “Skip” partway through (its changes don't make it into the result).
+- Fix: “New Branch…” in a Git view section header and in the branch menu creates the branch in that repository (it used to use the current
+  repository, so clicking it in another repository's menu created it in the wrong place).
+- Fix: opening a repository's changes from the start page makes it the current repository (terminal, history, the title bar's branch pill)
+  (it used to stay on the previous one).
+- Terminal tabs recognize agents more accurately: scripts run by node, programs that changed their process name, programs run inside Python
+  frameworks, and programs whose path contains spaces are all recognized by name (the same goes for the “what's still running” question when
+  closing a tab).
+- The home folder itself is shown as “~” in the Recent Workspaces menu and in folder displays (it used to be the full path).
+- The English interface no longer has full-width colons, question marks, parentheses or enumeration commas mixed in (in assembled messages
+  for the queue, images, blame, replace, drag and drop, submodules and the like).
+- The editor command “Revert This Change” is renamed “Discard Hunk” and the inline card's button “Revert” becomes “Discard”, matching the Git view's
+  wording.
+- When a workspace has more than one repository, red confirmations that act on a whole repository (discard all changes, force push, reset,
+  undo / amend a pushed commit, rebase onto a branch, delete a branch / remote branch / remote, drop a stash, files applied from a stash
+  overwriting changes) put the repository name in front of the title, so when clicking from the menu bar you know which repository it is.
+- Restoring local history over a file with unsaved changes, resetting all shortcuts, and importing settings (replacing all current settings)
+  now use red confirmations, like restoring default settings.
+- The replace preview checks the size before reading a file that isn't open, and doesn't read files that grew past the search limit after the
+  search.
+- The green of worktree rows and of the Staged group header's checkbox now uses the theme's success color, the same green as the staged dot and
+  +N in the Git view; the editor's peek card shadow matches the floating bar.
+- When some folders couldn't be added while adding folders, the notice is now Grove's own notice box (it used to be a system dialog), like
+  other error notices.
 
 ## v0.2.0 — 2026-11-14
 
-- 右键菜单不再闪一下就消失（真窗口里才遇得到，四处一起修）：右键的事件处理里取窗口大小是 0×0，菜单按空窗口排成一小块，
-  改成建元素时取上一帧的窗口大小（⇧F10 / 菜单键开的也一样）；macOS 的右键、触摸板会送来 `dy=0` 的滚动，原来被当成“滚文件树”
-  立刻关菜单，现在小于 0.01 的滚动不算滚；窗口里别的东西拿了键盘不再当成窗口失焦，切到别的窗口 / 应用才关；
-  右键按住不动再松开，不管按了多久菜单都留着（以前过了 0.15 秒松开会选中指针正好压着的那一项），按着拖到项上松开照旧选它。
-- 文件树里按空格是系统的“快速查看”（访达里按空格的那个面板）：看光标那一行，文件、目录都行，图片、PDF、视频这些 Grove 自己不开的也能看一眼。
-  面板开着时回到文件树再按是换成新的那项；右键“更多”里也有一项。只看，不改文件。
-- 状态栏的语言菜单能打字筛选：顶上多了一个筛选框，点开直接打字（`ts`、`py`……），只留下匹配的语言，回车选第一项；
-  退格删字，Esc 先清空、再按才关。菜单不再比窗口还高：最多露 12 项，一开就能看到打勾的当前语言。
-- Grove 画的菜单（右键菜单、按钮的菜单）：窗口放不下、要滚的菜单里用 ↑↓ 挪到面板外面的项时跟着滚（以前高亮跑到看不见的地方）；
-  在不用滚的菜单上滚滚轮不再把菜单关掉。
-- 未暂存的 Diff 能就地编辑：标签条上多了一个铅笔开关，点了右边（工作区那一边）可以直接改，diff 跟着打的字变，⌘S 写回文件；
-  改的就是那个文件的标签（会在后面开着），撤销、保存都算它的。再点铅笔退回只看。编辑时 J / K 是打字、不跳改动，也不出按块暂存的按钮。
-  命令面板里是“在 Diff 里就地编辑”。标签条上“在编辑器中打开”的图标从铅笔换成了文件，和 Git 栏行上的一样。
-- Grove 画的菜单里的项现在能被读屏、语音控制这类辅助技术直接按：以前只认鼠标和键盘，辅助技术按了没反应。
-- 升到 mygo v0.9.0（以下照 mygo 的发布说明，Grove 自己的代码没改）：滚动条换成 VS Code 编辑器那样的；
-  编辑器多认 Svelte、HCL / Terraform、ERB、Jinja、Nix，脚本按第一行的 `#!` 认语言；列表、大纲、右键菜单每帧少做些事；
-  终端里 Ctrl+I、Ctrl+M、Ctrl+[ 发的是 Tab、回车、Esc，网址认到第一个非 ASCII 字符为止；注销、关机时也会走退出前的保存。
-- 软换行按文件类型：默认只给 Markdown、纯文本（还有 .rst、.adoc、.org 和 README、LICENSE 这些没后缀的）换行，代码不换；
-  设置 → 编辑器 → 软换行可改成"所有文件"或"关"。⌥Z 只切换当前这个标签，不改设置。以前在设置里开着软换行的照旧所有文件都换。
-- `.vue` 文件有了自己的高亮（状态栏写 Vue，不再是 HTML）：`<script lang="ts">` 按 TypeScript 分（类型上色），
-  模板里的 `{{ }}` 和 `v-if`、`:prop`、`@click`、`#slot` 的值按代码上色，不再是一整段字符串；`<style>` 照旧按 CSS。
-  格式化默认也是 prettier。
-- 代码配色柔和些：运算符和标点（各种语言的 `=` `:` `=>` 括号）降成灰色，不再和关键字一样红。
-- Python 高亮改了几处：注解、默认值、行尾的 `:`、`=`、`->` 是标点不再是红色运算符；属性链和导入路径
-  （`sqlalchemy.orm`）不再一片蓝；`self`、`cls` 是斜体不再是函数紫；docstring 画成注释。
-- Markdown 的标题、`**粗体**`、`*斜体*` 在编辑器里又有粗体斜体了（Grove 改空白符号颜色时把它们丢了）。
-- 编辑区什么都没开时是起始页：工作区名和所有仓库的总况，下面列有改动的文件（按仓库，各最多 5 个，点了开 Diff）、最近打开的文件、
-  别的工作树（算过状态的写几个改动、领先几个），底下是快速打开和打开文件。Tab 进来以后 ↑↓ 在行间走，⏎ 打开。
-- 每个仓库一个颜色（灰蓝、灰绿、灰沙、灰紫、灰玫、灰青，按工作区里的顺序轮换）：文件树和 Git 栏的仓库行、终端标签前面一颗小圆点，
-  "所有仓库"的历史行尾的仓库名是同色的淡底胶囊。
-- 右栏历史的日期段改成今天、昨天、本周、上周、本月，再早的一个月一段（"10 月"，不是今年的带年份）；行尾的时间跟着段走：
-  今天昨天写"15:04"，本周上周写"周四 14:20"，再早的写"10-22"，悬停看完整的日期时间。
-- 设置窗口每一页都分组放进圆角卡片（主题、界面、文字、保存……），一项一行：左边名字和说明，右边控件，点名字等于点控件。
-  "材质"只在窗口底选了通透时出来，缩进在窗口底下面。数字项是自己的数字框（↑↓ 加减，−、+ 到头灰着）。
-- 升到 mygo v0.8.3：窗口不在最前面时强调色变灰（和系统应用一样）；macOS 上排字更省 CPU（拖分栏、改窗口大小大约省一半）；
-  右键、中键按下不再拖动；圆角卡片里的裁剪、长大的动画不再每帧新建遮罩。
+- Context menus no longer flash and disappear (only seen in real windows; four fixes together): the right-click event handler read the
+  window size as 0×0, so the menu was laid out as a tiny block for an empty window; it now takes the previous frame's window size when the
+  elements are built (the same for menus opened with ⇧F10 / the menu key). macOS sends a `dy=0` scroll on right-click and from the trackpad,
+  which used to count as “scrolling the file tree” and closed the menu right away; scrolls under 0.01 no longer count. Something else in the
+  window taking the keyboard no longer counts as the window losing focus; only switching to another window / app closes the menu.
+  Pressing and releasing the right button without moving keeps the menu open however long you held it (previously, releasing after 0.15 s
+  selected whatever item was under the pointer); pressing, dragging onto an item and releasing still selects it.
+- Space in the file tree opens the system's “Quick Look” (the panel Space opens in Finder) for the cursor row, files and folders alike, so you
+  can glance at images, PDFs, videos and other things Grove doesn't open itself.
+  With the panel open, going back to the file tree and pressing Space again switches to the new item; there's also an item under “More” in the
+  context menu. It only views; files aren't changed.
+- The status bar's language menu can be filtered by typing: there's a filter field at the top, so open it and type (`ts`, `py`…) to keep only
+  matching languages, and Return picks the first. Backspace deletes characters; Esc clears first, and closes on the second press. The menu is
+  no longer taller than the window: it shows at most 12 items, and the checked current language is visible as soon as it opens.
+- Menus drawn by Grove (context menus, button menus): in menus too tall for the window that need scrolling, moving with ↑↓ to items outside
+  the panel scrolls along (the highlight used to run off out of sight); scrolling the wheel over a menu that doesn't need scrolling no longer
+  closes it.
+- Unstaged Diffs can be edited in place: the tab bar has a new pencil toggle; click it and the right side (the working tree side) can be edited
+  directly, the diff follows your typing, and ⌘S writes the file back. What you edit is that file's tab (opened in the background), and undo
+  and save belong to it. Click the pencil again to go back to read-only. While editing, J / K type instead of jumping between changes, and the
+  per-hunk staging buttons don't appear.
+  In the Command Palette it's “Edit in Place in Diff”. The tab bar's “Open in Editor” icon changed from a pencil to a file, matching the one on
+  Git view rows.
+- Items in menus drawn by Grove can now be pressed directly by assistive technologies such as screen readers and Voice Control: previously only
+  the mouse and keyboard worked, and pressing them with assistive technology did nothing.
+- Upgraded to mygo v0.9.0 (the following come from mygo's release notes; Grove's own code didn't change): scroll bars look like VS Code's
+  editor scroll bars. The editor also recognizes Svelte, HCL / Terraform, ERB, Jinja and Nix, and scripts are recognized by the `#!` on their
+  first line. Lists, the outline and context menus do less work per frame. In the terminal, Ctrl+I, Ctrl+M and Ctrl+[ send Tab, Return and
+  Esc, and URLs end at the first non-ASCII character. The save before quitting also runs on logout and shutdown.
+- Soft wrap by file type: by default only Markdown and plain text wrap (plus .rst, .adoc, .org, and extensionless files such as README and
+  LICENSE), code doesn't. Settings → Editor → Soft Wrap can be changed to “All files” or “Off”. ⌥Z toggles only the current tab without
+  changing the setting. If you had soft wrap on in Settings before, all files still wrap.
+- `.vue` files have their own highlighting (the status bar says Vue, no longer HTML): `<script lang="ts">` is tokenized as TypeScript (with
+  types colored), and `{{ }}` in templates plus the values of `v-if`, `:prop`, `@click` and `#slot` are colored as code instead of one long
+  string; `<style>` is still CSS.
+  Formatting defaults to prettier too.
+- Softer code colors: operators and punctuation (`=` `:` `=>` and brackets across languages) are toned down to gray, no longer the same red
+  as keywords.
+- Several Python highlighting changes: the `:`, `=` and `->` in annotations, default values and at line ends are punctuation, no longer red
+  operators; attribute chains and import paths (`sqlalchemy.orm`) are no longer a sea of blue; `self` and `cls` are italic, no longer
+  function purple; docstrings are drawn as comments.
+- Markdown headings, `**bold**` and `*italic*` are bold and italic again in the editor (Grove lost them when it changed the whitespace marker
+  color).
+- When nothing is open, the editor area shows a start page: the workspace name and an overview of all repositories, then files with changes
+  (by repository, up to 5 each; click to open the Diff), recently opened files, and other worktrees (those with computed status show how many
+  changes and how far ahead), with Quick Open and Open File at the bottom. After tabbing in, ↑↓ move between rows and ⏎ opens.
+- Each repository has a color (gray-blue, gray-green, gray-sand, gray-purple, gray-rose, gray-teal, cycled in workspace order): a small dot
+  in front of repository rows in the file tree and Git view and on terminal tabs, and in the “All Repositories” history the repository name at
+  the end of each row is a faint pill in the same color.
+- The right panel history's date sections are now Today, Yesterday, This week, Last week, This month, and then one section per month
+  (“October”, with the year when it isn't this year); the time at the end of each row follows its section: “15:04” for today and yesterday,
+  “Thu 14:20” for this week and last week, “10-22” for earlier, with the full date and time on hover.
+- Every page of the Settings window is grouped into rounded cards (Theme, Interface, Text, Save…), one setting per row: name and description on
+  the left, the control on the right, and clicking the name is the same as clicking the control.
+  “Material” appears only when the window backdrop is set to Translucent, indented under the window backdrop. Number settings have their own
+  number field (↑↓ step, and − / + gray out at the limits).
+- Upgraded to mygo v0.8.3: the accent color turns gray when the window isn't frontmost (like system apps); text layout on macOS uses less CPU
+  (about half when dragging dividers or resizing the window); right- and middle-button presses no longer drag; clipping inside rounded cards
+  and grow animations no longer create a new mask every frame.
 
-- Git 栏里几处只有图标的行写上了字：贮藏组头、工作树组头和已暂存 / 改动两组一样写“贮藏 1”“工作树 4”；展开的工作树下面那行写
-  “2 个提交 · 2 个文件 +6 −0”；合并 / 变基停在一半的横幅里，继续、跳过、放弃换成带字的小按钮（继续是强调色底，有冲突时灰着）。
-- 新加的、删掉的文件，Diff 只画有内容的那一栏（选着并排也一样，并排 / 统一按钮灰着），不再一半宽度是斜纹。底栏写“已暂存的改动”
-  “未暂存的改动”，`HEAD ↔ 索引` 放进悬停提示。
-- 状态栏左边改成所有仓库的总况：“4 个仓库 · 2 个有改动 · 1 个要推送 · infra 合并中”，读取失败的用红字；悬停看每个仓库一行，点了打开 Git 栏。
-  只有一个仓库时写它的改动。当前仓库和分支看标题栏和右栏头；原来状态栏上点 ↑↓ 同步的去掉了，推送按钮右键里有“同步”。
-- 提交图打头的那条泳道、柔和窗口底左上那团颜色跟着强调色走（之前换了强调色它们还是钢蓝和蓝）。
-- README 的截图重新截了（之前的还是 0.1.0 的样子）。
-- Diff 里折起来的未修改行换成一根细线，中间一颗小胶囊写“N 行未修改”，没有灰底；点胶囊展开（在文件开头 / 结尾的往改动那边
-  展开 100 行，两处改动中间的一次展开全部，按住 ⇧ 一律全部）。改动行的行号边上不再画竖条（删除那边的虚线也没了），
-  改动靠底色和红绿的行号分。
-- 默认强调色换成森绿（设置 → 外观 → 强调色里多了“森绿”，钢蓝还在）；之前没改过强调色的跟着换成森绿。
-- 提交按钮只放一个纸飞机图标，▾ 照旧；会提交几个文件、为什么点不了写在指针移上去的提示里。
-- 文件树、Git 栏连着多选几行时，淡底和左边的竖条接成一整块、一整条，不再一行一段。
-- 右栏历史重新排了一遍：一行的标题小一号，agent 的四角星挪进卡片，`main` 和 `origin/main` 在同一个提交上时折成一个胶囊
-  （名字后面一朵云）；日期段头滚动时钉在顶上。选中的提交展开成一张卡片：标题读全，下面是作者 · agent · 时间和分支，
-  正文按列表排（去掉 Co-Authored-By 这类尾注，收起时最多三条，放不下有"展开全文"），短哈希和文件数、增删行一行。
-  工作区干净时不再有"未提交的改动"那行（领先 / 落后在 Git 栏看）。右栏窄于 300 时头部不写分支名，
-  卡片的按钮只留"更多"，"更多"里加了"和 HEAD 比较"。搜索框的占位字短了，查询语法在右边的 ?。
-- 提交图换了画法：线更细，泳道窄一点（14 → 12），拐弯是竖着出来、圆角转平、再圆角转竖，跨几条泳道都不成斜线；节点不再有底色描边，
-  行悬停、选中时点外面不再有一圈白晕。只有一条线的历史画成灰的细线和小点，HEAD 是强调色的细圈。不在主线上的分支胶囊用泳道的颜色。
+- Several icon-only rows in the Git view now have text: the stash group header and worktree group header say “Stashes 1” and “Worktrees 4”,
+  like the Staged / Changes groups; the row under an expanded worktree says “2 commits · 2 files +6 −0”; in the banner of a half-finished
+  merge / rebase, Continue, Skip and Abort became small labeled buttons (Continue has the accent background and is grayed out while there are
+  conflicts).
+- For added and deleted files the Diff draws only the column that has content (even with side by side selected; the side-by-side / unified
+  buttons are grayed out), instead of half the width being hatching. The bottom panel says “Staged changes” / “Unstaged changes”, and
+  `HEAD ↔ Index` moved into the hover tooltip.
+- The left side of the status bar is now an overview of all repositories: “4 repositories · 2 with changes · 1 to push · infra merging”, with
+  read failures in red; hover to see one line per repository, click to open the Git view.
+  With only one repository it shows that repository's changes. The current repository and branch are shown in the title bar and the right
+  panel header; the old click-↑↓-to-sync in the status bar is gone, and “Sync” is in the push button's context menu.
+- The first lane of the commit graph and the color blob at the top left of the soft window backdrop follow the accent color (previously they
+  stayed steel blue and blue after changing the accent color).
+- The README screenshots were retaken (the old ones still showed 0.1.0).
+- Folded unchanged lines in the Diff became a thin line with a small pill in the middle saying “N unchanged lines”, with no gray background;
+  click the pill to expand (at the start / end of the file it expands 100 lines toward the change; between two changes it expands everything
+  at once; with ⇧ held it always expands everything). Bars are no longer drawn next to the line numbers of changed lines (the dashed line on
+  the deleted side is gone too); changes are distinguished by background and by red / green line numbers.
+- The default accent color is now Forest (Settings → Appearance → Accent color gains “Forest”; Steel is still there); if you never changed the
+  accent color, it switches to Forest.
+- The commit button shows only a paper-plane icon, with ▾ as before; how many files will be committed and why it can't be clicked are in the
+  tooltip when the pointer moves over it.
+- When several consecutive rows are selected in the file tree or Git view, the faint background and the bar on the left join into one block
+  and one bar, instead of one segment per row.
+- The right panel history was laid out again: row titles are one size smaller, the agent's four-pointed star moved into the card, and when
+  `main` and `origin/main` are on the same commit they fold into one pill (a cloud after the name); date section headers stay pinned to the top
+  while scrolling. The selected commit expands into a card: the full title, then author · agent · time and branches, the body laid out as a
+  list (with trailers such as Co-Authored-By removed, at most three items when collapsed, and “Show all” when it doesn't fit), and the short
+  hash, file count and added / deleted lines on one line.
+  When the working tree is clean there's no more “uncommitted changes” row (ahead / behind are in the Git view). When the right panel is
+  narrower than 300, the header omits the branch name and the card keeps only the “More” button, and “More” gains “Compare with HEAD”. The
+  search field's placeholder is shorter, and the query syntax is behind the ? on the right.
+- The commit graph is drawn differently: thinner lines, narrower lanes (14 → 12), and bends come out vertically, curve to horizontal, then curve
+  back to vertical, so they never become diagonals however many lanes they cross; nodes no longer have a background-colored outline, and there's
+  no white halo around the dot on row hover or selection. A history with a single line is drawn as a thin gray line with small dots, with HEAD as
+  a thin accent-colored ring. Branch pills not on the main line use their lane's color.
 
-- 切换文件时编辑区更稳：首次打开文件，代码不再在 HEAD 版本读好时右移 6 px（仓库里的文件一开始就留着改动条
-  那一条，未跟踪的也一样）；在 Git 栏逐个点文件，Diff 不再先空一帧（和文件一样，读得快的打开时就放上）；
-  单击预览的文件被换走后再点回来，回到原来的滚动位置和光标（只在这次运行里记），第一帧就在那儿。
-- 拖到程序坞图标上的文件夹（还有 `open -a`、命令行再开一次）在新窗口打开（#58）：已经开着的工作区或仓库叫到前面（仓库跳到它那一段），
-  前台是空工作区就在它里面开，拖进几个开几个窗口。拖进窗口里的照旧问要不要加进当前工作区。
-- 分支入口（#58）：Git 栏段头的分支名能点，点开那个仓库的分支菜单（不用先切当前仓库，不折叠段落）；仓库右键菜单加了"分支"子菜单。
-- 仓库右键菜单精简到 13 项：刷新、重新启动终端、展开 / 收起、上移下移、远程、子模块、显示被忽略的文件、打开主仓库、在 GitHub 打开收进"更多"。
-- Grove 画的菜单（文件树右键、Git 栏段头、分支胶囊和段头的分支菜单）换了样子：字号 13、圆角 8、悬停是淡填充、没有勾选项时不留勾的位置、分隔线更淡。
-- 文件树、Git 栏、搜索结果的鼠标滚轮（#58）：一格走一行，系统加速后的大格照走、一次最多 6 行，约 160 ms 滑过去，
-  连续几格接成一段不一顿一顿，到头反向立刻转向；"减弱动态效果"时不滑。触控板照旧跟手。吸顶栈和行同帧，快滚时顶上几层不再跳。
-- Grove 画的右键菜单不再盖住右键的那一行：在指针的横坐标、那一行底下展开，靠窗口底下时翻到那一行上面（#58）。
-- Grove 画的右键菜单铺到了编辑器标签、打开的编辑器、贮藏、历史（提交行、改动行、仓库行）、本地历史（#58）：和文件树一样按住右键拖到项上松开选它。
-- Grove 画的菜单铺到了工作树、blame、终端标签、搜索结果的右键，推送按钮的右键，状态栏的语言 / 缩进 / 换行 / 编码、⋯ Git 操作、工作树操作、git 队列、变基的动作选择（#58）。
-  按钮的菜单下面放不下时翻到按钮上面，不盖住它。搜索结果菜单里的替换、排除、只在这个目录里搜照常生效。
-- Git 栏的变更行、贮藏里的文件、未跟踪目录行，历史面板的标题行、比较行、提交卡片的“更多”，标题栏的工作区按钮、状态栏的缩放、底栏「+」的终端配置、
-  搜索编辑器的上下文行数、克隆框的右键也换成 Grove 画的菜单（#58）。
-- 搜索结果的右键菜单开着时结果变少（重搜、替换、撤销替换）不再崩溃，菜单关掉（#58）。
-- Grove 画的菜单关掉以后（选了、Esc、点外面）键盘回到打开它之前的地方；换过去的右键菜单有键盘时 ⇧F10 / 菜单键照旧能开，第一项高亮（#58）。
-- 编辑器的右键菜单、文本框的编辑菜单和还没换成 Grove 菜单的按钮 / 右键菜单都画在窗口里（`SetMenuPresentation(PopoverMenus)`，#58），不再弹系统菜单；菜单开着时状态变了，项跟着变灰、写原因。菜单栏、程序坞菜单不变。
-- 文件树的吸顶栈不再无故消失：滚过选中的行时（选中的行在栈底下、或刚滚出列表顶上）栈还在，只有光标刚走到被盖住的行（↑、跟随当前文件）才让位，
-  一滚动又钉上；文件树第一次画就滚在中间、仓库行还没画过时也钉。
-- 点文件树的行不再闪：去掉按下时比选中还深一档的底色，按下直接是选中的底色，松开不再变；点已经选中的行底色不动。
-- 界面图标整套换成 Phosphor（MIT，关于窗口的第三方列表里加了）：线条更细更圆润，文件夹是实心的；撤销和刷新不再长得像，拉取、推送是带横线的箭头。
-- 文件图标的语言字母全换成单色的语言图标（24 种语言），颜色还是原来的类别色；.jsx / .tsx 是 React。Go、C#、Objective-C、Vue、SQL、proto 是自己画的，别的来自 Simple Icons。
-- 分屏时当前组顶上的强调色条两头让开卡片圆角，不再在角上切出斜茬；标签条左上角裁成卡片的圆角，滚动后贴着左边的标签不再在卡片角上露出一个白尖。
-- 文件树的文件夹换成自己画的实心夹，按目录名上色，还带用途符号，一共 26 种：src 是 `<>`、tests 是对勾、docs 是几行字、build 是向下的箭头、utils 是扳手、auth 是锁、deploy 是云，等等。
-- 文件和目录的右键菜单精简：文件 13 项（有改动时加暂存那几项）、目录 14 项，分成打开查看、暂存、访达和路径、复制粘贴、重命名和废纸篓五组；本地历史、运行、比较、添加到 .gitignore、用默认应用打开、在 GitHub 打开、收起所有目录、目录历史收进"更多"，文件行不再有新建。
-- Grove 画的菜单里破坏性的项（移到废纸篓、丢弃、删除、强制推送、中止、硬重置、从列表移除……）用危险色，悬停时填充也是。
-- 菜单叫法统一：`打开`（不再有`在编辑器中打开`）、`查看 diff`、`在此搜索`；Git 栏变更行和提交里的改动行的组序和文件树一样。
-- 侧栏列表的鼠标滚轮到底后往上不再卡住（第一帧走得太少时被列表拉回底上，这一格就丢了）；列表量到新行修正偏移时滑动不断，往上滚不再一格只走一点。
-- Git 栏的仓库段更清爽：
-  - 段头只有仓库名、分支、拉取和推送，去掉了 `+`；改动数只在收起时显示。
-  - 分组标题写成"改动 13"、"已暂存 3"，不再用图标区分；`↩ + −` 指针移上去才有，右键有同样的动作。"未暂存"一组改名"改动"。
-  - 提交框一个框管到底：平时是一行输入框，写字时变高，框里右下角是分裂按钮，按钮写后果（"提交 2 个文件"）。没写信息时没有按钮，底下那排工具也没了；
-    `▾` 里是新加的提交并推送（不看自动推送的设置），还有修改上一次提交、撤销上次提交，框的右键也是这些。⌘↩、↑、Esc 不变。
-  - 什么都没暂存时按钮是"提交全部 13 个文件"：一下子暂存全部（含未跟踪的文件）再提交，暂存失败就不提交；以前会提示没有已暂存的改动。
-- Git 栏的变更行、贮藏里的文件、提交里的文件换了写法：左边是和文件树一样的语言图标，跟随彩色 / 线形设置；M / A / D 不再是色块，改成行尾的小字母，悬停时让给按钮。放不下时路径先缩，文件名不再被截成 `index.…`。
-- 提交框换了质感：平时是半透明的底和淡边，有键盘时才变实底；圆角和留白都大了一点，框里的按钮圆角跟着调。
-- mygo 升到 main（`6121009b`）。
+- The editor area is steadier when switching files: the first time a file opens, the code no longer shifts 6 px right when the HEAD version
+  finishes loading (files in a repository reserve the change-bar column from the start, untracked ones too); clicking files one by one in the
+  Git view, the Diff no longer shows an empty frame first (like files, ones that load quickly are in place when they open); when a file opened
+  with a single click (preview) is replaced and you click back to it, it returns to its previous scroll position and cursor (remembered only for
+  this run), already there in the first frame.
+- Folders dropped on the Dock icon (and `open -a`, or launching again from the command line) open in a new window (#58): an already open
+  workspace or repository is brought to the front (a repository jumps to its section); if the frontmost window is an empty workspace it opens
+  there; dropping several opens several windows. Dropping into a window still asks whether to add it to the current workspace.
+- Branch entry points (#58): the branch name in a Git view section header can be clicked to open that repository's branch menu (without
+  switching the current repository first or collapsing the section); the repository context menu gains a “Branch” submenu.
+- The repository context menu is trimmed to 13 items: Refresh, Restart Terminal, Expand / Collapse, Move Up / Down, Remotes, Submodule,
+  Show Ignored Files, Open Main Repository and Open on GitHub moved under “More”.
+- Menus drawn by Grove (the file tree context menu, Git view section headers, the branch menus of the branch pill and section headers) got a new
+  look: 13-pt text, 8-pt corner radius, a faint fill on hover, no checkmark column when no item is checkable, and fainter separators.
+- Mouse-wheel scrolling in the file tree, Git view and search results (#58): one notch moves one line, larger system-accelerated notches move
+  more, at most 6 lines at once, gliding over about 160 ms; several notches in a row join into one movement without stuttering, and reversing
+  at the end turns around immediately; no glide with “Reduce motion”. The trackpad still tracks your fingers directly. The sticky stack moves
+  in the same frame as the rows, so the top levels no longer jump when scrolling fast.
+- Context menus drawn by Grove no longer cover the right-clicked row: they open at the pointer's x position below that row, and flip above
+  the row near the bottom of the window (#58).
+- Context menus drawn by Grove now cover editor tabs, Open Editors, stashes, history (commit rows, change rows, repository rows) and local
+  history (#58): like the file tree, press the right button, drag onto an item and release to select it.
+- Menus drawn by Grove now cover the context menus of worktrees, blame, terminal tabs and search results, the push button's context menu, the
+  status bar's language / indentation / line ending / encoding menus, ⋯ Git actions, worktree actions, the git queue, and rebase action choices
+  (#58).
+  When there's no room below a button, its menu flips above the button instead of covering it. Replace, Dismiss and Search Only in This Folder
+  in the search results menu work as before.
+- Git view change rows, files in stashes and untracked folder rows, the history panel's title row, compare row and the commit card's “More”,
+  the title bar's workspace button, the status bar's zoom, the terminal profiles under the bottom panel's “+”, the search editor's context
+  line count, and the clone dialog's context menu also switched to menus drawn by Grove (#58).
+- Search results shrinking (re-search, replace, undo replace) while their context menu is open no longer crashes; the menu closes (#58).
+- After a menu drawn by Grove closes (by choosing, Esc or clicking outside), the keyboard goes back to where it was before the menu opened;
+  converted context menus can still be opened with ⇧F10 / the menu key when you have keyboard focus, with the first item highlighted (#58).
+- The editor's context menu, text fields' edit menu, and button / context menus not yet converted to Grove's menus are all drawn inside the
+  window (`SetMenuPresentation(PopoverMenus)`, #58) instead of popping up system menus; if state changes while a menu is open, its items gray
+  out and give the reason. The menu bar and Dock menu are unchanged.
+- The file tree's sticky stack no longer disappears for no reason: scrolling past the selected row (with the selected row under the stack, or
+  just scrolled off the top of the list) keeps the stack, which only makes way when the cursor has just moved to a covered row (↑, following the
+  current file) and pins again as soon as you scroll; it also pins when the file tree is first drawn already scrolled to the middle, before the
+  repository row has ever been drawn.
+- Clicking file tree rows no longer flickers: the press state, one shade darker than selection, is gone; pressing shows the selection
+  background directly, and releasing doesn't change it; clicking an already selected row leaves its background alone.
+- The whole set of interface icons was replaced with Phosphor (MIT, added to the third-party list in the About window): thinner, rounder
+  lines and solid folders; Undo and Refresh no longer look alike, and Pull and Push are arrows with a bar.
+- The language letters on file icons were all replaced with monochrome language icons (24 languages), still in the old category colors;
+  .jsx / .tsx are React. Go, C#, Objective-C, Vue, SQL and proto are drawn by hand; the rest come from Simple Icons.
+- With split editors, the accent bar on top of the current group stops short of the card's rounded corners instead of cutting a slanted
+  notch at the corners; the tab bar's top-left corner is clipped to the card's radius, so after scrolling, the tab against the left edge no
+  longer pokes a white tip out of the card's corner.
+- File tree folders are now hand-drawn solid folders, colored by folder name and carrying a purpose symbol, 26 kinds in all: `<>` for src, a
+  checkmark for tests, lines of text for docs, a down arrow for build, a wrench for utils, a lock for auth, a cloud for deploy, and so on.
+- File and folder context menus are trimmed: 13 items for files (plus the staging items when there are changes) and 14 for folders, in five
+  groups: open and view, staging, Finder and paths, copy and paste, rename and Trash. Local history, Run, Compare, Add to .gitignore, Open
+  with Default App, Open on GitHub, Collapse All Folders and folder history moved under “More”; file rows no longer have New.
+- Destructive items in menus drawn by Grove (Move to Trash, Discard, Delete, Force Push, Abort, hard reset, Remove from List…) use the danger
+  color, including the hover fill.
+- Menu wording is unified: `Open` (no more `Open in Editor`), `View Diff`, `Search Here`; the group order of Git view change rows and of
+  change rows in commits matches the file tree.
+- Mouse-wheel scrolling in sidebar lists no longer gets stuck going up after hitting the bottom (when the first frame moved too little, the
+  list pulled it back to the bottom and that notch was lost); when the list measures new rows and corrects its offset, the glide continues,
+  and scrolling up no longer moves only a little per notch.
+- Cleaner repository sections in the Git view:
+  - The section header has only the repository name, branch, Pull and Push; the `+` is gone, and the change count shows only when collapsed.
+  - Group titles read “Changes 13” and “Staged 3” instead of being told apart by icons; `↩ + −` appear only on pointer hover, and the context
+    menu has the same actions. The “Unstaged” group is renamed “Changes”.
+  - One box does it all for committing: normally a one-line input field that grows as you type, with a split button at its bottom right whose
+    label says what will happen (“Commit 2 files”). Without a message there's no button, and the row of tools below is gone too.
+    `▾` holds the new Commit and Push (regardless of the auto-push setting), plus Amend Last Commit and Undo Last Commit; the box's context
+    menu has the same items. ⌘↩, ↑ and Esc are unchanged.
+  - When nothing is staged, the button says “Commit all 13 files”: it stages everything at once (untracked files included) and then commits,
+    and doesn't commit if staging fails; it used to say there were no staged changes.
+- Git view change rows, files in stashes and files in commits are written differently: on the left the same language icon as the file tree,
+  following the colored / outline setting; M / A / D are no longer color blocks but small letters at the end of the row, which make way for
+  buttons on hover. When space runs out the path shrinks first, so the file name is no longer cut down to `index.…`.
+- The commit box got a new texture: normally a translucent background with a faint border, solid only with keyboard focus; corner radius and
+  padding are a bit larger, and the buttons inside follow suit.
+- mygo upgraded to main (`6121009b`).
 
-- 界面（#56）：面板里不再有按钮形状，标签条整齐。
-  - 侧栏顶上的 文件 / 搜索 / Git / 大纲 四个图标改成靠左的紧凑一组，不再铺满侧栏宽度（右栏的 当前仓库 | 所有仓库 仍等分）。
-  - Git 栏段头的"全部暂存"不用悬停也在：有可暂存的改动就显示，没有就不显示。
-  - 提交框底下的"修改上一次提交"从勾选框加文字换成图标开关（铅笔），放在"撤销上次提交"左边，这一排是 [开关][撤销] … [提交] 三个图标；
-    开着是强调色，提交中画灰、点了不切，悬停提示照旧；开着时的说明还是上面那行小字。
-  - 面板里的文字按钮改成图标（读屏名和悬停提示照旧，Tab 照样按得到；不能点时画灰、提示里写原因）：冲突条（用我的 / 用他们的 / 两个都要 /
-    全部用我的 / 全部用他们的 / 标记为已解决 / 两边的 diff，我的绿、他们的强调色）、进行中横幅（继续 / 跳过 / 放弃）、替换预览条、
-    Diff 选行条、块的浮动按钮、搜索的全部替换 / 预览、变基向导、终端退出浮条；工作树行的"合并到 main"去掉实心方底、"审查"去掉灰底；
-    历史的"再读 N 条"改成链接样式。对话框、设置、关于和空状态页的按钮不变。
-  - 编辑器和终端的标签改成通栏平铺：第一个标签贴着卡片左边，所有标签同高、没有圆角，靠右边一条细线分开；当前标签是卡身底色，别的悬停一层淡底；
-    字统一 12 / 500，标题最长约 200 pt、多了省略。
-  - 终端标签多了横向滚动（同编辑器，底边 2 pt 细条），切到的标签滚到看得见，标签少时「+」紧跟在最后一个后面；"输出""问题"改成只有图标
-    （有条数时跟着数字）的紧凑标签，固定在后面，去掉竖分隔线。
+- Interface (#56): no more button shapes inside panels, and tidy tab bars.
+  - The four icons at the top of the sidebar (Files / Search / Git / Outline) became a compact left-aligned group instead of filling the sidebar's
+    width (the right panel's Current Repository | All Repositories still split it evenly).
+  - The Git view section header's “Stage All” shows without hovering: it appears whenever there are changes to stage, and not otherwise.
+  - “Amend Last Commit” below the commit box changed from a checkbox with text to an icon toggle (a pencil), placed left of “Undo Last
+    Commit”, so the row is three icons: [toggle][undo] … [commit].
+    On, it's the accent color; while committing it's grayed out and clicking doesn't toggle it; the tooltip is unchanged, and when on, the
+    explanation is still the small line of text above.
+  - Text buttons inside panels became icons (screen-reader names and tooltips unchanged, still reachable with Tab; grayed out when unavailable,
+    with the reason in the tooltip): the conflict bar (Accept Ours / Accept Theirs / Accept Both / Accept All Ours / Accept All Theirs / Mark as
+    Resolved / Diff Both Sides, ours in green and theirs in the accent color), the in-progress banner (Continue / Skip / Abort), the replace
+    preview bar, the Diff line-selection bar, a hunk's floating buttons, search's Replace All / preview, the rebase wizard, and the terminal's
+    exited bar. The worktree row's “Merge into main” lost its solid square background and “Review” its gray background.
+    History's “Load N More” became a link style. Buttons in dialogs, Settings, About and empty-state pages are unchanged.
+  - Editor and terminal tabs became flush, full-width tiles: the first tab touches the card's left edge, all tabs have the same height with no
+    rounded corners, separated by a thin line on the right; the current tab has the card body's background, and others get a faint background
+    on hover.
+    Text is uniformly 12 / 500, and titles are at most about 200 pt, truncated with an ellipsis.
+  - Terminal tabs scroll horizontally (like the editor, with a 2-pt thin bar at the bottom), the selected tab scrolls into view, and with few
+    tabs “+” sits right after the last one; “Output” and “Problems” became compact icon-only tabs (followed by a count when there are entries),
+    fixed at the end, with the vertical separators removed.
 
-- Git 栏（#52）：未跟踪的文件和未暂存的改动合成"未暂存"一组，顺序不变（已跟踪的在前、未跟踪的接在后面），条数是两者之和；
-  每一行照旧（字母、颜色、丢弃、暂存、未跟踪目录的展开）。组头的 + 暂存这一组的改动和未跟踪的文件：没有冲突时就是
-  `git add -A`（不按路径传，上万个文件也不会超出命令行长度限制），有冲突时只按路径暂存这些文件、不碰冲突的；丢弃仍是
-  `git restore .`、不动未跟踪的，这组全是未跟踪的时不显示。段头计数的提示和状态栏也只写"未暂存"（含未跟踪）。
-  提交框挪到改动上面（段头、横幅、工作树组头下面），文件多时不用滚到段底；"修改上一次提交"把段头滚到顶上。
-  提交按钮改成图标按钮，不再写"提交 N 个文件"（默认侧栏宽度下会超出侧栏）；字进悬停提示和读屏，Tab 照样能按到。
-  工作树组不再因为有工作树在等你 / 在跑 / 可合并自动展开，只有点开（或从"需要你"条跳过去）才列出来。
-  贮藏组头也只剩箭头、图标和条数（悬停提示、读屏照旧是"贮藏"）。
+- Git view (#52): untracked files and unstaged changes merged into one “Unstaged” group, in the same order (tracked first, untracked after),
+  with a count that's the sum of both.
+  Each row is as before (letter, color, discard, stage, expanding untracked folders). The group header's + stages the group's changes and
+  untracked files: with no conflicts that's `git add -A` (no paths passed, so even tens of thousands of files can't exceed the command-line
+  length limit); with conflicts it stages these files by path, leaving the conflicted ones alone. Discard is still `git restore .`, which
+  leaves untracked files alone, and it's hidden when the group is all untracked. The section header count's tooltip and the status bar also
+  say just “Unstaged” (including untracked).
+  The commit box moved above the changes (below the section header, banner and worktree group header), so with many files you don't have to
+  scroll to the bottom of the section; “Amend Last Commit” scrolls the section header to the top.
+  The commit button became an icon button that no longer says “Commit N files” (which overflowed the sidebar at its default width); the text
+  moved into the tooltip and the screen-reader name, and it's still reachable with Tab.
+  The worktree group no longer expands automatically because a worktree is waiting for you / running / mergeable; it lists them only when you
+  open it (or jump there from the “Needs you” bar).
+  The stash group header is also down to the arrow, icon and count (the tooltip and screen-reader name still say “Stash”).
 
-- Git 栏（#54）：工作树和贮藏改成设置里的开关，默认都不显示。设置 → Git 里的"在 Git 栏显示工作树"管工作树组、顶上的"需要你"条
-  和段头的工作树数，关着时也不算各工作树的状态、不盯它们的目录（关掉时停掉已有的监听，打开时接上），干净但有工作树的仓库不再自动展开；
-  "在 Git 栏显示贮藏"管贮藏组和段头的贮藏数，关着时贮藏、弹出贮藏照常能用。再打开时各仓库工作树组的展开状态照旧（会话里的不清）。
-  提交按钮改成和旁边"撤销上次提交"一样的普通图标（没有底色，悬停才有淡底），不再是强调色的实心方块；不能提交时灰着、点了不提交，
-  悬停提示写原因（还没写提交信息、没有已暂存的改动、正在提交）。
+- Git view (#54): worktrees and stashes became switches in Settings, both hidden by default. “Show worktrees in the Git panel” under Settings →
+  Git controls the worktree group, the “Needs you” bar at the top and the section header's worktree count; when off, worktree status isn't
+  computed and their folders aren't watched (turning it off stops existing watchers, turning it on reconnects them), and clean repositories
+  with worktrees no longer expand automatically.
+  “Show stashes in the Git panel” controls the stash group and the section header's stash count; when off, Stash and Pop Stash still work.
+  When switched back on, each repository's worktree group keeps its expanded state (what's in the session isn't cleared).
+  The commit button became a plain icon like the “Undo Last Commit” next to it (no background, a faint background only on hover), no longer a
+  solid accent-colored square; when you can't commit it's grayed out and clicking doesn't commit, and the tooltip gives the reason (no commit
+  message yet, nothing staged, already committing).
 
-- 文件树点击（#50）：连点同一个文件夹每一下都展开 / 收起（原来 500 ms 内的第二、三下被当成双击吞掉，看着像没反应）；目录和仓库行不认双击，
-  双击就是切两次，和 VS Code、Zed 一样，文件的双击固定打开不变。按住超过半秒再松开不再多切一次 / 多打开一次。
-  点文件预览不再闪：读得快的文件（40 ms 内）在同一帧放上内容，编辑区、大纲、面包屑不先空一帧；读得慢的照旧在后台读、过 150 ms 画"读取中…"。
+- File tree clicks (#50): repeatedly clicking the same folder expands / collapses it on every click (the second and third clicks within 500 ms
+  used to be swallowed as a double-click, which looked like nothing happened); folder and repository rows ignore double-clicks, so a
+  double-click just toggles twice, like VS Code and Zed, and double-clicking a file still pins it open. Holding for more than half a second
+  before releasing no longer toggles / opens one extra time.
+  Previewing a file by clicking no longer flickers: files that load quickly (within 40 ms) get their content in the same frame, so the editor
+  area, outline and breadcrumbs don't show an empty frame first; slow files still load in the background, with “Loading…” after 150 ms.
 
-- 文件树的右键菜单改成 Grove 自己画的（#48，#46 的第二步）：右键按下就在指针处开，按住拖到项上松开就选它（刚按下就松开、没动的话菜单留着）；
-  有子菜单的项停 0.2 s 才开，斜着往子菜单走路过别的项不会把它关掉（安全三角）；灰掉的项悬停 0.5 s 出提示说为什么，标签不再拖着一串括号；
-  点菜单外面只关菜单，这一下不落到底下的行上；Esc、窗口失去焦点、滚动文件树都关。键盘：↑↓ 跳过分隔线和灰项，→ / ← 开关子菜单，回车选，
-  打字母跳到下一个以它开头的项。下面放不下往上开、右边放不下往左开，窗口本身都放不下才滚（#6 的规矩不变）。别处（标签、Git 栏、历史……）
-  的右键菜单还是系统菜单，没变。
-  - 文件树有键盘时 ⇧F10 / 菜单键照旧能开菜单：在光标那一行左边、紧挨着它下面开，第一项高亮着，↑↓ 回车马上能用；没选就关了键盘回到文件树。
-  - 菜单开着时在文件树别处右键（或 ⌃点）：关掉这份、在右键的那一行（或空白处）、指针处开一份新的，和系统菜单、VS Code 一样；
-    右键多选外面的一行照旧只描边、不清选中。左键和别的键点外面只关菜单、被吞掉。
-  - 深色主题里高亮项是深一些的实心强调色、白字（至少 4.5:1），不再是浅蓝底。
+- The file tree context menu is now drawn by Grove itself (#48, step two of #46): it opens at the pointer on right-button press, and pressing,
+  dragging onto an item and releasing selects it (releasing right away without moving keeps the menu open). Items with submenus open after a
+  0.2 s pause, and moving diagonally toward a submenu over other items doesn't close it (safety triangle); hovering a grayed-out item for 0.5 s
+  shows a tooltip saying why, so labels no longer trail a string of parentheses. Clicking outside the menu only closes it, without the click
+  landing on the row beneath; Esc, the window losing focus and scrolling the file tree all close it. Keyboard: ↑↓ skip separators and grayed
+  items, → / ← open and close submenus, Return selects, and typing a letter jumps to the next item starting with it. It opens upward when
+  there's no room below and leftward when there's no room on the right, and scrolls only when even the window can't fit it (the rule from #6
+  is unchanged). Context menus elsewhere (tabs, Git view, history…) are still system menus, unchanged.
+  - With keyboard focus in the file tree, ⇧F10 / the menu key still open the menu: it opens at the left of the cursor row, right below it,
+    with the first item highlighted so ↑↓ and Return work immediately; closing it without choosing returns the keyboard to the file tree.
+  - Right-clicking (or ⌃-clicking) elsewhere in the file tree while the menu is open closes it and opens a new one at the pointer on that row
+    (or blank space), like system menus and VS Code; right-clicking a row outside a multi-selection still only outlines it without clearing
+    the selection. Left clicks and other buttons outside only close the menu and are swallowed.
+  - In the dark theme the highlighted item is a darker solid accent color with white text (at least 4.5:1), no longer a light-blue background.
 
-- 文件树的鼠标手感（#46）：没选中的行按下那一帧就选中、画成"按下"的底色（比悬停深一档），松开才打开文件 / 展开目录；按着拖过几行是拖着选，
-  松开不打开。右键没选中的行不再清掉原来的多选，菜单只对它，那一行画一圈强调色描边，菜单关了就去掉。行的提示改成停 0.5 s 出，
-  出过一条以后在行间移动直接换到新行（暖启动）；按下、右键时收起。目录箭头不再换成手形光标。右键菜单还是 mygo 的 `PopoverMenu`（按下就弹、
-  悬停高亮、键盘、Esc、点外面关、放不下往上 / 往左开它本来就有）；按住拖到项上松开选中、子菜单延时和安全三角、灰掉的项悬停说原因、
-  点外面关掉不落到下面这几条它做不到，留给下一步自己画菜单。
+- File tree mouse feel (#46): an unselected row is selected on the frame it's pressed, drawn with a “pressed” background (one shade darker than
+  hover), and the file opens / folder expands only on release; pressing and dragging over several rows selects them without opening anything
+  on release. Right-clicking an unselected row no longer clears an existing multi-selection: the menu applies only to it, and the row gets an
+  accent-colored outline that goes away when the menu closes. Row tooltips now appear after a 0.5 s pause, and once one has shown, moving
+  between rows switches straight to the new row (warm start); they hide on press and right-click. Folder arrows no longer turn the cursor into
+  a hand. The context menu is still mygo's `PopoverMenu` (it already opens on press, highlights on hover, handles the keyboard, closes on Esc
+  or a click outside, and opens upward / leftward when it doesn't fit); press-drag-release to select, submenu delays and the safety triangle,
+  hovering grayed items to see why, and clicks outside closing it without landing beneath are things it can't do, left for the next step of
+  drawing our own menus.
 
-- 底栏能最大化（#44）：⇧⌘J、底栏标题行最右边的按钮或双击标题行的空白处，底栏（终端 / 输出 / 问题）占掉编辑区那块地方，再来一下回到原来的高度
-  （终端放在右边时是占满侧栏和右栏之间）。不存进 state.json；关底栏、打开或切到编辑器标签、进禅模式时自动还原；底栏关着时按 ⇧⌘J 直接打开并最大化。
+- The bottom panel can be maximized (#44): ⇧⌘J, the button at the far right of the bottom panel's title row, or double-clicking blank space in
+  the title row makes the bottom panel (Terminal / Output / Problems) take over the editor area's space, and doing it again restores the
+  previous height (with the terminal on the right, it fills the space between the sidebar and the right panel). It isn't saved in
+  state.json; it restores automatically when you close the bottom panel, open or switch to an editor tab, or enter Zen Mode; with the bottom
+  panel closed, ⇧⌘J opens it maximized directly.
 
-- 普通文件夹（不是 Git 仓库）的文件树列出点开头的目录（`.venv`、`.pytest_cache`、`.ruff_cache`……）和 `node_modules`（#42）：
-  和 Git 仓库里被忽略的目录一样灰显、默认收着，展开时读一层；不往里走，几万个文件的 `.venv` 不拖慢打开，⌘P 和全文搜索也不进。
-  不受"显示被忽略的文件"影响，"隐藏的文件"照样能藏掉；`.git` 和 `.DS_Store` 仍然不列。
+- In plain folders (not Git repositories) the file tree lists dot-folders (`.venv`, `.pytest_cache`, `.ruff_cache`…) and `node_modules`
+  (#42): grayed out and collapsed by default like ignored folders in Git repositories, reading one level when expanded; they aren't walked,
+  so a `.venv` with tens of thousands of files doesn't slow down opening, and ⌘P and full-text search skip them too.
+  They're unaffected by “Show Ignored Files”, and “Hidden files” can still hide them; `.git` and `.DS_Store` are still not listed.
 
-- Git 栏重做：工作树就是 agent 的工位（#35）。每个工作树一行、只放一个状态符号——等你（琥珀点）、运行中（转圈）、可合并（绿勾）、
-  有改动（文件夹加改动数）、空闲（空心圆）、没有 agent、已合并（合并图标，半透明；"可清理"并进来），组里按这个顺序排，主工作树在最前；
-  分支、路径、主 / 已打开 / 已锁定写进悬停提示或小图标。悬停出终端 / 审查 / 移除工作树按钮。点一行（或回车）展开：摘要（提交数、
-  文件数、+增 −删）、审查和"合并到 main…"（先问，走现有的合并）、`main...分支` 多出的文件（点开 Diff）、agent 的终端。
-  有工作树在等你、在跑或可合并时组默认展开，收起的组头只放最需要你的那一档。侧栏顶上多一条"需要你"，列出所有仓库里等你、可合并的
-  工作树，上一个 / 下一个在它们之间跳。仓库段头：干净时是绿色圈中勾，有改动是改动数徽标，↓ / ↑ 灰字，拉取 / 推送是 24 见方的图标按钮；
-  不再写"没有未提交的变更"那一行。未暂存 / 已暂存组头、工作树组头、侧栏顶上的 文件 / 搜索 / Git / 大纲 只留图标（读屏和提示照旧）。
-- Git 操作灰着时写明原因（#32）：抓取、拉取、推送、强制推送、同步、暂存 / 取消暂存全部、丢弃、贮藏 / 弹出贮藏、合并 / 变基到某个分支、
-  切换 / 重命名 / 删除分支、推送标签、移除工作树、撤销提交、拣选 / 还原 / 重置。原生菜单把原因括在标签后面（"推送（和 origin 一致）"
-  "移除工作树（主工作树不能删）""合并到当前分支 › feature（已经合并）"），标题栏和 Git 栏的按钮写在提示里，命令面板写在灰着的命令后面；
-  从菜单栏点了不能做的 Git 操作也提示原因。原因都在 `internal/app/gitwhy.go` 一处按"最根本的先"的顺序算，只报一条。
-  点下去时再查一次：菜单开着时状态变了（监听刷新、另一个 agent 刚推送），不执行、提示原因。
-  行为上的变化：和上游一致、只落后、和上游分叉时推送灰着（分叉时用强制推送）；没有远程时抓取灰着；有进行中的合并 / 变基时拉取、同步、贮藏灰着；
-  有冲突时"合并到当前分支 / 把当前分支变基到"灰着；"更多 git 操作"菜单里没上游时那一项叫"推送并设置上游"。
-- 终端里的 agent 状态（#33）：终端里前台跑着 claude、codex、gemini、aider、opencode（设置 → 终端 →「agent 命令」可以再加）时，Grove 按格算出"等你""运行中""空闲"，按工作树汇总。
-  程序响铃（BEL）或发通知（OSC 9 / OSC 777）而你没在看那个终端，就是等你，终端标签的图标后面出一个琥珀色圆点，切进那个终端就消失；最近 10 秒有输出是运行中，标签上一个慢慢转的灰圈；空闲不标。
-  全在本机算，只看 Grove 自己的终端（前台进程每 2 秒用一次 ps 读），不读 agent 的日志，也不接它的接口；后台运行的终端（termd）也认。Git 栏的显示之后另做。
-- 右栏历史重做（#34）：头部一行是仓库名和分支，右边是图标开关（搜索、所有分支、只看 agent 写的、所有仓库）和关闭，去掉了
-  "当前仓库 | 所有仓库"两段切换、常驻的搜索框和"N 条"；点放大镜才展开搜索框，Esc 先清空再收起。提交图开关挪到头部的右键菜单。
-  每个提交一行（高 30），右边是 agent 记号、分支 / 标签、时间（`HH:MM`，悬停换成短哈希）；按日期分段（今天、昨天、11 月 3 日）。
-  当前分支用强调色，远程分支只一个云朵图标。"未提交的改动"是橙色铅笔加改动数。展开的提交是一张卡片：正文（最多两行）、
-  短哈希（点了复制完整哈希）、作者、agent，和 HEAD 比较 / 在网页打开 / 更多（完整哈希、邮箱、精确时间、父提交和提交的操作），
-  下面是改动的文件。提交图的泳道颜色调淡、不用红色，线宽 1.8，节点外面一圈底色；"未提交"是橙色虚线圈。
-  "所有仓库"不再画提交图，每行左边一个仓库圆点、右边是灰色的仓库名。
-- 历史：正文里有编码 agent（Claude、Codex、Copilot、Gemini、Cursor……）的 `Co-Authored-By:` trailer 的提交带一个四角星；
-  头部的"只看 agent 写的"只留这些提交，和搜索、所有分支叠加（`git.AgentOf`）。
-- Git 栏：变更文件行加了行内按钮（#31）。指针移到行上（或列表有键盘时选中它）右边出一排小按钮，顺序和 VS Code 一样：
-  未暂存的是打开文件 · 丢弃改动 · 暂存，未跟踪的是打开文件 · 删除文件 · 暂存，已暂存的是打开文件 · 取消暂存，未跟踪的整个目录是删除 · 暂存；
-  丢弃、删除照旧先问。指针所在的行在多选里时按钮作用于选中的全部（提示里写数量）。点按钮不改选中、不开 Diff；长文件名先省略号截断，按钮贴在最右，行不跳高。
-  "未暂存"组头在 + 左边加了"丢弃所有未暂存的改动…"。
-- Git 栏键盘：列表有焦点时空格暂存 / 取消暂存选中的变更、⌘⌫ 丢弃（先问），多选时作用于全部；两条都进了命令面板和快捷键设置（新的"Git 栏"一组）。
-- 认编码：判 EUC-KR 时常用音节的占比按不同的音节算，短的 GB18030 中文里同一个字重复几次不再被认成韩文。
-- Git 栏：暂存 / 取消暂存 / 丢弃了选中的那行（右键菜单、行内按钮、键盘都算）之后，选中停在它原来的下一行，不再丢掉。
+- Git view redesign: a worktree is an agent's workstation (#35). Each worktree gets one row with a single status symbol: waiting for you (amber
+  dot), running (spinner), Ready to merge (green check), Has changes (folder plus change count), idle (hollow circle), No agent, Merged (merge
+  icon, translucent; “prunable” is folded in). The group is sorted in that order, with the main worktree first.
+  Branch, path and main / open / locked go into the tooltip or small icons. Hovering shows Terminal / Review / Remove Worktree buttons. Clicking
+  a row (or Return) expands it: a summary (commit count, file count, +added −deleted), Review and “Merge into main…” (asks first, then uses the
+  existing merge), the files `main...branch` adds (click to open the Diff), and the agent's terminal.
+  When a worktree is waiting for you, running or ready to merge, the group is expanded by default, and a collapsed group header shows only the
+  level that needs you most. A “Needs you” bar at the top of the sidebar lists worktrees in every repository that are waiting for you or ready to
+  merge, and previous / next jump between them. Repository section headers: a green checkmark in a circle when clean, a change-count badge
+  when there are changes, ↓ / ↑ in gray, and Pull / Push as 24-pt square icon buttons; the “no uncommitted changes” row is gone. The Unstaged /
+  Staged group headers, the worktree group header and the Files / Search / Git / Outline switcher at the top of the sidebar keep only their
+  icons (screen-reader names and tooltips unchanged).
+- Grayed-out Git actions say why (#32): Fetch, Pull, Push, Force Push, Sync, Stage / Unstage All, Discard, Stash / Pop Stash, merge / rebase onto
+  a branch, switch / rename / delete branch, Push Tag, remove worktree, undo commit, cherry-pick / revert / reset. Native menus put the reason in
+  parentheses after the label (“Push (in sync with origin)”, “Remove Worktree (the main worktree can't be removed)”, “Merge into Current Branch
+  › feature (already merged)”), title bar and Git view buttons put it in the tooltip, and the Command Palette shows it after the grayed-out
+  command; clicking an unavailable Git action from the menu bar also shows the reason. All reasons are computed in one place,
+  `internal/app/gitwhy.go`, in “most fundamental first” order, and only one is reported.
+  The check runs again on click: if state changed while the menu was open (a watcher refresh, another agent just pushed), the action doesn't run
+  and the reason is shown.
+  Behavior changes: Push is grayed out when in sync with, only behind, or diverged from upstream (use Force Push when diverged); Fetch is
+  grayed out with no remote; Pull, Sync and Stash are grayed out during a merge / rebase in progress; “Merge into Current Branch / Rebase
+  Current Branch onto” are grayed out when there are conflicts; in the “More Git actions” menu, the item is called “Push and Set Upstream” when
+  there's no upstream.
+- Agent status in the terminal (#33): when claude, codex, gemini, aider or opencode is running in the foreground of a terminal (more can be added
+  in Settings → Terminal → “Agent commands”), Grove works out “waiting for you”, “running” or “idle” per pane and rolls it up per worktree.
+  When the program rings the bell (BEL) or posts a notification (OSC 9 / OSC 777) while you aren't looking at that terminal, it's waiting for you,
+  and an amber dot appears after the terminal tab's icon, disappearing when you switch to that terminal; output in the last 10 seconds means
+  running, shown as a slowly spinning gray circle on the tab; idle isn't marked.
+  Everything is computed locally, looking only at Grove's own terminals (the foreground process is read with ps every 2 seconds), without
+  reading the agent's logs or hooking into its APIs; terminals running in the background (termd) are recognized too. Showing it in the Git
+  view comes later.
+- Right panel history redesign (#34): the header row is the repository name and branch, with icon toggles on the right (search, All branches,
+  Agent commits only, All Repositories) and close; the “Current Repository | All Repositories” segmented switch, the always-visible search
+  field and “N commits” are gone. The search field expands only when you click the magnifier; Esc clears it first, then collapses it. The
+  commit graph toggle moved to the header's context menu.
+  One row per commit (30 high), with the agent mark, branches / tags and time on the right (`HH:MM`, replaced by the short hash on hover);
+  sections by date (Today, Yesterday, November 3).
+  The current branch uses the accent color; remote branches are just a cloud icon. “Uncommitted changes” is an orange pencil plus the change
+  count. An expanded commit is a card: the body (at most two lines), the short hash (click to copy the full hash), author, agent, and Compare
+  with HEAD / Open on the web / More (full hash, email, exact time, parent commits and commit actions), followed by the changed files. The
+  commit graph's lane colors are softer and avoid red, lines are 1.8 wide, and nodes have a ring of background color; “uncommitted” is an
+  orange dashed circle.
+  “All Repositories” no longer draws the commit graph; each row has a repository dot on the left and the repository name in gray on the right.
+- History: commits whose message has a `Co-Authored-By:` trailer from a coding agent (Claude, Codex, Copilot, Gemini, Cursor…) carry a
+  four-pointed star; the header's “Agent commits only” keeps just those commits, combined with search and All branches (`git.AgentOf`).
+- Git view: inline buttons on changed-file rows (#31). When the pointer moves over a row (or it's selected while the list has keyboard focus), a
+  row of small buttons appears on the right, in VS Code's order: Open File · Discard Changes · Stage for unstaged files, Open File · Delete File
+  · Stage for untracked files, Open File · Unstage for staged files, and Delete · Stage for whole untracked folders.
+  Discard and delete still ask first. When the row under the pointer is part of a multi-selection, the buttons act on the whole selection (the
+  tooltip gives the count). Clicking a button doesn't change the selection or open the Diff; long file names are truncated with an ellipsis
+  first, the buttons hug the right edge, and the row height doesn't jump.
+  The “Unstaged” group header gains “Discard All Unstaged Changes…” to the left of +.
+- Git view keyboard: with the list focused, Space stages / unstages the selected changes and ⌘⌫ discards (asking first), acting on all of them
+  when several are selected; both are in the Command Palette and the shortcut settings (a new “Git Sidebar” group).
+- Encoding detection: when judging EUC-KR, the share of common syllables counts distinct syllables, so short GB18030 Chinese text with the
+  same character repeated a few times is no longer taken for Korean.
+- Git view: after staging / unstaging / discarding the selected row (via the context menu, inline buttons or keyboard), the selection stays on
+  what was the next row instead of being lost.
 
-- Git 栏：每个仓库的段头右边加了拉取、推送按钮，只作用于这个仓库，旁边显示领先（↑n）/ 落后（↓n）的提交数（原来写在分支名后面）。
-  提示文字和标题栏的同一组按钮一样：没有上游时拉取灰着、推送是"推送并设置上游"；正在拉取 / 推送时按钮转圈、不能再点（标题栏的也是）。
-  推送按钮右键是强制推送和同步。
-- 侧栏字号调大（#5）：文件树、Git 栏、搜索、大纲、打开的编辑器的正文从 12.5–13 号改成 14 号，分支、计数、目录、分组标题这些次要信息从 10.5–11 号改成 12 号；文件树行高 22 → 24，Git 栏的仓库段头、分组标题、贮藏行、工作树块头各高 2。
-- 编辑器：用键盘移动光标或打字导致视图滚动时，光标上下各留 5 行（视图矮时留视图高度的 1/5），文件末尾也一样，光标不再贴着编辑区下边。鼠标点击、滚轮、拖滚动条不受影响。
-- 文件树：在窗口靠下的地方右键，菜单不再折起来、要点一下才看得全。文件树的右键菜单（文件、目录、仓库、空白处、钉在顶上的行）改成画在窗口里的菜单，下面放不下就往上开，只有窗口本身都放不下时才滚动（#6）。
-- 编辑器：在大文件里打字不再每敲一个键都整篇重算（#11）。粘性滚动的大纲原来只有超过 256 KB 的文件才等停手再解析，现在上次解析超过 1 ms 的文件也一样（敲字时先用旧的，停手 0.5 秒再解析）；装订线改动块（点开看原文的那张卡用的）一直用同一份对比增量算，只重比改动附近的几行，不再每个键都把整个文件和 HEAD 重新 diff 一遍。几百行的小文件照旧每次都算。
-- 编辑器：改过还没保存的大文件，鼠标移动、滚动、光标闪烁时不再每帧把整篇文字拷两份来比较（标签的未保存圆点和状态栏都要问“改没改”），大文件滚动、打字时少了 GC 造成的偶发卡顿。撤回到和磁盘上一样时圆点照样消失（#12）。
-- 标签：有没保存的改动的标签（包括当前标签）右边显示圆点，鼠标移到标签上才变成 ×，点了照旧关闭、会问要不要保存；原来当前标签一律画 ×，正在改的文件看不出没存（#17）。
-- 文件树：吸顶的仓库 / 目录层底下原来是一条 1 px 的硬边线，下面被盖住一半的那行看着像画错了；改成和编辑器粘性滚动一样的柔和阴影（浅色、深色各调了深浅），读起来是那行从栈底下滚过去（#18）。
-- 文件树：当前打开的文件名字不再加粗，只靠选中底色区分；长名字的省略号位置不再随打开 / 切走跳动（#15）。
-- 文件树减噪（#20）：
-  - 行的悬停提示（"5.0 KB · 刚刚 · 没有改动"）在一行上停满 1 秒才出（原来 0.6 秒），出在行的下方、不再盖住上一行；在行之间挪动时每换一行都重新等，不会刚消失一条就立刻弹下一条。点了那一行提示就收起，指针离开前不再出。名字被省略号截断时，提示第一行是全名。别处的提示不变。
-  - 文件树和"打开的编辑器"里的彩色类型图标去掉了底块，颜色调淡（往次级字色靠），编程语言的字母不再用粗体；还是按类型分颜色和图形。标签、快速打开、面包屑这些地方的图标不变。
-- 编辑器（#21）：选中文字时，里面的空格点、制表符箭头淡了很多（和缩进参考线差不多），不再比文字还抢眼。
-  光标停在一个词上（没有选区）约 250 ms 后，本文件里同一个词的其他出现会铺上浅底色（整词匹配、区分大小写），打字时不显示；很大的文件只标看得见的那几行。
-- 编辑器标签切换快捷键（#19）：⇧⌘[ / ⇧⌘] 和 ⌥⌘← / ⌥⌘→ 切当前编辑器组的上一个 / 下一个标签，到头绕回；键盘在终端里时照旧切终端标签（终端也多认 ⌥⌘← / ⌥⌘→）。⌃Tab 切到上一个用过的标签（连按在两个之间来回），⌃⇧Tab 切到最久没用的。都在「视图」菜单、命令面板和快捷键设置里。
-- 编辑器：点文件先出文字，不再等 git 读完 HEAD 里的那份（只给装订线的改动标记、Peek、"和 HEAD 比"用）；那份随后在后台读好补上，重读时先留着原来的标记不闪。历史版本标签也一样，父提交里的那份随后补上。"读取中…"只在读了约 150 ms 还没读完时才出现，读得快的（绝大多数）不再闪转圈，预览标签换文件时也不先闪空白（#22）。
-- 文件树和侧栏列表（默认的淡底选中）分出三种行底色（#16）：列表有键盘时选中行是强调色的淡底加左边竖条（活动选中，强调色比原来浓一点）；焦点在编辑器或别处时变成中性的灰、没有竖条、字不变色（非活动选中，和 VS Code 一样）；悬停比非活动选中更淡，深色主题里不再和选中几乎一样。命令面板的列表一直按活动选中画。设置里关掉淡底（实心选中块）时不变。
+- Git view: each repository's section header gains Pull and Push buttons on the right that act only on that repository, with the ahead (↑n) /
+  behind (↓n) commit counts next to them (previously after the branch name).
+  Tooltips match the same buttons in the title bar: with no upstream, Pull is grayed out and Push becomes “Push and Set Upstream”; while
+  pulling / pushing, the button spins and can't be clicked again (the title bar's too).
+  The push button's context menu has Force Push and Sync.
+- Larger sidebar text (#5): body text in the file tree, Git view, Search, Outline and Open Editors goes from 12.5–13 pt to 14 pt, and secondary
+  information such as branches, counts, folders and group titles from 10.5–11 pt to 12 pt; file tree rows go from 22 to 24 high, and the Git
+  view's repository section headers, group titles, stash rows and worktree block headers are each 2 higher.
+- Editor: when moving the cursor with the keyboard or typing scrolls the view, 5 lines are kept above and below the cursor (one fifth of the
+  view height when the view is short), at the end of the file too, so the cursor no longer hugs the bottom edge of the editor area. Mouse
+  clicks, the scroll wheel and dragging the scroll bar are unaffected.
+- File tree: right-clicking low in the window no longer gives a folded-up menu that needs a click to see in full. The file tree's context menus
+  (files, folders, repositories, blank space, pinned rows) became menus drawn inside the window that open upward when there's no room below
+  and scroll only when even the window can't fit them (#6).
+- Editor: typing in a large file no longer recomputes the whole document on every keystroke (#11). The sticky-scroll outline used to wait for
+  you to stop typing before reparsing only for files over 256 KB; now files whose last parse took over 1 ms do the same (the old outline is
+  used while typing, and it reparses after 0.5 s of quiet). The gutter's change hunks (used by the card that shows the original text) are
+  always computed incrementally from the same comparison, re-diffing only the lines around the edit instead of diffing the whole file against
+  HEAD on every key. Small files of a few hundred lines are still recomputed every time.
+- Editor: for large files with unsaved edits, mouse movement, scrolling and cursor blinking no longer copy the whole text twice per frame to
+  compare it (the tab's unsaved dot and the status bar both ask “is it modified?”), so scrolling and typing in large files have fewer
+  occasional GC hitches. Undoing back to the on-disk content still clears the dot (#12).
+- Tabs: tabs with unsaved changes (including the current tab) show a dot on the right, which turns into × only when the pointer is over the
+  tab; clicking it still closes the tab and asks whether to save. Previously the current tab always showed ×, so you couldn't tell the file you
+  were editing was unsaved (#17).
+- File tree: the pinned repository / folder levels used to have a hard 1-px line underneath, which made the half-covered row below look like a
+  drawing bug; it's now a soft shadow like the editor's sticky scroll (tuned separately for light and dark), so it reads as the row scrolling
+  under the stack (#18).
+- File tree: the currently open file's name is no longer bold and is distinguished only by the selection background; the ellipsis in long
+  names no longer jumps around when files are opened / switched away from (#15).
+- File tree noise reduction (#20):
+  - A row's tooltip (“5.0 KB · just now · no changes”) appears only after resting on the row for a full second (previously 0.6 s), below the row
+    instead of covering the row above; moving between rows restarts the wait for each new row, so the next tooltip doesn't pop up the moment
+    one disappears. Clicking the row hides its tooltip, and it doesn't come back until the pointer leaves. When the name is truncated with an
+    ellipsis, the tooltip's first line is the full name. Tooltips elsewhere are unchanged.
+  - Colored type icons in the file tree and Open Editors lost their background blocks and are softer (closer to the secondary text color), and
+    programming-language letters are no longer bold; colors and shapes still follow the type. Icons in tabs, Quick Open, breadcrumbs and
+    elsewhere are unchanged.
+- Editor (#21): inside selected text, the space dots and tab arrows are much fainter (about like indent guides), no longer louder than the text.
+  When the cursor rests on a word (with no selection) for about 250 ms, other occurrences of the same word in the file get a light background
+  (whole word, case-sensitive); not shown while typing, and in very large files only the visible lines are marked.
+- Editor tab switching shortcuts (#19): ⇧⌘[ / ⇧⌘] and ⌥⌘← / ⌥⌘→ switch to the previous / next tab in the current editor group, wrapping at the
+  ends; with the keyboard in the terminal they still switch terminal tabs (the terminal now also accepts ⌥⌘← / ⌥⌘→). ⌃Tab switches to the
+  previously used tab (pressing repeatedly toggles between two), and ⌃⇧Tab to the least recently used. All are in the “View” menu, the Command
+  Palette and the shortcut settings.
+- Editor: clicking a file shows the text first instead of waiting for git to read the HEAD version (used only for the gutter's change markers,
+  Peek and “compare with HEAD”); that version is read in the background and filled in afterwards, and on rereads the old markers are kept so
+  nothing flickers. History version tabs do the same, with the parent commit's version filled in afterwards. “Loading…” appears only when a read
+  hasn't finished after about 150 ms, so fast reads (the vast majority) no longer flash a spinner, and preview tabs no longer flash blank when
+  switching files (#22).
+- The file tree and sidebar lists (with the default faint selection) now distinguish three row backgrounds (#16): with keyboard focus in the
+  list, the selected row has a faint accent background plus a bar on the left (active selection, with a slightly stronger accent than before);
+  with focus in the editor or elsewhere it turns neutral gray with no bar and unchanged text color (inactive selection, as in VS Code); hover is
+  fainter than inactive selection, and in the dark theme it no longer looks almost the same as selection. The Command Palette's list always
+  draws the active selection. Unchanged when the faint background is turned off in Settings (solid selection block).
 
 ## v0.1.0 — 2026-11-02
 
-第一个公开版本。
+First public release.
 
-- 打开 `.code-workspace` 或文件夹后，所有仓库同时显示：文件树里一个仓库一个根，Git 栏里一个仓库一段。可以跨仓库多选、拖动，撤销上一次文件操作。
-- 编辑器：多标签，拖到边上分屏，同一个文件能在两个组里各开一份。有大纲、粘性滚动、代码片段、Markdown 预览（表格，表格里也能放图片；Mermaid、公式），图片和十六进制查看。认得 GB18030、Big5、Shift-JIS 等编码。
-- Git：按块或按行暂存，三方合并解决冲突，提交图可以看一个仓库或所有仓库合在一起。合并、变基（含交互式）、cherry-pick、贮藏、标签、工作树、子模块都能在界面里做。刷新状态只用只读命令，带 `GIT_OPTIONAL_LOCKS=0`。
-- 终端：基于 Ghostty 的 libghostty-vt，每个仓库可以开好几个，关窗口时记下布局和最近的输出。
-- 跨仓库搜索替换，⌘P 找文件，⇧⌘P 命令面板。
-- 保存时可以跑格式化（gofmt、prettier 等）和检查（go vet、eslint 等），问题集中在“问题”面板里。
-- 本地历史：每次保存留一份，改错、删错能找回来。
-- 多窗口，单实例，`open -a Grove <路径>` 在已经开着的 Grove 里打开。
-- 中英文界面，浅色深色主题，快捷键可以自己改。
-- 基于 mygo v0.7.4。
+- After opening a `.code-workspace` or folder, all repositories are shown at once: one root per repository in the file tree, one section per
+  repository in the Git view. You can multi-select and drag across repositories, and undo the last file operation.
+- Editor: multiple tabs, drag to an edge to split, and the same file can be open in two groups. Outline, sticky scroll, snippets, Markdown
+  preview (tables, with images inside tables too; Mermaid, math), and image and hex viewing. Recognizes encodings such as GB18030, Big5 and
+  Shift-JIS.
+- Git: stage by hunk or by line, resolve conflicts with a three-way merge, and view the commit graph for one repository or all of them combined.
+  Merge, rebase (including interactive), cherry-pick, stash, tags, worktrees and submodules can all be done in the interface. Refreshing
+  status uses only read-only commands, with `GIT_OPTIONAL_LOCKS=0`.
+- Terminal: based on Ghostty's libghostty-vt, several per repository, with the layout and recent output saved when the window closes.
+- Search and replace across repositories, ⌘P to find files, ⇧⌘P for the Command Palette.
+- Formatting (gofmt, prettier, etc.) and linting (go vet, eslint, etc.) can run on save, with problems collected in the “Problems” panel.
+- Local history: a copy is kept on every save, so mistaken edits and deletions can be recovered.
+- Multiple windows, single instance; `open -a Grove <path>` opens in the already running Grove.
+- Chinese and English interface, light and dark themes, customizable shortcuts.
+- Based on mygo v0.7.4.

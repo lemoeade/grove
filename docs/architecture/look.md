@@ -1,117 +1,169 @@
-# 外观、语言和快捷键
+# Appearance, language and shortcuts
 
-[← 架构总览](../architecture.md)
+[← Architecture overview](../architecture.md)
 
-风格、窗口底和颜色、应用图标、界面语言。
+Styles, window backdrop and colors, the app icon, and the UI language.
 
-## 外观、语言和快捷键
+## Appearance, language and shortcuts
 
-### 窗口底和颜色
+### Window backdrop and colors
 
-#### 两种风格
+#### Two styles
 
-风格是 `Settings.Look`，代码在 `ui/look.go`：
+The style is `Settings.Look`, implemented in `ui/look.go`:
 
-- 默认 `""` 是 **VS Code**：照 VS Code 1.147 起的 Light 2026 / Dark 2026，不透明的平面。三块颜色是 `vsSide`（标题栏、侧栏、状态栏、终端、右栏）、`vsEditor`（编辑器组）、`vsLine`（线）；`vsActiveLine` 是当前标签和底栏标题的线（浅色黑、深色 #BFBFBF），`vsActivityLine` 是视图切换的线。强调色默认「黑」，「蓝」是它的 #0069CC / #297AA0。
-- `grove` 是 **Grove**：窗口底上的圆角卡片，见下面“Grove 风格”。
+- The default `""` is **VS Code**: modeled on the Light 2026 / Dark 2026 themes from VS Code 1.147 on, with opaque flat surfaces.
+  The three surface colors are `vsSide` (title bar, sidebar, status bar, terminal, right panel), `vsEditor` (editor groups) and
+  `vsLine` (lines); `vsActiveLine` is the line on the current tab and bottom panel title (black in light, #BFBFBF in dark), and
+  `vsActivityLine` is the line on the view switcher. The accent color defaults to "Black"; "Blue" is VS Code's #0069CC / #297AA0.
+- `grove` is **Grove**: rounded cards on the window backdrop; see [Grove style: window backdrop and cards](#grove-style-window-backdrop-and-cards) below.
 
-**怎么切**：取颜色的小函数（`cardBg` / `windowBg` / `headerBg` / `cardLine` / `diffBase`）只拿得到主题、拿不到 `App`，所以每帧 `applyAccent`（主窗口的 `root`、设置窗口、关于窗口）开头先：
+**How switching works**: the small functions that pick colors (`cardBg` / `windowBg` / `headerBg` / `cardLine` / `diffBase`) only
+get the theme, not the `App`, so every frame `applyAccent` (for the main window's `root`, the settings window and the About window)
+first does:
 
-- `setLook`：把风格记在包级的 `vsLook`（`vscode()` 读它），把设置里的浮层不透明度记进 `frostPct`，并调 `highlight.SetDocComments`（见下面“代码配色”）。
-- `applyLook`（只在 VS Code 风格时）：换这一帧主题的字色、线色、`Surface`（输入框的白，mygo 的输入框、下拉框拿它垫底）、`ScrollbarStyle`，把 `Inverse` / `InverseText` 换成浮层底和正文字色。
+- `setLook`: stores the style in the package-level `vsLook` (read by `vscode()`), stores the overlay opacity from the settings in
+  `frostPct`, and calls `highlight.SetDocComments` (see [VS Code style: code colors](#vs-code-style-code-colors) below).
+- `applyLook` (VS Code style only): swaps this frame's theme text colors, line colors, `Surface` (the white of text fields, which
+  mygo's text fields and dropdowns use as their background) and `ScrollbarStyle`, and replaces `Inverse` / `InverseText` with the
+  overlay background and body text color.
 
-#### VS Code 风格：布局
+#### VS Code style: layout
 
-- `card` 不要圆角和阴影；`panelCard`（底栏、右栏）是侧栏色的底、不描边。
-- `center` 的缝是 0（拖条还是 `cardGap` 宽，底色就是侧栏色）；根的中间一行顶上、状态栏顶上各一道 `vsLine`。
-- 编辑器标签还是 `panelTab`，当前那页顶上一道 `vsActiveLine`，`focusBar` 不画；底栏标签走 `panelTitle`（不分格，当前那个底下一道线）。
-- `segTabsOf` 只有图标时（侧栏视图切换）是平的，当前那个底下一道线。
-- 标题栏的 `branchButton` 是平的（透明底、400 字重、悬停 `toolFill`）；快速打开照命令中心（`quickOpen`）。
-- 对话框的次要按钮走 `vsSecondary`。
-- 窗口不透：`cmd/workbench` 的 `vibrancy` 在 VS Code 风格下一律不用系统材质。
+- `card` has no rounded corners or shadow; `panelCard` (bottom panel, right panel) has the sidebar color as its background and
+  no border.
+- The gap in `center` is 0 (the drag handle is still `cardGap` wide, and its background is just the sidebar color); there is a
+  `vsLine` across the top of the root's middle row and across the top of the status bar.
+- Editor tabs still use `panelTab`, with a `vsActiveLine` across the top of the current one and no `focusBar`; bottom panel tabs
+  use `panelTitle` (no cells, with a line under the current one).
+- `segTabsOf` with icons only (the sidebar view switcher) is flat, with a line under the current one.
+- The title bar's `branchButton` is flat (transparent background, weight 400, `toolFill` on hover); Quick Open is modeled on the
+  command center (`quickOpen`).
+- Secondary dialog buttons use `vsSecondary`.
+- The window is opaque: `vibrancy` in `cmd/workbench` never uses a system material in the VS Code style.
 
-#### VS Code 风格：滚动条
+#### VS Code style: scrollbars
 
-`applyLook` 把主题的 `ScrollbarStyle` 换成 `vsScrollbar`：10 宽、方、贴两头、轨道透明，滑块是 25% 的灰（悬停 40%、拖着 55%；比 VS Code Light+ / Dark+ 的 40% 还淡，2026 主题那块 75% 的太实）。ged 的 Diff 概览条 14 宽。
+`applyLook` replaces the theme's `ScrollbarStyle` with `vsScrollbar`: 10 wide, square, flush with both ends, with a transparent
+track and a 25% gray thumb (40% on hover, 55% while dragging; lighter than the 40% of VS Code Light+ / Dark+, since the 75% thumb of
+the 2026 themes is too solid). The ged Diff overview ruler is 14 wide.
 
-#### VS Code 风格：侧栏和列表
+#### VS Code style: sidebar and lists
 
-- 侧栏列表左右不留（`sidePadX()`），选中块是方的（`sideRowRadius()`；实心选中时 `newListLook` 换一份圆角 0 的主题）。
-- 淡底的三档颜色走 `softFills` 的 VS Code 分支：三档都是中性的灰，活动选中只是深一档的灰。`listLook.rowAt` 不描框（VS Code 的 list.focusOutline 蓝框没照）、不画竖条，建列表的主题 `Radius` 是 0（mygo 按它画悬停块）。
-- 文件树的缩进参考线（`drawGuides`）用 `vsGuide`，别的级是它的 40%；半透明的线压在选中、悬停的底上不切缝（`TestVSTreeHoverGuides`）。
-- 吸顶栈的底是 `vsSide`。
-- `hitText` 的命中只加粗、不换色。
-- 侧栏视图标题的字号是 `sideTitle()`（VS Code 11，Grove 同 `sideSub`）。
-- 符号的小字（`symbolGlyph`）按 `symbolColor` 上色，照 VS Code symbolIcon.* 的默认：类 #D67E00、函数 #652D90、变量 #007ACC，深色 #EE9D28 / #B180D7 / #75BEFF，别的灰。
+- Sidebar lists have no horizontal padding (`sidePadX()`) and square selection blocks (`sideRowRadius()`; with solid selection,
+  `newListLook` swaps in a theme with radius 0).
+- The three tint levels go through the VS Code branch of `softFills`: all three are neutral grays, and the active selection is just
+  one shade darker. `listLook.rowAt` draws no outline (VS Code's blue list.focusOutline is not copied) and no bar, and the theme the
+  list is built with has `Radius` 0 (mygo uses it to draw the hover block).
+- The file tree's indent guides (`drawGuides`) use `vsGuide`, with other levels at 40% of it; the semi-transparent lines lie over
+  the selection and hover backgrounds without gaps (`TestVSTreeHoverGuides`).
+- The sticky stack's background is `vsSide`.
+- Matches in `hitText` are only bolded, not recolored.
+- Sidebar view titles use the font size `sideTitle()` (11 in VS Code style; in Grove style, the same as `sideSub`).
+- Symbol glyphs (`symbolGlyph`) are colored by `symbolColor`, following VS Code's symbolIcon.* defaults: classes #D67E00,
+  functions #652D90, variables #007ACC, in dark #EE9D28 / #B180D7 / #75BEFF, everything else gray.
 
-#### VS Code 风格：代码配色
+#### VS Code style: code colors
 
-- 代码配色走 `vsCodeTheme`（词的颜色是经典的 Light+ / Dark+，其余照 2026），在 `fullCodeTheme` / `softTheme` 里换。
-- ged 的 Diff 颜色走 `gedStyle` 里的 VS Code 分支（`PlainNumbers` 让改了的行号不变色）。
-- 编辑器的选中、配对括号、查找命中叠 `accentTint`：一般是强调色；深色里强调色是灰的时换成浅灰 #D4D4D4。`vsSelection` 是它的 25%（深色 33%）。
-- Python 的 docstring 在 VS Code 风格里是字符串、Grove 风格里是注释：`setLook` 调 `highlight.SetDocComments(Look != "")`，只换词的类、不换分词状态，开着的编辑器下一帧就换。
+- Code colors use `vsCodeTheme` (token colors are the classic Light+ / Dark+, everything else follows 2026), swapped in within
+  `fullCodeTheme` / `softTheme`.
+- ged Diff colors use the VS Code branch in `gedStyle` (`PlainNumbers` keeps the line numbers of changed lines from changing color).
+- The editor's selection, matching brackets and find matches are overlaid with `accentTint`: normally the accent color, but in dark
+  mode, when the accent color is gray, light gray #D4D4D4 instead. `vsSelection` is 25% of it (33% in dark).
+- Python docstrings are strings in the VS Code style and comments in the Grove style: `setLook` calls
+  `highlight.SetDocComments(Look != "")`, which changes only the token class, not the tokenizer state, so open editors switch on
+  the next frame.
 
-#### VS Code 风格：浮层、菜单和提示
+#### VS Code style: overlays, menus and tooltips
 
-- 悬停提示照 VS Code 是浅的：`applyLook` 换过的 `Inverse` / `InverseText` 让 mygo 的 Tooltip、提示条变成浮层底和正文色，`tipStyle` 再描一道 `vsTipLine`。
-- 浮层（Grove 画的菜单、命令面板、对话框、编辑器的悬停提示和补全）的底是 `vsOverlayBg`。磨砂（`ui/frost.go`，照 VS Code 的 frosted glass）两种风格都有：糊开底下的内容、盖一层设置里“浮层不透明度”那么多的底色，见 [menus.md](menus.md#磨砂)。
-- Grove 画的菜单（`gmenuPanel`）用 `vsMenuLine` 的框、`vsMenuSep` 的分隔线；高亮项只垫 `vsMenuHot` 的灰色半透明底，不描框、字不换色。不描框是因为 mygo 的 Border 占布局，描了框字会往里挪 1 pt，悬停时字像在跳（`TestGroveMenuHotOnlyFill` 比高亮前后字的像素）。
+- Tooltips are light, as in VS Code: the `Inverse` / `InverseText` swapped by `applyLook` turn mygo's Tooltip and notification bars
+  into the overlay background and body text color, and `tipStyle` adds a `vsTipLine` border.
+- Overlays (Grove-drawn menus, the command palette, dialogs, editor hover tips and completion) have `vsOverlayBg` as their
+  background. Frosted glass (`ui/frost.go`, modeled on VS Code's frosted glass) exists in both styles: it blurs the content
+  underneath and lays a tint over it at the "Overlay opacity" from the settings; see [menus.md](menus.md#frosted-glass).
+- Grove-drawn menus (`gmenuPanel`) use a `vsMenuLine` border and `vsMenuSep` separators; the highlighted item gets only a
+  semi-transparent gray `vsMenuHot` fill, with no outline and no text color change. There is no outline because mygo's Border takes
+  up layout space: with an outline the text would shift inward by 1 pt and appear to jump on hover (`TestGroveMenuHotOnlyFill`
+  compares the text pixels before and after highlighting).
 
-#### 跟着风格变的尺寸
+#### Sizes that follow the style
 
 | | Grove | VS Code |
 |---|---|---|
-| 侧栏正文字号 `sideFont()` | 14 | 13 |
-| 仓库名字号 `repoFont()` | 14.5 | 13 |
-| 文件树行高 `treeRowH()` | 24 | 22 |
-| 右栏历史行高 `histRowH()` | 30 | 22 |
+| Sidebar body font size `sideFont()` | 14 | 13 |
+| Repository name font size `repoFont()` | 14.5 | 13 |
+| File tree row height `treeRowH()` | 24 | 22 |
+| Right panel history row height `histRowH()` | 30 | 22 |
 
-提交图的节点在行高的正中（`graphNodeY()`）。
+Commit graph nodes are vertically centered in the row (`graphNodeY()`).
 
-#### Grove 风格：窗口底和卡片
+#### Grove style: window backdrop and cards
 
-窗口底（`Settings.Backdrop`，只在 Grove 风格里用）三种：
+The window backdrop (`Settings.Backdrop`, used only in the Grove style) has three options:
 
-- 柔和（默认 `""`）：纯色底上用 `Draw` 画几团很淡的色斑（`paintBackdrop`，Shadow 的模糊；左上那团的颜色从强调色推出来，`blobColor`），不依赖桌面壁纸。
-- 纯色（`flat`）。
-- 通透（`vibrancy`，再选系统材质 `material`；`WORKBENCH_MATERIAL` 压过设置）。通透在默认壁纸上看起来是平的、HUD 一类材质会把字冲淡，所以不是默认。
+- Soft (default `""`): a few very faint patches of color drawn with `Draw` on a solid background (`paintBackdrop`, blurred with
+  Shadow; the color of the top-left patch is derived from the accent color, `blobColor`), independent of the desktop wallpaper.
+- Flat (`flat`).
+- Translucent (`vibrancy`, with a system material chosen in `material`; `WORKBENCH_MATERIAL` overrides the setting). Translucent
+  looks flat on the default wallpaper, and HUD-type materials wash out the text, so it isn't the default.
 
-各区域是圆角卡片（`ui/widgets.go` 的 `card`），卡片之间 6 pt 的缝（`cardGap`）就是拖条（`resizer`）。标题栏 38 pt 高（`barHeight`），窗口是 `TitleBarHidden`，标题栏里的按钮按红绿灯的位置排（`TrafficLights`）。
+Each area is a rounded card (`card` in `ui/widgets.go`), and the 6 pt gaps between cards (`cardGap`) are the drag handles
+(`resizer`). The title bar is 38 pt tall (`barHeight`), the window is `TitleBarHidden`, and the buttons in the title bar are laid
+out around the traffic lights (`TrafficLights`).
 
-#### 强调色和列表选中
+#### Accent color and list selection
 
-强调色在 `ui/accent.go`：
+The accent color lives in `ui/accent.go`:
 
-- 可选的（`workspace.AccentKeys`，设置下拉的顺序）：跟随系统 `system`、黑 `black`（默认，`DefaultAccent`，存成 `""`；浅色 #333333、深色 #5C5C61，都配白字）、蓝 `blue`（VS Code 2026 的 #0069CC / #297AA0），还有 `forest` / `steel` / `ink` / `graphite` / `teal` / `indigo`。
-- `applyAccent` 每帧在主题上换整套：`Accent`，悬停 / 按下深（深色里亮）8% / 16%，选中的字和焦点环的透明度。跟随系统时不动。
+- Choices (`workspace.AccentKeys`, in the order of the settings dropdown): Follow system `system`, Black `black` (the default,
+  `DefaultAccent`, stored as `""`; #333333 in light and #5C5C61 in dark, both with white text), Blue `blue` (VS Code 2026's
+  #0069CC / #297AA0), plus `forest` / `steel` / `ink` / `graphite` / `teal` / `indigo`.
+- `applyAccent` swaps a full set on the theme every frame: `Accent`, hover / pressed 8% / 16% darker (lighter in dark mode), and the
+  opacity of selected text and the focus ring. With Follow system it changes nothing.
 
-列表选中默认是淡底（`listLook` / `softFills`）：
+List selection is a light tint by default (`listLook` / `softFills`):
 
-- 强调色淡淡的一层加左边一道竖条；列表没有键盘时换成中性的灰、不加竖条；悬停更淡。
-- 建列表的主题里 Accent 透明，选中块的底由行自己按 `ListFocused` 在 `Draw` 里画。上下相邻的行也选中时那一边不留圆角、竖条通到行边，连着多选的几行接成一整块。
-- `SolidSelection` 换成 mygo 原来的实心块；`onAccent` 判断这一行要不要按“在强调色上”画（选中且实心时字、图标换成 `AccentText`）。
+- A faint layer of the accent color plus a bar on the left; when the list doesn't have the keyboard, it becomes a neutral gray with
+  no bar; hover is fainter still.
+- In the theme the list is built with, Accent is transparent, and each row draws its own selection background in `Draw` based on
+  `ListFocused`. When the row above or below is also selected, that side has no rounded corner and the bar runs to the row edge, so
+  consecutive selected rows join into one block.
+- `SolidSelection` switches to mygo's original solid block; `onAccent` decides whether a row should be drawn "on the accent color"
+  (when selected and solid, text and icons switch to `AccentText`).
 
-尽量少装饰：横幅、悬停这些用很淡的填充（`quietFill` / `bannerFill`），不加边框。
+Keep decoration minimal: banners, hover and the like use very faint fills (`quietFill` / `bannerFill`) and no borders.
 
-#### 界面缩放
+#### UI zoom
 
-`Settings.Zoom`，按 `ZoomSteps` 一档档走，是每个窗口每帧 `c.SetZoom`，设置窗口、关于窗口也跟着。终端自带的字号键（⌘= ⇧⌘= ⌘- ⌘0）让给界面缩放（`app/terminals.go` 的 `termZoomKeyFor`），终端字号只在设置里改。
+`Settings.Zoom` steps through `ZoomSteps`, applied by `c.SetZoom` on every window every frame, settings and About windows
+included. The terminal's own font size keys (⌘= ⇧⌘= ⌘- ⌘0) are given over to UI zoom (`termZoomKeyFor` in `app/terminals.go`); the
+terminal font size can only be changed in the settings.
 
-### 应用图标
+### App icon
 
-`internal/appicon` 用有向距离场现画（`Draw(size)`），任意大小都抗锯齿；关于窗口的小图标、更新窗口的图标（`Draw(256)`）也是它现画的。`assets/icon.png`（`mygo build` 用的 1024×1024）由它生成：改了画法跑 `go test ./internal/appicon -update`，`TestIconFile` 核对两者一致。
+`internal/appicon` draws the icon on the fly with a signed distance field (`Draw(size)`), anti-aliased at any size; the small icon
+in the About window and the icon in the update window (`Draw(256)`) are drawn by it too. `assets/icon.png` (the 1024×1024 image
+used by `mygo build`) is generated from it: after changing the drawing, run `go test ./internal/appicon -update`; `TestIconFile`
+checks that the two match.
 
-### 语言
+### Language
 
-所有界面文案都通过 `internal/i18n`：
+All UI strings go through `internal/i18n`:
 
-- `T` / `Tf` / `Tn`（带数，英文按数换单复数）/ `List`（列举的连接词），还有 `Colon` / `Comma` / `Paren` 这类按语言换的标点。
-- 原文是代码里的中文；`zh-CN.json` 由 `TestCatalog -update` 从代码里收集（所以文案要写成字面量，不要拼接），`en.json` 是英文。
-- 英文的单复数写成 `键|1` 这样的变体；有两个数时是 `|1|`（第一个是 1）、`||1`（第二个是 1）、`|1|1`（都是 1），`PluralKeys` 算该找哪些。
-- 设置里选语言（`Settings.Lang`：空是中文，`en` 是英文），`i18n.Set` 切换。mygo 自带的文案（编辑器的查找条、系统菜单、对话框按钮）通过 `SetLanguages(i18n.Locale())` 同步语言：启动时设一次，读完设置后再设。
+- `T` / `Tf` / `Tn` (with a count; English picks singular or plural by count) / `List` (conjunctions for enumerations), plus
+  language-dependent punctuation such as `Colon` / `Comma` / `Paren`.
+- The source strings are the Chinese in the code; `zh-CN.json` is collected from the code by `TestCatalog -update` (so strings must
+  be literals, not concatenations), and `en.json` holds the English.
+- English plurals are written as variants like `key|1`; with two counts they are `|1|` (the first is 1), `||1` (the second is 1)
+  and `|1|1` (both are 1), and `PluralKeys` works out which ones to look up.
+- The language is chosen in the settings (`Settings.Lang`: empty is Chinese, `en` is English) and switched by `i18n.Set`. mygo's own
+  strings (the editor's find bar, system menus, dialog buttons) follow the language via `SetLanguages(i18n.Locale())`: set once at
+  startup and again after the settings are read.
 
-无障碍：每个图标按钮都要有名字（`Label` / `Tooltip`），`TestAccessLabels` 把主窗口和设置窗口常见的样子走一遍查；新加的区域、浮层、窗口要在它里面加一步画出来（见 [AGENTS.md](../../AGENTS.md)）。
+Accessibility: every icon button needs a name (`Label` / `Tooltip`). `TestAccessLabels` walks through the common states of the
+main window and settings window to check; new areas, overlays and windows need a step added there to draw them (see
+[AGENTS.md](../../AGENTS.md)).
 
-### 快捷键
+### Shortcuts
 
-见 [app.md](app.md) 的“自定义快捷键”。
+See the custom shortcuts section of [app.md](app.md#custom-shortcuts).

@@ -1,183 +1,267 @@
-# 贡献指南（给人，也给编码 agent）
+# Contributing guide (for humans and coding agents)
 
-Grove 是用纯 Go 在 [mygo](https://github.com/egoist/mygo) 上写的 macOS 原生多仓库工作台：文件树 + 编辑器 + 按仓库的
-Git 审阅 + 终端。工作区可以是一个 `.code-workspace` 文件，也可以是一个普通目录（里面的目录不一定是 Git 仓库）；
-第一次启动是空工作区。
+Grove is a native macOS multi-repo workbench written in pure Go on [mygo](https://github.com/egoist/mygo): file tree +
+editor + per-repo Git review + terminals. A workspace can be a `.code-workspace` file or a plain directory (the
+directories in it don't have to be Git repos); the first launch starts with an empty workspace.
 
-代码注释、界面文案、文档以中文为主；英文界面走 `internal/i18n` 的译文表。
+Language conventions:
 
-文档：
+- Docs are written in English. [README.md](README.md) is English and [README.zh-CN.md](README.zh-CN.md) is the Chinese
+  copy: whenever README.md changes, update README.zh-CN.md to match.
+- Code comments stay in Chinese (the existing convention).
+- UI strings in code are written as Chinese source strings via `i18n.T("中文")` / `i18n.Tf(…)`; the English text lives in
+  `internal/i18n/en.json` (keys are the Chinese source strings). The UI defaults to English: an unset `lang` setting resolves
+  through `i18n.Default`, which `cmd/workbench` sets to `"en"`. Tests never call it, so inside tests `i18n.Set("")` is still
+  Chinese and assertions stay in Chinese.
 
-- [README.md](README.md) / [README.en.md](README.en.md)：给用户的说明
-- [docs/architecture.md](docs/architecture.md)：架构总览（分层、包、约定），各子系统的细节在 [docs/architecture/](docs/architecture/)
-- [docs/testing.md](docs/testing.md)：测试怎么分工、怎么量
-- [docs/release.md](docs/release.md)：版本号、构建、DMG、签名和公证、CI
-- [docs/shortcuts.md](docs/shortcuts.md)：快捷键表（从命令注册表生成，别手改）
-- [docs/mygo-pitfalls.md](docs/mygo-pitfalls.md)：踩过的坑（mygo、git、macOS），动界面、列表、键盘、终端之前先翻一下对应的小节
-- [CHANGELOG.md](CHANGELOG.md)：每个版本改了什么
+Docs:
 
-## 必须遵守
+- [README.md](README.md) / [README.zh-CN.md](README.zh-CN.md): user-facing overview (English / Chinese)
+- [docs/architecture.md](docs/architecture.md): architecture overview (layers, packages, conventions); per-subsystem
+  details are in [docs/architecture/](docs/architecture/)
+- [docs/testing.md](docs/testing.md): how testing is split up and how to measure
+- [docs/release.md](docs/release.md): versioning, builds, DMG, signing and notarization, CI
+- [docs/shortcuts.md](docs/shortcuts.md): shortcut table (generated from the command registry; don't edit by hand)
+- [docs/mygo-pitfalls.md](docs/mygo-pitfalls.md): pitfalls we've hit (mygo, git, macOS); read the relevant section
+  before touching UI, lists, keyboard handling or terminals
+- [docs/terms.md](docs/terms.md): glossary of UI terms (English ↔ Chinese)
+- [CHANGELOG.md](CHANGELOG.md): what changed in each version
 
-0. **所有仓库同时可见**（第一原则）：文件树和 Git 栏永远列出工作区里所有仓库，一个仓库一段 / 一个根节点；
-   不许做"当前仓库 + 切换器"的视图。"当前仓库"只决定终端、历史右栏（"当前仓库"那一页）和标题栏的分支胶囊；
-   点哪个仓库的东西、⌘1–9 跳到哪一段，当前仓库就跟到哪个。菜单栏 / 命令面板的 Git 命令作用于当前仓库，
-   作用于整个仓库的确认标题用 `a.inRepo` 写上仓库名。新功能只在一个仓库上测过不算数（用 `testutil.ThreeRepos`）。
-1. **应用只在用户明确操作时写**：提交、暂存、丢弃、保存、推送、增删工作树这类写操作，只在用户点了按钮 / 菜单 /
-   快捷键之后才跑；丢数据、改远程、改历史的先弹确认（`a.AskDanger`，名单由 `app/danger_test.go` 按源码数）。
-   启动、刷新、开标签、监听都不跑写命令。
-2. **测试绝不写真实仓库**：
-   - 写操作的测试一律在 `t.TempDir()` 里 `git init` 的临时仓库上做：`internal/testutil` 的 `TempRepo` / `NewRepo` /
-     `ThreeRepos` / `SubmoduleRepo`。
-   - 读真实工作区的测试（`TestStatusMatchesPorcelain`、`TestWorkbenchView`、`TestScreenshot`、`BenchmarkWorkspace` 等）
-     只读（status / diff / log / 截图），只在设了 `WORKBENCH_TEST_WS=<.code-workspace 或目录>` 时跑，没设就跳过。
-   - 开发时对自己的真实仓库也只跑读命令。工作树只跑 `worktree list` / `status` / `rev-list` / `log`，不新建、不移除、
-     不锁、不 `prune`；要量带很多工作树的仓库，`git clone file://…` 一份到临时目录，在副本上 `worktree add`。
-   - 测试也不碰开发机上别的东西：剪贴板（`app.CopyText` 换成桩）、浏览器和访达（`a.OpenURL` / `a.ShowPath` 换成只记不开的）、
-     `~/Library/Application Support/Grove/`、`~/Library/Logs/Grove/`、正在跑的 Grove 实例和它的 termd（见下面"单实例"）。
-3. **mygo 锁在 go.mod 的版本**。升级前跑全套测试（含 `-race`）；`TestAccessLabels` 用 reflect 读 Tester 没导出的字段，
-   字段变了 `TestAccessProbe` 会先报。`TestVersions` 核对编进来的 mygo 版本和 go.mod 一致。CI 里不要 `go get -u`。
-4. **看界面靠截图**：编码 agent 一般没有屏幕录制 / 辅助功能权限，看界面靠无头 Tester 截图（`WORKBENCH_SHOT`）和
-   `WORKBENCH_CAPTURE`。系统菜单、原生对话框、毛玻璃、输入法、原生拖放这类截不到的，在 PR 里写明要人手测。
-   真窗口会抢前台和键盘：别人正用着的机器上优先无头测试，真要起窗口用 `open -g -n --env …` 在后台起。
-5. **质量底线**：
-   - `gofmt` 干净；`go vet` 干净；`go test ./...` 和 `go test -race ./...` 全过（界面测试也跑 `-race`）。
-   - 每个图标按钮有 `Label` / `Tooltip`。`internal/ui` 的 `TestAccessLabels` 自动查；新加的区域、浮层、窗口要在它里面加一步画出来，不然查不到。
-   - 快捷键无冲突（`TestShortcutConflicts`，按分派域算）。
-   - 空闲内存 ≤ 100 MB，硬上限 300 MB。
-   - 界面文案一律 `i18n.T("中文")` / `i18n.Tf(…)`，改了文案跑 `TestCatalog -update` 再补 `en.json`。
-   - 术语以界面为准（`internal/i18n/zh-CN.json` 里的写法），README、CHANGELOG、注释跟着用，清单见 [docs/terms.md](docs/terms.md)：已暂存 / 未暂存 / 未跟踪（后两者同在“改动”一组）、只看改动附近 / 全文、并排 / 统一、抓取 / 拉取 / 推送、贮藏、丢弃改动、拣选、预览标签 / 固定标签、工作区干净……
-6. **state.json 向后兼容**：`~/Library/Application Support/Grove/state.json` 带格式版本（`workspace.Version`），旧格式的文件照常读、
-   一步步迁到现在的格式（见 [docs/architecture/state.md](docs/architecture/state.md)）。新加字段时旧文件照常读（缺的当默认），`TestStateMigration` / `TestStateSessions` 要跟着加，`TestStateDocKeys` 要求 state.md 的示例写出每个新键。
-7. **改了行为要同步文档**：README（功能、快捷键）、`CHANGELOG.md` 的"## 未发布"、`docs/architecture.md` 或 `docs/architecture/` 下对应的那篇、
-   `docs/shortcuts.md`（生成，见下面的命令）；踩到新的坑写进 `docs/mygo-pitfalls.md`。
+## Must follow
 
-## 命令
+0. **Every repo visible at once** (the first principle): the file tree and the Git panel always list every repo in the
+   workspace, one section / one root node per repo; no "current repo + switcher" views. The "current repo" only
+   decides the terminal, the right history panel (its "current repo" page) and the branch pill in the title bar;
+   whichever repo you click something in, or jump to with ⌘1–9, becomes the current repo. Git commands in the menu bar
+   / Command Palette act on the current repo, and confirmation titles for actions on a whole repo name it via
+   `a.inRepo`. A new feature tested on only one repo doesn't count (use `testutil.ThreeRepos`).
+1. **The app writes only on explicit user action**: write operations such as commit, stage, discard, save, push and
+   adding / removing worktrees run only after the user clicks a button / menu item or presses a shortcut. Anything that
+   loses data, changes a remote or rewrites history asks for confirmation first (`a.AskDanger`; the list is counted
+   from source by `app/danger_test.go`). Startup, refresh, opening tabs and file watching never run write commands.
+2. **Tests never write to real repos**:
+   - Tests of write operations always run on temporary repos created with `git init` in `t.TempDir()`:
+     `TempRepo` / `NewRepo` / `ThreeRepos` / `SubmoduleRepo` in `internal/testutil`.
+   - Tests that read a real workspace (`TestStatusMatchesPorcelain`, `TestWorkbenchView`, `TestScreenshot`,
+     `BenchmarkWorkspace`, etc.) are read-only (status / diff / log / screenshots) and only run when
+     `WORKBENCH_TEST_WS=<.code-workspace or directory>` is set; otherwise they skip.
+   - During development, only run read commands against your own real repos too. For worktrees, only run
+     `worktree list` / `status` / `rev-list` / `log`: never create, remove, lock or `prune`. To measure a repo with many
+     worktrees, `git clone file://…` it into a temporary directory and run `worktree add` on the copy.
+   - Tests don't touch anything else on the dev machine either: the clipboard (`app.CopyText` is replaced with a stub),
+     the browser and Finder (`a.OpenURL` / `a.ShowPath` are replaced with versions that record instead of opening),
+     `~/Library/Application Support/Grove/`, `~/Library/Logs/Grove/`, and a running Grove instance and its termd (see
+     "Single instance" below).
+3. **mygo is pinned to the version in go.mod**. Before upgrading, run the full test suite (including `-race`).
+   `TestAccessLabels` uses reflect to read unexported Tester fields; if those fields change, `TestAccessProbe` fails
+   first. `TestVersions` checks that the compiled-in mygo version matches go.mod. Never run `go get -u` in CI.
+4. **Look at the UI through screenshots**: coding agents usually lack Screen Recording / Accessibility permissions, so
+   they inspect the UI through headless Tester screenshots (`WORKBENCH_SHOT`) and `WORKBENCH_CAPTURE`. Things that can't
+   be captured (system menus, native dialogs, vibrancy, input methods, native drag and drop) must be called out in the
+   PR as needing manual testing. Real windows steal focus and the keyboard: on a machine someone else is using, prefer
+   headless tests, and if you really need a window, launch it in the background with `open -g -n --env …`.
+5. **Quality bar**:
+   - `gofmt` clean; `go vet` clean; `go test ./...` and `go test -race ./...` all pass (UI tests also run under
+     `-race`).
+   - Every icon button has a `Label` / `Tooltip`. `TestAccessLabels` in `internal/ui` checks this automatically; new
+     regions, overlays and windows need a step in it that draws them, or they go unchecked.
+   - No shortcut conflicts (`TestShortcutConflicts`, computed per dispatch context).
+   - Idle memory ≤ 100 MB, hard cap 300 MB.
+   - All UI text goes through `i18n.T("中文")` / `i18n.Tf(…)`; after changing UI text, run `TestCatalog -update` and
+     then fill in `en.json`.
+   - Terminology follows the UI: the terms are the English UI strings in `internal/i18n/en.json`, and README, CHANGELOG
+     and docs use them. [docs/terms.md](docs/terms.md) is the glossary (English ↔ Chinese): Staged / Unstaged /
+     Untracked (the last two share the "Changes" group), Show only the lines around changes / Full-File Diff, Side by
+     side / Unified, Fetch / Pull / Push, Stash, Discard Changes, cherry-pick, preview tab / pinned tab, Working tree
+     clean…
+6. **state.json stays backward compatible**: `~/Library/Application Support/Grove/state.json` carries a format version
+   (`workspace.Version`); files in older formats are read as usual and migrated step by step to the current format (see
+   [docs/architecture/state.md](docs/architecture/state.md)). When adding a field, old files must still load (missing
+   fields take defaults); extend `TestStateMigration` / `TestStateSessions` accordingly, and `TestStateDocKeys` requires
+   the example in state.md to show every new key.
+7. **Behavior changes update the docs**: README.md and README.zh-CN.md (features, shortcuts), the "## Unreleased"
+   section of `CHANGELOG.md`, `docs/architecture.md` or the matching page under `docs/architecture/`, and
+   `docs/shortcuts.md` (generated, see the commands below); new pitfalls go into `docs/mygo-pitfalls.md`.
 
-在仓库根目录下跑。go.mod 要求的 Go 可能比本机装的新，所以都带 `GOTOOLCHAIN=auto`。
+## Commands
+
+Run from the repo root. go.mod may require a newer Go than the one installed locally, so every command carries
+`GOTOOLCHAIN=auto`.
 
 ```sh
 GOTOOLCHAIN=auto go vet ./...
 GOTOOLCHAIN=auto go test ./...
-GOTOOLCHAIN=auto go test -race ./...                                   # 整套要一两分钟，大头是 internal/ui
-WORKBENCH_TEST_WS=<.code-workspace 或目录> GOTOOLCHAIN=auto go test ./...   # 连读真实工作区的只读测试一起跑
-mkdir -p <目录> && WORKBENCH_SHOT=<目录> GOTOOLCHAIN=auto go test -run 'TestScreenshot|TestAboutView' -v ./internal/ui/
-GOTOOLCHAIN=auto go test -run '^$' -bench . -benchtime 20x ./internal/search/ ./internal/fuzzy/   # 搜索 / 模糊匹配的速度
-GOTOOLCHAIN=auto go test -run TestShortcutDoc ./internal/app/ -update   # 改了命令 / 快捷键后重新生成 docs/shortcuts.md
-GOTOOLCHAIN=auto go test -run TestCatalog ./internal/i18n/ -update      # 改了界面文案后重新收集 zh-CN.json；
-                                                                   # 然后不带 -update 再跑，它列出 en.json 缺的 / 多的，手工补译文
-GOTOOLCHAIN=auto go test ./internal/appicon -update                     # 改了图标的画法后重新生成 assets/icon.png
-GOTOOLCHAIN=auto go tool mygo build -skip-dmg -skip-notarize -sign -    # 出 build/darwin-arm64/Grove.app（ad hoc 签名）
-open -g -n build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<临时目录> --env WORKBENCH_LOGS=<临时目录>
-WORKBENCH_STATE=<临时目录> WORKBENCH_LOGS=<临时目录> GOTOOLCHAIN=auto go tool mygo dev -background -sign -   # 边改边看：改了 Go 代码自动重编、重开，
-                                                                   # "Grove Dev"（.mygo/dev 里）在后台起、不抢到最前；Ctrl+C 停
-footprint -p <pid> --noCategories -f bytes                         # 30 秒后量；量完只杀自己启动的那个 pid
+GOTOOLCHAIN=auto go test -race ./...                                   # the full suite takes a minute or two, mostly internal/ui
+WORKBENCH_TEST_WS=<.code-workspace or directory> GOTOOLCHAIN=auto go test ./...   # also runs the read-only tests against a real workspace
+mkdir -p <dir> && WORKBENCH_SHOT=<dir> GOTOOLCHAIN=auto go test -run 'TestScreenshot|TestAboutView' -v ./internal/ui/
+GOTOOLCHAIN=auto go test -run '^$' -bench . -benchtime 20x ./internal/search/ ./internal/fuzzy/   # search / fuzzy-match speed
+GOTOOLCHAIN=auto go test -run TestShortcutDoc ./internal/app/ -update   # regenerate docs/shortcuts.md after changing commands / shortcuts
+GOTOOLCHAIN=auto go test -run TestCatalog ./internal/i18n/ -update      # re-collect zh-CN.json after changing UI text;
+                                                                   # then run it again without -update: it lists what en.json is missing / has extra; add translations by hand
+GOTOOLCHAIN=auto go test ./internal/appicon -update                     # regenerate assets/icon.png after changing how the icon is drawn
+GOTOOLCHAIN=auto go tool mygo build -skip-dmg -skip-notarize -sign -    # produces build/darwin-arm64/Grove.app (ad hoc signed)
+open -g -n build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<temp dir> --env WORKBENCH_LOGS=<temp dir>
+WORKBENCH_STATE=<temp dir> WORKBENCH_LOGS=<temp dir> GOTOOLCHAIN=auto go tool mygo dev -background -sign -   # live reload: rebuilds and relaunches on Go changes;
+                                                                   # "Grove Dev" (in .mygo/dev) starts in the background without coming to the front; Ctrl+C stops it
+footprint -p <pid> --noCategories -f bytes                         # measure after 30 seconds; afterwards kill only the pid you started
 ```
 
-### 环境变量
+### Environment variables
 
-都是开发、测试、量内存用的，用户用不着。
+All of these are for development, testing and memory measurement; users don't need them.
 
 ```sh
-WORKBENCH_TEST_WS=<.code-workspace 或目录>   # 只读测试和截图用的真实工作区；没设时这些测试跳过
-WORKBENCH_SHOT=<目录>                        # 截图测试把 PNG 写到这里（目录要先建）
-WORKBENCH_SHOT_WS=<工作区>                   # 截图用另一个工作区（真实工作区都干净时，用一份有改动的克隆）
-WORKBENCH_SHOT_RENDER=<目录>                 # 截图里的 Mermaid / 公式按目录里录好的真 WebKit 结果回放
-WORKBENCH_MEASURE=1                          # 跑大文件的计时测试（TestMeasureBigFile 等），平时跳过
-WORKBENCH_WORKSPACE=<路径>                   # 启动时打开这个工作区
-WORKBENCH_STATE=<目录>                       # 用那个目录里的 state.json / window-state.json / termd，不动默认的；也不抢单实例锁、不在后台检查更新
-WORKBENCH_LOGS=<目录>                        # 日志和崩溃日志写到这里，不写 ~/Library/Logs/Grove
-WORKBENCH_SINGLE=1                           # 设了 WORKBENCH_STATE 也抢单实例锁（只在测单实例本身时用）
-WORKBENCH_PANIC=1                            # 启动 3 秒后在后台 goroutine 里 panic（测崩溃日志）
-WORKBENCH_CAPTURE=<文件.png>                 # 启动 5 秒后把窗口内容存成 PNG（量内存时别开）
-WORKBENCH_CAPTURE_AFTER=2s                   # 改成启动后多久截
-WORKBENCH_FOCUS=editor|terminal              # 启动时把键盘给编辑器 / 终端（量有焦点的内存）
-WORKBENCH_CARET_REST=off                     # 编辑器光标一直闪（不歇），只用来对比内存
-WORKBENCH_TERMS=all                          # 启动时就把所有终端都起来（量 n 个仓库 × m 个终端）
-WORKBENCH_TERM_CMD='echo MARK-$$'            # 第一个仓库的第一个终端出了提示符就敲这一行（termd 冒烟）
-WORKBENCH_ALLOPEN='async def'                # "全开"：仓库读完后开两个 Diff、侧栏搜这个词、当前仓库的终端都起
-WORKBENCH_MATERIAL=hud                       # 窗口底是通透时用这种材质（mygo.Vibrancy 的值），压过设置里的「材质」
-WORKBENCH_PLAIN=1                            # 普通标题栏、不要毛玻璃，对比内存用
-WORKBENCH_GED=off                            # Diff 退回 mygo 的（默认是 Grove 自己画的 internal/ged）
-WORKBENCH_GED_EDITOR=off                     # 文件标签的编辑器退回 mygo 的（默认也是 internal/ged）
-WORKBENCH_GMD=off                            # Markdown 预览退回 mygo 的（默认是 Grove 自己画的 internal/gmd）
-WORKBENCH_FONT=<字体家族>                    # 终端 / 编辑器的等宽字体（"monospace" 是系统默认）
-WORKBENCH_SECOND=<工作区>  WORKBENCH_SECOND_CLOSE=30s   # 启动时再开一个窗口；过这么久把它关掉（看还不还内存）
-WORKBENCH_RESTORE_GAP=600ms                  # 还原几个窗口时前一个画完第一帧后隔多久开下一个（默认 2.5s）
-MYGO_FRAME_STATS=all                         # mygo 的帧统计写进日志（量内存时数帧）
+WORKBENCH_TEST_WS=<.code-workspace or directory>   # real workspace for read-only tests and screenshots; those tests skip when unset
+WORKBENCH_SHOT=<dir>                         # screenshot tests write PNGs here (create the directory first)
+WORKBENCH_SHOT_WS=<workspace>                # take screenshots of a different workspace (when your real workspaces are all clean, use a clone with changes)
+WORKBENCH_SHOT_RENDER=<dir>                  # replay Mermaid / math in screenshots from real WebKit results recorded in this directory
+WORKBENCH_MEASURE=1                          # run the large-file timing tests (TestMeasureBigFile, etc.), skipped normally
+WORKBENCH_WORKSPACE=<path>                   # open this workspace at launch
+WORKBENCH_STATE=<dir>                        # use state.json / window-state.json / termd from that directory instead of the default; also skips the single-instance lock and background update checks
+WORKBENCH_LOGS=<dir>                         # write logs and crash logs here instead of ~/Library/Logs/Grove
+WORKBENCH_SINGLE=1                           # take the single-instance lock even with WORKBENCH_STATE set (only for testing single instance itself)
+WORKBENCH_PANIC=1                            # panic in a background goroutine 3 seconds after launch (tests crash logs)
+WORKBENCH_CAPTURE=<file.png>                 # save the window contents as a PNG 5 seconds after launch (don't use while measuring memory)
+WORKBENCH_CAPTURE_AFTER=2s                   # change how long after launch to capture
+WORKBENCH_FOCUS=editor|terminal              # give keyboard focus to the editor / terminal at launch (to measure memory with focus)
+WORKBENCH_CARET_REST=off                     # editor caret blinks forever (never rests); only for comparing memory
+WORKBENCH_TERMS=all                          # start every terminal at launch (to measure n repos × m terminals)
+WORKBENCH_TERM_CMD='echo MARK-$$'            # type this line once the first terminal of the first repo shows a prompt (termd smoke test)
+WORKBENCH_ALLOPEN='async def'                # "everything open": once repos are loaded, open two diffs, search the sidebar for this text, start the current repo's terminals
+WORKBENCH_MATERIAL=hud                       # material to use when the window background is translucent (a mygo.Vibrancy value); overrides the Material setting
+WORKBENCH_PLAIN=1                            # plain title bar, no vibrancy; for comparing memory
+WORKBENCH_GED=off                            # diffs fall back to mygo's (the default is Grove's own internal/ged)
+WORKBENCH_GED_EDITOR=off                     # the editor in file tabs falls back to mygo's (also internal/ged by default)
+WORKBENCH_GMD=off                            # Markdown preview falls back to mygo's (the default is Grove's own internal/gmd)
+WORKBENCH_FONT=<font family>                 # monospace font for terminals / editors ("monospace" is the system default)
+WORKBENCH_SECOND=<workspace>  WORKBENCH_SECOND_CLOSE=30s   # open a second window at launch; close it after this long (to check memory is returned)
+WORKBENCH_RESTORE_GAP=600ms                  # when restoring several windows, wait this long after one draws its first frame before opening the next (default 2.5s)
+MYGO_FRAME_STATS=all                         # write mygo frame stats to the log (count frames while measuring memory)
 ```
 
-`WORKBENCH_TERMD_HELPER`、`WORKBENCH_ASKPASS_SOCK` / `WORKBENCH_ASKPASS_ID` 是进程之间内部传的，别手动设。
+`WORKBENCH_TERMD_HELPER` and `WORKBENCH_ASKPASS_SOCK` / `WORKBENCH_ASKPASS_ID` are passed internally between processes;
+don't set them by hand.
 
-**为什么到处是 workbench**：这个项目以前叫 Workbench。改名 Grove 时只改了用户看得到的名字（`mygo.json` 的名字和 bundle id、
-窗口标题、关于、`TERM_PROGRAM`、临时文件前缀）。`cmd/workbench`、`WORKBENCH_*` 环境变量、日志文件名 `workbench.log`（冒烟和
-`tools/measure` 读它）、导出设置 JSON 的 `"workbench"` 键都故意没改，别顺手改。尤其是 `cmd/workbench`：目录名就是 `go run`
-出来的可执行文件名，mygo 拿它当状态目录名；改成 `grove` 的话，在不分大小写的 APFS 上就和装好的 Grove 共用
-`~/Library/Application Support/Grove/`。第一次启动时 `cmd/workbench/migrate.go` 把旧的 Workbench 状态和日志目录改名成 Grove 的。
+**Why "workbench" is everywhere**: the project used to be called Workbench. The rename to Grove only changed the
+user-visible names (the name and bundle id in `mygo.json`, the window title, About, `TERM_PROGRAM`, temp file
+prefixes). `cmd/workbench`, the `WORKBENCH_*` environment variables, the log file name `workbench.log` (read by smoke
+tests and `tools/measure`) and the `"workbench"` key in exported settings JSON were deliberately left alone; don't
+rename them in passing. `cmd/workbench` matters most: the directory name becomes the executable name under `go run`,
+and mygo uses it as the state directory name. Renamed to `grove`, it would share
+`~/Library/Application Support/Grove/` with the installed Grove on case-insensitive APFS. On first launch,
+`cmd/workbench/migrate.go` renames the old Workbench state and log directories to Grove's.
 
-## 约定
+## Commits
 
-**计时的验收测试**（监听 1 s 跟上、10 万行搜索 < 1 s）的预算写成 `testutil.Budget(time.Second)`：`-race` 下放宽到 3 倍
-（`testutil.Race` 由 `race.go` / `norace.go` 的 build tag 定），平常还是原来的数。新的计时断言也这么写。
+Commit messages follow [Conventional Commits 1.0](https://www.conventionalcommits.org/en/v1.0.0/), in English:
 
-**图标和图标按钮**：图标大小只用 `widgets.go` 的三档常量 `iconInline`（11，跟着字的小标）/ `iconRow`（13，列表行、标签、输入框）/
-`iconTool`（16，图标按钮），空态中央的大图标用 `iconEmpty`；`TestIconSizes` 扫源码，`Icon(...).FontSize` 写数字就挂。
-图标按钮用 `toolButton` / `iconButton`（`toolSize` 28 见方）、`rowButton`（20）、`toggleButton`；自己拼的按钮用 `toolStyle` 上样子，
-悬停底色用 `toolFill`，别用 `SurfaceHover`。按钮热区（见方边长）只取 `widgets.go` 的几档：新按钮用 `toolSize`（28，标题栏、卡片头、
-侧栏头）或 `rowToolSize`（20，列表行里）；另外几档是现有几处专用的——`headToolSize` 26（右栏历史头部）、`midToolSize` 24（Git 段头的
-拉取 / 推送、展开的提交卡片、工作树行上的审查 / 合并）、`smallToolSize` 22（工作树行、筛选开关）、`closeSize` 18（标签上的 ×）、
-`tinyToolSize` 16（状态栏进度后面的停止），和旁边的东西对齐时才用。`squareButton` / `iconActionSize` 和 `ButtonBase` / `ToggleBase`
-的 `Size` 写数字 `TestButtonSizes` 就挂。字号 12 / 12.5 / 14.5 和圆角 5 也有常量（`sideSub` / `barFont` / `noteFont`、`bodyFont` / `sideMono`、
-`repoFont`、`rowRadius` / `ctlRadius`），写数字 `TestVisualConsts` 挂。阴影用 `widgets.go` 的 `shadowCard` / `shadowLow` / `shadowFloat` /
-`shadowDialog` …（`el.Shadow(shadowDialog())`），提示框的样子用 `tipStyle`。
+```text
+type(scope): summary
 
-**新动作**先进 `internal/app/commands.go` 的注册表（菜单、快捷键、悬停提示、`docs/shortcuts.md` 都从那里来），再在界面上调它。
+Body explaining why.
+```
 
-## 单实例、真窗口和量内存
+- Types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`, `chore`, `style`, `revert`.
+- Scopes name the area touched, e.g. `ui`, `editor`, `diff`, `git`, `terminal`, `markdown`, `i18n`, `release`, `deps`,
+  `app`, `tree`, `search`, `settings`…
+- Summary in the imperative mood ("add", not "added"), at most 72 characters; the body explains why the change was made.
+- Breaking changes are marked with `!` after the type/scope (`feat(app)!: …`) or a `BREAKING CHANGE:` footer.
+- Release commits are `chore(release): vX.Y.Z`.
 
-**单实例**：不带 `WORKBENCH_STATE` 启动的 Grove 会抢单实例锁，已经开着一个（比如你日常在用的那个）就把参数交给它、自己退出。
-所以手测、量内存一律带 `WORKBENCH_STATE=<临时目录>`（这样的实例不抢锁、不动默认的 state.json，还有自己的 termd），
-日志带 `WORKBENCH_LOGS=<临时目录>`。要测单实例本身才加 `WORKBENCH_SINGLE=1`，而且先 `pgrep -fl Grove` 确认没有别的实例。
-只杀自己起的 pid，别按名字杀。
+## Conventions
 
-**量内存**用 `tools/measure/`：`measure.sh <标签> <Grove.app>` 从种子（`seed/idle.json` / `allopen.json`）造 `WORKBENCH_STATE`、
-拷 `seed/window-state.json`（固定 1440×880）、带 `WORKBENCH_LOGS` 和 `MYGO_FRAME_STATS=all` 用 `open -g -n --env …` 起一次，
-每几秒记 footprint 和子 shell，跑够了 TERM 掉，`report.py` 打汇总。别直接跑二进制：那样应用自己会到前台、抢走键盘。
-`longrun.sh` 是 8 h 的长跑，适合自己在终端里起。
+**Timed acceptance tests** (watching catches up within 1 s, searching 100,000 lines < 1 s) write their budgets as
+`testutil.Budget(time.Second)`: under `-race` the budget is relaxed 3× (`testutil.Race` is set by the build tags in
+`race.go` / `norace.go`), otherwise it stays as written. Write new timing assertions the same way.
 
-脚本里的规矩，别绕开：
+**Icons and icon buttons**: icon sizes only use the three constants in `widgets.go`: `iconInline` (11, small marks that
+follow text), `iconRow` (13, list rows, tabs, input fields) and `iconTool` (16, icon buttons); large icons in the
+middle of empty states use `iconEmpty`. `TestIconSizes` scans the source and fails if `Icon(...).FontSize` is given a
+number. Icon buttons use `toolButton` / `iconButton` (`toolSize`, 28 square), `rowButton` (20) and `toggleButton`;
+hand-built buttons get their look from `toolStyle`, and their hover fill is `toolFill`, not `SurfaceHover`. Button hit
+areas (side length of the square) only come from the sizes in `widgets.go`: new buttons use `toolSize` (28; title bar,
+card headers, sidebar headers) or `rowToolSize` (20; inside list rows). The other sizes are reserved for a few existing
+spots: `headToolSize` 26 (right history panel header), `midToolSize` 24 (Pull / Push in Git section headers, the
+expanded commit card, Review / Merge on worktree rows), `smallToolSize` 22 (worktree rows, filter toggles), `closeSize`
+18 (the × on tabs) and `tinyToolSize` 16 (the stop button after the status bar progress); use them only to line up with
+what's next to them. `TestButtonSizes` fails if `squareButton` / `iconActionSize` or the `Size` of `ButtonBase` /
+`ToggleBase` is given a number. Font sizes 12 / 12.5 / 14.5 and corner radius 5 also have constants (`sideSub` /
+`barFont` / `noteFont`, `bodyFont` / `sideMono`, `repoFont`, `rowRadius` / `ctlRadius`); `TestVisualConsts` fails on
+literal numbers. Shadows use `shadowCard` / `shadowLow` / `shadowFloat` / `shadowDialog` … from `widgets.go`
+(`el.Shadow(shadowDialog())`), and tooltips get their look from `tipStyle`.
 
-- 机器的输入空闲（`HIDIdleTime`）≥ 60 s 才起，不够每 20 s 再看、最多 45 min，到了写 `SKIPPED`。
-- 起了以后不往窗口送任何事件（"全开"用 `WORKBENCH_ALLOPEN` 摆好，不点）。
-- 量前量后各记一次每个仓库的 `git status --porcelain=v2 --branch`，不一样就喊 `REPO CHANGED`。
-- 前台换了就记进 `front.txt`；量的那个 Grove（按 pid）到过前台的那几段在汇总里单列、不算。别的冒烟 / 测量开着时先等它关
-  （它抢 CPU，而且它一关系统会把前台给别的窗口）。
-- 工作区对着内置盘上的一份复制品（ad hoc 签名的新构建读可移除的卷会卡住，见 `docs/mygo-pitfalls.md`），复制品连被忽略的目录一起拷
-  （`node_modules` 在不在，空目录、搜索的数都不一样）。
-- 机器忙不忙会影响启动用时：`meta.txt` 里有起前、量完的 `uptime`，比用时先看负载。
+**New actions** go into the registry in `internal/app/commands.go` first (menus, shortcuts, hover tooltips and
+`docs/shortcuts.md` all come from it), then the UI calls them.
 
-手动量时也照这几条：
+## Single instance, real windows and measuring memory
 
-- 别开 `WORKBENCH_CAPTURE`（它会多出一份窗口位图）。
-- 量的实例可能中途变成前台（有人点了窗口，或者前台的那个被杀后系统激活了下一个），一到前台光标就闪、帧数涨、内存跳到两百多。
-  看日志里的 `front=` 和帧数，只取 `front=other`、帧数不动的那几次。
-- 有焦点、无焦点都要量：光标一闪就是一帧，mygo 2 秒没有新帧才放掉窗口大小的帧内存，只量无焦点会漏掉一两百 MB。
-- 窗口位置（`window-state.json`）在 `WORKBENCH_STATE` 目录里。新建的目录没有它，窗口开在默认位置，后台量时可能整个被前台应用的窗口盖住，
-  mygo 就停帧，空闲只剩 63 MiB 左右，和别的数比不了。用 `tools/measure/seed/window-state.json`。
+**Single instance**: a Grove launched without `WORKBENCH_STATE` takes the single-instance lock; if one is already
+running (say, the one you use every day), it hands its arguments over and exits. So manual testing and memory
+measurement always use `WORKBENCH_STATE=<temp dir>` (such an instance skips the lock, leaves the default state.json
+alone and has its own termd), and `WORKBENCH_LOGS=<temp dir>` for logs. Add `WORKBENCH_SINGLE=1` only when testing
+single instance itself, and first check with `pgrep -fl Grove` that no other instance is running. Only kill pids you
+started; never kill by name.
 
-## 目录
+**Measure memory** with `tools/measure/`: `measure.sh <label> <Grove.app>` builds a `WORKBENCH_STATE` from a seed
+(`seed/idle.json` / `allopen.json`), copies `seed/window-state.json` (fixed 1440×880), and launches once via
+`open -g -n --env …` with `WORKBENCH_LOGS` and `MYGO_FRAME_STATS=all`. It records the footprint and child shells every
+few seconds, sends TERM once it has run long enough, and `report.py` prints the summary. Don't run the binary directly:
+the app would come to the front and steal the keyboard. `longrun.sh` is the 8 h long run, best started yourself in a
+terminal.
 
-细节见 [docs/architecture.md](docs/architecture.md)（总览和包表）和 [docs/architecture/](docs/architecture/)。
+Rules built into the scripts; don't work around them:
 
-- `cmd/workbench`：入口，开窗口；第一行先分出 termd 后台进程
-- `internal/app`：状态机和命令注册表（`commands.go`）；一个窗口一个 `App`，`app.Windows`（`windows.go`）是开着的窗口的注册表，
-  几个窗口共用一个 `workspace.Store`（state.json）
-- `internal/ui`：纯界面。界面函数只读状态，通过 `a.Exec(命令 id)` 或 `App` 的方法改状态；后台 goroutine 只经 `a.Update` 回主线程
-- 不碰界面的逻辑：`internal/git`、`files`、`docs`、`search`、`globs`、`fuzzy`、`watch`、`workspace`、`graph`、`outline`、`highlight`、
-  `history`（本地历史）、`termd`（终端后台进程）、`askpass`、`tasks`、`snippets`、`render`（Mermaid 和公式）
-- `internal/ged`：Grove 自己画的编辑器部件（Diff：并排、统一、就地编辑，和文件标签的单栏编辑器，默认都用它，`WORKBENCH_GED=off` / `WORKBENCH_GED_EDITOR=off` 退回 mygo 的），只用 mygo 公开的排字、画图、输入接口；不认 Grove 的主题和 `internal/ui`
-- `internal/gmd`：Grove 自己画的 Markdown 预览（解析用 mygo 的，排版、绘制、选择复制自己做；带样式的 HTML 块按 `internal/css` 算出的样式画成
-  grid / flex / 盒子），`WORKBENCH_GMD=off` 退回 mygo 的；`internal/css`：CSS 解析和层叠（选择器、优先级、继承、`var()`），不碰界面
-- `internal/i18n`：文案表；`internal/version`、`crash`、`appicon`：版本号、日志和崩溃日志、代码画的图标
-- `internal/testutil`：测试辅助（临时仓库、等待、计时预算）
-- `tools/measure`：量内存的脚本
-- `resources/`：原样拷进 .app 的字体和第三方许可证；`assets/icon.png` 是应用图标
+- Start only once the machine's input idle time (`HIDIdleTime`) is ≥ 60 s; if not, check again every 20 s for up to
+  45 min, then write `SKIPPED`.
+- Once launched, send no events to the window ("everything open" is set up with `WORKBENCH_ALLOPEN`, not by
+  clicking).
+- Record `git status --porcelain=v2 --branch` for every repo before and after measuring; if they differ, report
+  `REPO CHANGED`.
+- Changes of the frontmost app go into `front.txt`; stretches where the measured Grove (by pid) was frontmost are
+  listed separately in the summary and not counted. If another smoke test / measurement is running, wait for it to
+  finish first (it competes for CPU, and when it quits the system hands the front to some other window).
+- The workspace points at a copy on the internal disk (a freshly built ad hoc-signed app hangs reading removable
+  volumes, see `docs/mygo-pitfalls.md`), and the copy includes ignored directories (whether `node_modules` is there
+  changes empty directories and search counts).
+- Machine load affects launch time: `meta.txt` has `uptime` from before launch and after measuring; check the load
+  before comparing times.
+
+Follow the same rules when measuring by hand:
+
+- Don't turn on `WORKBENCH_CAPTURE` (it adds an extra window bitmap).
+- The measured instance may become frontmost midway (someone clicked its window, or the frontmost app was killed and
+  the system activated the next one). Once frontmost, the caret blinks, frame counts rise and memory jumps into the
+  two hundreds. Check `front=` and frame counts in the log, and only use samples with `front=other` and unchanged frame
+  counts.
+- Measure both with and without focus: each caret blink is a frame, and mygo only releases window-sized frame memory
+  after 2 seconds without a new frame, so measuring only without focus misses one or two hundred MB.
+- Window position (`window-state.json`) lives in the `WORKBENCH_STATE` directory. A new directory doesn't have one, so
+  the window opens at the default position; measured in the background, it may be fully covered by the frontmost app's
+  window, mygo then stops drawing frames, and idle memory drops to about 63 MiB, which isn't comparable with other
+  numbers. Use `tools/measure/seed/window-state.json`.
+
+## Directory layout
+
+Details are in [docs/architecture.md](docs/architecture.md) (overview and package table) and
+[docs/architecture/](docs/architecture/).
+
+- `cmd/workbench`: entry point, opens windows; the very first line forks off the termd background process
+- `internal/app`: state machine and command registry (`commands.go`); one `App` per window, `app.Windows`
+  (`windows.go`) is the registry of open windows, and the windows share one `workspace.Store` (state.json)
+- `internal/ui`: pure UI. UI functions only read state and change it through `a.Exec(command id)` or `App` methods;
+  background goroutines get back to the main thread only via `a.Update`
+- Logic that doesn't touch the UI: `internal/git`, `files`, `docs`, `search`, `globs`, `fuzzy`, `watch`, `workspace`,
+  `graph`, `outline`, `highlight`, `history` (local history), `termd` (terminal background process), `askpass`,
+  `tasks`, `snippets`, `render` (Mermaid and math)
+- `internal/ged`: Grove's own editor widgets (diffs: side by side, unified, edit in place; and the single-pane editor
+  in file tabs, both used by default; `WORKBENCH_GED=off` / `WORKBENCH_GED_EDITOR=off` fall back to mygo's). It only
+  uses mygo's public text layout, drawing and input APIs, and knows nothing of Grove's theme or `internal/ui`
+- `internal/gmd`: Grove's own Markdown preview (parsing comes from mygo; layout, drawing, selection and copy are its
+  own; styled HTML blocks are drawn as grid / flex / boxes using styles computed by `internal/css`);
+  `WORKBENCH_GMD=off` falls back to mygo's. `internal/css`: CSS parsing and cascade (selectors, specificity,
+  inheritance, `var()`), no UI
+- `internal/i18n`: string tables; `internal/version`, `crash`, `appicon`: version number, logs and crash logs, the
+  icon drawn in code
+- `internal/testutil`: test helpers (temporary repos, waiting, timing budgets)
+- `tools/measure`: memory measurement scripts
+- `resources/`: fonts and third-party licenses copied verbatim into the .app; `assets/icon.png` is the app icon

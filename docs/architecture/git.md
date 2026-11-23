@@ -1,345 +1,493 @@
 # Git
 
-[← 架构总览](../architecture.md)
+[← Architecture overview](../architecture.md)
 
-所有仓库同时可见的 Git 栏和合并的历史，git 命令怎么跑（只读、写队列、凭据），以及分支、历史、提交图、工作树、子模块等。Diff 标签和按块、按行的暂存单独在 [staging.md](staging.md)。
+The Git panel and merged history that show every repository at once; how git commands run (read-only, the write queue,
+credentials); and branches, history, the commit graph, worktrees, submodules and more. Diff tabs and hunk / line staging
+live in [staging.md](staging.md).
 
-## 所有仓库同时可见
+## All repositories visible at once
 
-这是 Grove 的第一原则：文件树、Git 栏、搜索、历史都同时列出工作区里的每个仓库，没有“当前仓库 + 切换器”的视图。新功能也需遵守，不要新增只显示当前仓库的列表。
+This is Grove's first principle: the file tree, Git panel, search and history all list every repository in the workspace
+at the same time; there is no "current repository + switcher" view. New features must follow it too — don't add a list
+that shows only the current repository.
 
-“当前仓库”（`Current()`）还在，但只用在少数地方：新终端开在哪、右栏历史的“当前仓库”页、标题栏的分支胶囊。点文件树、Git 栏或者切到某个文件标签会更新当前仓库（`UseRepo` / `SelectRepo`），⌘1–⌘9 跳到第几个仓库（`JumpRepo`）。
+The "current repository" (`Current()`) still exists, but it is used in only a few places: where a new terminal opens, the
+"Current repository" page of the right-panel history, and the branch pill in the title bar. Clicking in the file tree or
+Git panel, or switching to a file tab, updates the current repository (`UseRepo` / `SelectRepo`); ⌘1–⌘9 jump to the nth
+repository (`JumpRepo`).
 
-状态栏左边不写当前仓库，写所有仓库的总况（`reposSummary`）：几个仓库、几个有改动 / 要推送、谁在合并，读取失败的红字；悬停是每个仓库一行，点了打开 Git 栏；只有一个仓库时是它自己的改动。
+The left side of the status bar doesn't show the current repository; it shows a summary of all of them (`reposSummary`):
+how many repositories, how many have changes / need pushing, which one is merging, and read failures in red. Hovering shows
+one line per repository, clicking opens the Git panel; with a single repository it shows that repository's own changes.
 
-### Git 栏
+### Git panel
 
-代码：`app/changes.go`（`GitRows` 和行的模型）、`ui/gitbar.go`（画）。
+Code: `app/changes.go` (`GitRows` and the row model), `ui/gitbar.go` (drawing).
 
-#### 行的排列
+#### Row layout
 
-`GitRows` 把所有仓库整理成一张表。每个仓库一段，从上到下是：
+`GitRows` arranges all repositories into one table. Each repository is a section; from top to bottom:
 
-1. 段头（`RowRepo`，贴顶）
-2. 进行中操作的横幅（`RowOngoing`）
-3. 工作树组头（设置里开了“在 Git 栏显示工作树”才有，默认收着）
-4. 提交框（`RowCommit`，在改动上面：文件多时不用滚到段底）
-5. 各组的标题和每个变更（冲突 / 已暂存 / 改动），说明行
-6. 贮藏组头（设置里开了“在 Git 栏显示贮藏”才有，默认收着）
+1. The section header (`RowRepo`, sticky)
+2. The banner for an operation in progress (`RowOngoing`)
+3. The worktree group header (only when "Show worktrees in the Git panel" is on in Settings; collapsed by default)
+4. The commit box (`RowCommit`, above the changes, so you don't have to scroll to the end of the section when there are many files)
+5. Each group's title and its changes (Conflicts / Staged / Changes), plus note rows
+6. The stash group header (only when "Show stashes in the Git panel" is on in Settings; collapsed by default)
 
-贮藏组头、工作树组头和已暂存 / 改动两组一样写组名和条数（`foldHeader` 的 `iconOnly` 都是假）。工作区干净的仓库没有说明行，段头上画一个绿色的勾。
+The stash and worktree group headers show their name and count just like the Staged / Changes groups (`foldHeader`'s
+`iconOnly` is false for all of them). A repository whose working tree is clean has no note row; its header shows a green check.
 
-段的收放是 `GitFold`：
+Section folding is `GitFold`:
 
-- `FoldAuto`：有改动展开、干净的收成一行；有工作树（显示工作树开着时）、合并 / 变基停在一半的也展开，让工作树块和横幅看得见。
-- `FoldOpen` / `FoldClosed`：点过箭头就按用户的，存进会话的 `git`。
+- `FoldAuto`: expanded when there are changes, collapsed to one line when clean. Repositories with worktrees (while
+  worktrees are shown) or with a merge / rebase stopped halfway are also expanded, so the worktree block and the banner are visible.
+- `FoldOpen` / `FoldClosed`: once the user clicks the arrow, their choice wins; it is saved in the session's `git`.
 
-#### 显示工作树 / 贮藏的开关
+#### Show worktrees / stashes toggles
 
-两个开关是 `Settings.ShowWorktrees` / `ShowStashes`（零值就是关，老的 state.json 不用迁移）。`Repo` 没有 `App` 指针，`App.newRepo` 给每个仓库接上窗口的 `&a.St.Settings`（`Repo.set`，换工作区 `*a = *n` 之后重新指一遍），`Repo.ShowWts` / `ShowStashes` 读它。
+The two toggles are `Settings.ShowWorktrees` / `ShowStashes` (the zero value is off, so old state.json files need no
+migration). `Repo` has no `App` pointer, so `App.newRepo` hands each repository the window's `&a.St.Settings`
+(`Repo.set`, re-pointed after switching workspaces with `*a = *n`), and `Repo.ShowWts` / `ShowStashes` read it.
 
-工作树关着时：
+With worktrees off:
 
-- `GitRows` 不出工作树块，`GitOpen` 的自动展开不算 `HasWorktrees`，段头不画工作树数；
-- `NeedsYou` 是空的，`GoToWorktree` 什么都不做；
-- `WtShown` / `WtTracked` 都是假（不算 `WtInfo`、不盯目录；会话里的 `WtOpen` 留着）。
+- `GitRows` emits no worktree block, `GitOpen`'s auto-expand ignores `HasWorktrees`, and the header draws no worktree count;
+- `NeedsYou` is empty and `GoToWorktree` does nothing;
+- `WtShown` / `WtTracked` are both false (no `WtInfo` is computed, no folders are watched; the session's `WtOpen` is kept).
 
-开关变了由 `SettingsChanged` → 每个窗口的 `syncShownGroups` 收尾：关掉时收起 `WtExp`、`clearRefHistories`、扔掉 `WtInfo`、`syncWtWatch` 停掉监听；打开时按 `WtOpen` 重算、接上监听。两种都 `syncChangeSel`，选中落在没了的行上的清掉。
+When a toggle changes, `SettingsChanged` → each window's `syncShownGroups` finishes up: turning it off collapses `WtExp`,
+runs `clearRefHistories`, drops `WtInfo`, and stops watching via `syncWtWatch`; turning it on recomputes from `WtOpen` and
+reattaches the watchers. Both run `syncChangeSel`, clearing a selection that sat on a row that no longer exists.
 
-贮藏关着时只是 `appendStashes` 不出行、段头不画贮藏数；`r.Extra.Stashes` 照常读，`git.stash` / `git.stashPop` 照常能用。
+With stashes off, `appendStashes` simply emits no rows and the header draws no stash count; `r.Extra.Stashes` is still read,
+and `git.stash` / `git.stashPop` still work.
 
-#### 改动分组和变更行
+#### Change groups and change rows
 
-未跟踪的文件和未暂存的改动同在“改动”一组（`groupKind`、`groupTitle`）：
+Untracked files and unstaged changes share the "Changes" group (`groupKind`, `groupTitle`):
 
-- 顺序照 `Status.Changes`（已跟踪的在前、未跟踪的接在后面），条数是两者之和；只有未跟踪的时组名也是“改动”。
-- 每一行的 `Change.Kind` 还是各自的（字母、颜色、丢弃、暂存、目录展开照旧）。
-- 组头的 + 是 `StageUnstaged`：没有冲突时是不带路径的 `git add -A`（按路径传的话，上万个改动的文件会超出 macOS 的命令行长度限制）；有冲突时按路径 `git add -A -- …`，不用不带路径的 `add -A` / `-u`（会把冲突的文件也暂存、等于标成已解决）。
-- 组头的丢弃仍是 `git restore .`，不动未跟踪的；这组全是未跟踪的时不显示。
+- Order follows `Status.Changes` (tracked first, untracked after them), and the count is the sum of both; when there are
+  only untracked files the group is still called "Changes".
+- Each row keeps its own `Change.Kind` (letter, color, discard, stage and folder expansion work as before).
+- The group header's + is `StageUnstaged`: with no conflicts it is a path-less `git add -A` (passing paths would exceed
+  macOS's command-line length limit with tens of thousands of changed files); with conflicts it passes paths,
+  `git add -A -- …`, never a path-less `add -A` / `-u` (that would stage the conflicted files too, which marks them resolved).
+- The group header's discard is still `git restore .`, which leaves untracked files alone; it is hidden when the group is entirely untracked files.
 
-变更行、贮藏里的文件、提交里的文件是同一个写法（`changeLabel`）：左边是文件树的文件图标，状态字母（`codeLetter`）在行尾；提交里的文件排在行数右边；变更行悬停时字母让给按钮。放不下时路径先缩，文件名比整行还长才截断。
+Change rows, files in a stash and files in a commit are all rendered the same way (`changeLabel`): the file tree's file
+icon on the left, the status letter (`codeLetter`) at the end of the row; for files in a commit it sits to the right of the
+line counts; on a hovered change row the letter gives way to the buttons. When space is short the path shrinks first; the
+file name is truncated only if it is longer than the whole row.
 
-分组标题上的按钮（`showActions`）要指针移上去才有，右键（`groupMenu`）是同样的动作。
+The buttons on group titles (`showActions`) appear only when the pointer is over them; right-click (`groupMenu`) offers the same actions.
 
-#### 段头
+#### Section header
 
-段头（`ui/gitbar.go` 的段头那一段）从左到右：收放箭头、仓库圆点（`repoDot`）、仓库名、分支按钮、链接工作树的标记、进行中操作的胶囊；收起时还有贮藏数 / 工作树数。右边按情况是队列按钮 / 读取中的转圈 / 读取失败的 ! / “不是 Git 仓库” / 干净的勾 / 改动数，↓↑ 数字，最后是这个仓库的拉取 / 推送按钮（`syncButton`）。
+The section header (the header part of `ui/gitbar.go`), left to right: the fold arrow, the repository dot (`repoDot`), the
+repository name, the branch button, the linked-worktree marker, and the pill for an operation in progress; when collapsed,
+also the stash count / worktree count. On the right, depending on the situation: the queue button / a reading spinner /
+a ! for a read failure / "Not a Git repository" / a check when clean / the change count, then the ↓↑ counts, and finally
+this repository's pull / push buttons (`syncButton`).
 
-拉取 / 推送按钮和标题栏的同步按钮共用 `syncOf`（提示文字、没上游时灰着、`Repo.Pulling` / `Pushing` 在跑或排队时转圈），点了走 `App.Pull` / `Push`，没有另一套 git 调用。
+The pull / push buttons share `syncOf` with the title bar's sync button (tooltip text, grayed out with no upstream,
+spinning while `Repo.Pulling` / `Pushing` is running or queued); clicking goes through `App.Pull` / `Push` — there is no
+separate set of git calls.
 
-#### 选中、多选和行内按钮
+#### Selection, multi-select and inline buttons
 
-行的身份是 `ChangeRow.Key()`（仓库 + 行的种类 + 变更的种类 + 路径），选中 `GitSel`、悬停 `GitHover`、多选 `GitChosen` 都按键记，所以刷新后行的位置变了，选中的还是原来那项。
+A row's identity is `ChangeRow.Key()` (repository + row kind + change kind + path). Selection `GitSel`, hover `GitHover`
+and multi-selection `GitChosen` are all recorded by key, so after a refresh moves rows around, the selection still points at the same item.
 
-- 多选的操作（`StageChanges` / `UnstageChanges` / `DiscardChanges` / `OpenDiffs`）先按仓库分组（`byRepo`），再排进各自的队列；一次打开超过 20 个 Diff 时先要求确认。
-- 变更行悬停（或列表有键盘时选中）出的行内按钮（`ui/gitbar.go` 的 `changeActions` / `stageActions`）用 `MenuChanges`，和右键菜单同一个约定（`app/chosen.go` 的 `actOn`）：指针所在的行在两行以上的多选里时作用于选中的全部，否则只有这一行。按钮的动作经 `gitFrame.do` 留到列表建完再做。
-- 列表有焦点时的空格 / ⌘⌫ 是 `changes.toggleStage` / `changes.discard`（上下文 `GitList`，由列表自己接键，命令面板也能用），作用于 `KeyChanges`。
-- 暂存 / 取消暂存 / 丢弃会让选中的那行挪走时，`markGitAfter` 先记下它后面（没有就是前面）第一个不在选中里的行，状态重读后 `syncChangeSel` 跟不上当前标签时停在那一行。
+- Multi-select operations (`StageChanges` / `UnstageChanges` / `DiscardChanges` / `OpenDiffs`) are first grouped by
+  repository (`byRepo`), then queued in each repository's own queue; opening more than 20 Diffs at once asks for confirmation first.
+- The inline buttons that appear on a hovered change row (or the selected row when the list has the keyboard;
+  `changeActions` / `stageActions` in `ui/gitbar.go`) use `MenuChanges`, with the same convention as the context menu
+  (`actOn` in `app/chosen.go`): if the row under the pointer is part of a multi-selection of two or more rows, the action
+  applies to all selected rows; otherwise only to that row. Button actions are deferred via `gitFrame.do` until the list has been built.
+- When the list has focus, Space / ⌘⌫ are `changes.toggleStage` / `changes.discard` (context `GitList`; the list handles
+  the keys itself, and they are also available in the Command Palette), acting on `KeyChanges`.
+- When staging / unstaging / discarding will move the selected row away, `markGitAfter` first records the first row after
+  it (or before it, if none) that isn't selected; after the status is reread, if `syncChangeSel` can't follow the current tab, the selection lands on that row.
 
-#### 提交框
+#### Commit box
 
-每个仓库一个（`CommitOpen` / `CommitMsg`），在段头（和工作树组头）下面、改动分组上面。提交、修改上一次提交、提交信息历史在 `app/commit.go`。
+There is one per repository (`CommitOpen` / `CommitMsg`), below the section header (and worktree group header) and above
+the change groups. Committing, amending the last commit and the commit message history live in `app/commit.go`.
 
-- 什么时候展开（`CommitShown`）：有已暂存的改动、写了信息、在修改上一次提交、合并的冲突都解决了，或者用户点开了提交框。
-- `ShowCommit` 把段头滚到顶上（`ui.Start`），贴顶的段头不挡它。⌘↩ 提交键盘所在的那个。
-- 一个框管到底（`commitRow`）：收着和没写信息时看着就是一行输入框，写了信息（或在修改上一次提交）框底才长出说明和分裂按钮（`commitFoot`）。
-- Grove 风格的按钮上只有纸飞机（`iconSend`），后果写在读屏名和提示的第一行：“提交 N 个文件”、什么都没暂存时“提交全部 N 个文件”、“修改提交”。
-- VS Code 风格走 `vsCommitRow`：白底细框的输入框，下面一直有满宽的“✓ 提交 …”分裂按钮（`vsCommitButton`），字就是上面说的后果；没写信息时点它 `OpenCommit`；和平常不一样的说明在按钮下面一行。
-- 按钮的 ▾ 和框的右键是同一个菜单（`commitBoxMenu`）：提交并推送（`CommitPush`，不看自动推送的设置，不能推时 `CommitPushWhy` 写原因）、修改上一次提交、撤销上次提交。没写信息时 ▾ 只在指针移到框上时出现。
-- 不能提交（`CanCommit`）时按钮画灰、点了不提交，但不调 `Disabled`（mygo 的 `Disabled` 不出悬停提示），提示里写原因（`CommitWhy`）。
-- 最近 30 条提交信息（`MaxCommitMsgs`，所有仓库共用）存在 `St.CommitMsgs`，框里空着时 ↑↓ 翻。
+- When it is expanded (`CommitShown`): there are staged changes, a message has been written, an amend is in progress,
+  the conflicts of a merge are all resolved, or the user opened the commit box.
+- `ShowCommit` scrolls the section header to the top (`ui.Start`) so the sticky header doesn't cover it. ⌘↩ commits the box that has the keyboard.
+- One box does it all (`commitRow`): collapsed or with no message it looks like a single-line input; once a message is
+  written (or while amending), the explanation and split button (`commitFoot`) grow out of the bottom of the box.
+- In the Grove style the button shows only a paper plane (`iconSend`); the consequence is spelled out in the
+  screen-reader name and the first line of the tooltip: "Commit N files", "Commit all N files" when nothing is staged, or "Amend Commit".
+- The VS Code style uses `vsCommitRow`: a white input with a thin border, with a full-width "✓ Commit …" split button
+  (`vsCommitButton`) always below it, whose text is the consequence described above; clicking it with no message runs
+  `OpenCommit`; any unusual explanation goes on a line below the button.
+- The button's ▾ and the box's context menu are the same menu (`commitBoxMenu`): Commit and Push (`CommitPush`, which
+  ignores the auto-push setting; when it can't push, `CommitPushWhy` gives the reason), Amend Last Commit, Undo Last Commit.
+  With no message, the ▾ only appears while the pointer is over the box.
+- When committing isn't possible (`CanCommit`), the button is drawn gray and clicking it doesn't commit, but `Disabled` is
+  not used (mygo's `Disabled` suppresses the tooltip); the tooltip gives the reason (`CommitWhy`).
+- The last 30 commit messages (`MaxCommitMsgs`, shared by all repositories) are stored in `St.CommitMsgs`; ↑↓ cycles through them when the box is empty.
 
-“提交全部 N 个文件”（`CommitsAll`）：先 `git add -A` 再提交，含未跟踪的文件；add 失败就不提交；有冲突、进行中操作时不走这条。仓库里有 git 命令在跑 / 排队，或者状态正在读时，先不提交（toast 让你稍后再点），免得把别的文件一起提交了。
+"Commit all N files" (`CommitsAll`): runs `git add -A` first and then commits, including untracked files; if the add
+fails, nothing is committed. This path isn't taken when there are conflicts or an operation in progress. If a git command
+is running / queued in the repository, or its status is being read, the commit is held off (a toast asks you to click
+again in a moment) so that other files don't get committed along with it.
 
-修改上一次提交时，上一次提交已经推送过（`HeadPushed`）的先 `AskDanger`：改了要强推。
+When amending, if the last commit has already been pushed (`HeadPushed`), `AskDanger` asks first: amending means a force push.
 
-#### 横幅和其余按钮
+#### Banner and other buttons
 
-- 进行中横幅（`ongoingRow`）的继续 / 跳过 / 放弃是带字的小按钮（`bannerButton`，继续是强调色底，有冲突时灰着、提示里写原因）。
-- 展开的工作树下面那行（`wtSummaryRow`）写“N 个提交 · N 个文件”和 +/−。
-- 其余面板里的动作（冲突条、Diff 选行条和块按钮、搜索的全部替换、变基向导、终端退出浮条）都用同一个 `iconAction`（`ui/widgets.go`）：只有图标，读屏名是原来按钮上的字，`why` 不空时画灰、提示里写原因、点了没反应。
+- The in-progress banner's (`ongoingRow`) Continue / Skip / Abort are small labeled buttons (`bannerButton`; Continue has
+  an accent background, and is grayed out with the reason in its tooltip while there are conflicts).
+- The row under an expanded worktree (`wtSummaryRow`) shows "N commits · N files" and +/−.
+- Actions in the other panels (the conflict bar, the Diff line-selection bar and hunk buttons, search's Replace All, the
+  rebase wizard, the terminal's exit overlay) all use the same `iconAction` (`ui/widgets.go`): icon only, its screen-reader
+  name is the text the button used to carry; when `why` is non-empty it is drawn gray, the reason goes in the tooltip, and clicking does nothing.
 
-### 合并的历史
+### Merged history
 
-右栏历史除“当前仓库”页外，还有“所有仓库”页（`histAll`）。
+Besides the "Current repository" page, the right-panel history has an "All Repositories" page (`histAll`).
 
-- `AllHistRows` 把每个仓库的一页提交按作者时间（`%aI`）做 k 路归并。各仓库的读取进度不同，所以只合并到所有仓库都已读到的时间（地平线），往下滚 `LoadMoreAllHistory` 给落后的仓库补一页。
-- 最上面是有改动的仓库的“未提交的改动”行，一个仓库一行。
-- 选中是 `HistAllSel`。
-- 所有仓库页不画提交图，每行左边一个仓库圆点，行尾的仓库名是同色淡底的胶囊（`repoChip`）。
+- `AllHistRows` does a k-way merge of each repository's page of commits by author time (`%aI`). Repositories load at
+  different rates, so it only merges down to the time every repository has reached (the horizon); scrolling down calls
+  `LoadMoreAllHistory`, which loads another page for the repositories that are behind.
+- At the top are the "Uncommitted changes" rows of repositories with changes, one row per repository.
+- The selection is `HistAllSel`.
+- The All Repositories page draws no commit graph: each row has a repository dot on the left, and the repository name at
+  the end of the row is a pill with a faint background of the same color (`repoChip`).
 
-仓库的颜色（`repoColor`，按仓库在工作区里的顺序在六个灰调的颜色间轮换）也用在文件树和 Git 栏的仓库行、终端标签、起始页上的圆点（`repoDot`）。
+Repository colors (`repoColor`, cycling through six muted colors in workspace order) are also used for the dots
+(`repoDot`) on repository rows in the file tree and Git panel, on terminal tabs, and on the start page.
 
 ## Git
 
-### 只读和刷新
+### Reads and refresh
+
+All read-only commands carry `GIT_OPTIONAL_LOCKS=0 LC_ALL=C`: the former keeps `git status` from refreshing the index, so
+it doesn't fight over the lock with git operations in a terminal; the latter pins the output language so it can be parsed.
+
+A repository's status is `git status --porcelain=v2 -z --branch` plus `git.Extra`:
+
+- The operation in progress (`Ongoing`) and its progress (`Progress`)
+- HEAD, and `HeadRoot` (HEAD has no parent)
+- Unpushed commits (`rev-list -n 200`, `MaxUnpushed`)
+- Stashes (at most 50, `MaxStashes`)
+- The list of remotes and the remotes' web URLs
+- `GitDir` / `CommonDir` / `Linked` (whether it is a linked worktree)
+- Submodules (`Subs`, at most 200)
+
+Refreshing has exactly one entry point: `RefreshRepo(r, why)` in `app/watch.go`.
+
+- `why` is one of `WhyManual` / `WhyOpen` / `WhyOp` / `WhySave` / `WhyFileOp` / `WhyWatchGit` / `WhyWatchFiles` /
+  `WhyFocus`, recorded in `Repo.LastWhy` for logs and tests.
+- It reads the status, branches, file tree (when needed) and rereads open documents (`syncDocs`) in the background, then
+  swaps them all in together on the main thread.
+- When only working-tree files changed (`filesOnly`), history and `git.Extra` are not reread; the path hints from the
+  watcher and from saves let the file tree update only the affected spots.
+- A refresh request that arrives during a read is recorded in `r.again`, and one more read runs after the current one
+  finishes; reads never run concurrently.
+- When the window comes back to the foreground, `RefreshOnFocus` rereads only the repositories without a watcher (errored,
+  folder gone, never started), at most once per 3 seconds; watched repositories aren't reread.
+
+### Write commands and the queue
+
+Write commands go through `git.RunRW` / `RunOp`: non-interactive (`GIT_TERMINAL_PROMPT=0`, `GIT_EDITOR` /
+`GIT_SEQUENCE_EDITOR` replaced with `true`, the pager replaced with `cat`), a 2-minute timeout by default, run in their own
+process group; on cancel the whole group gets SIGTERM, then SIGKILL.
+
+Each repository has one queue (`app/queue.go`); `App.RunOp` enqueues into it, and only one command runs at a time.
+
+- The queue button (`ui/queue.go`) sits in the Git panel's section header and in the title bar, spinning while something
+  runs; in its menu, `CancelOp` cancels the running command and `Dequeue` removes one that hasn't started.
+- After a cancel, Grove checks for leftover lock files such as `index.lock` (`git.StaleLocks`) and only warns about them,
+  never deletes them, since another git process may be running.
+- "Fetch All / Pull All" is a `Batch`: repositories are processed one after another in Git panel order, a failure in one
+  doesn't affect the rest, the status bar shows progress, and `StopBatch` stops the ones that haven't started.
+- Pull defaults to `--ff-only`; Settings can switch it to rebase or merge (`PullArgs`).
 
-只读命令都带 `GIT_OPTIONAL_LOCKS=0 LC_ALL=C`：前者防止 `git status` 刷新 index，避免与终端中的 git 操作争用锁；后者固定输出语言，便于解析。
+Long tasks with continuous output (like clone) use `RunStream` + `Keep`: `readChunks` reads output in chunks and calls
+`Touch` on progress to reset the timeout clock, so a task only times out once it stops making progress.
 
-一个仓库的状态是 `git status --porcelain=v2 -z --branch` 加 `git.Extra`：
+On failure, `git.Explain` recognizes common errors (no upstream, rejected, authentication failed, merge conflict, etc.)
+and gives a short explanation; `AlertDetail` puts the last few lines of git's raw output into the details section.
 
-- 进行中的操作（`Ongoing`）和它的进度（`Progress`）
-- HEAD，`HeadRoot`（HEAD 没有父提交）
-- 未推送的提交（`rev-list -n 200`，`MaxUnpushed`）
-- 贮藏（最多 50 个，`MaxStashes`）
-- 远程列表、远程的网页地址
-- `GitDir` / `CommonDir` / `Linked`（是不是链接工作树）
-- 子模块（`Subs`，最多 200 个）
+Git commands that need a terminal (`git.NeedsTerminal`: `-i`, `-p`, `commit` without `-m` and the like), when typed in the
+Command Palette's `>git`, aren't run in the background; a terminal opens to run them instead (`runGitInTerm`).
 
-刷新只有一个入口：`app/watch.go` 的 `RefreshRepo(r, why)`。
+### Credentials
 
-- `why` 是 `WhyManual` / `WhyOpen` / `WhyOp` / `WhySave` / `WhyFileOp` / `WhyWatchGit` / `WhyWatchFiles` / `WhyFocus` 之一，记在 `Repo.LastWhy` 里给日志和测试看。
-- 它在后台读状态、分支、文件树（必要时）、重读开着的文档（`syncDocs`），回到主线程一起换上。
-- 只有工作区文件变化（`filesOnly`）时不重读历史，也不重读 `git.Extra`；监听和保存带来的路径提示让文件树只改动到的那几处。
-- 读取期间再次收到刷新请求时，先记到 `r.again`，本次完成后再读一次，不并发读。
-- 窗口回到前台时 `RefreshOnFocus` 只给没有监听的仓库（出错、目录没了、没开起来）补读一遍（3 秒内只读一次）；在监听的不读。
+When git needs a username, password or SSH passphrase, Grove shows a credentials dialog. The code is in `internal/askpass`
+(the inter-process layer) and `app/askpass.go` (the dialog).
 
-### 写命令和队列
+- It starts lazily, just before the first write command runs: it creates `grove-askpass-<pid>.sock` (a 0600 socket) and
+  `grove-askpass-<pid>.sh` (a 0700 script whose content is just `exec Grove askpass "$@"`) under `os.TempDir()`. `Listen`
+  first runs `CleanStale` to remove these two files left behind by processes that have exited.
+- Only write commands' environments carry `GIT_ASKPASS` / `SSH_ASKPASS` / `SSH_ASKPASS_REQUIRE=force` pointing at it,
+  plus `WORKBENCH_ASKPASS_SOCK` / `WORKBENCH_ASKPASS_ID`; read commands don't, so a refresh never pops up a dialog.
+- The `Grove askpass <prompt>` child process (`askpass.Main`) connects to the socket, sends one line of JSON (the prompt
+  and the value of `WORKBENCH_ASKPASS_ID`), waits for the answer and writes it to standard output.
+- The app finds the matching window and command by id (`askRegister` / `askDone`), `Classify` recognizes the kind of
+  prompt (four kinds), and the prompt goes into `a.Cred` to show the dialog; once the user answers, `AnswerCred` replies.
+  Canceling shows a "Canceled" toast. Answers never go into the log.
+- While the dialog is open, the command's timeout clock is paused (`Keep`'s `Hold` / `Release`).
+- In the HTTPS username dialog you can fill in the password at the same time: the password stays in `credCache` for
+  2 minutes and is used once, so the password prompt that follows doesn't show a dialog.
+- The tests' `TestMain` also recognizes askpass mode, so the test binary can serve as the askpass script's entry point too.
 
-写命令走 `git.RunRW` / `RunOp`：不交互（`GIT_TERMINAL_PROMPT=0`，`GIT_EDITOR` / `GIT_SEQUENCE_EDITOR` 换成 `true`，分页器换成 `cat`），默认 2 分钟超时，在自己的进程组里跑，取消时整组先 SIGTERM 再 SIGKILL。
+### Conflicts and three-way merge
 
-每个仓库有一条队列（`app/queue.go`），`App.RunOp` 排进去，一次只跑一条。
+Conflict markers are parsed by `docs/conflicts.go`: `ParseConflicts`, plus the `Doc` method `ConflictBlocks` (cached by
+`Buf.Version`); `Resolved` computes the replacement text and range after resolving one block.
 
-- 队列按钮（`ui/queue.go`）在 Git 栏的段头和标题栏上，跑着时转圈；菜单里 `CancelOp` 取消正在跑的，`Dequeue` 移除还没开始的。
-- 取消后检查是否留下 `index.lock` 之类的锁文件（`git.StaleLocks`），有就只提醒、不删，因为可能有别的 git 进程正在跑。
-- “全部抓取 / 拉取”是 `Batch`：按 Git 栏顺序依次处理各仓库，单个仓库失败不影响后面的，状态栏显示进度，`StopBatch` 停掉还没开始的。
-- 拉取默认 `--ff-only`，设置里可改成 rebase 或 merge（`PullArgs`）。
+`ResolveConflict` / `ResolveAll` in `app/conflicts.go` only change the buffer: keep ours, theirs, or both. Only
+`MarkResolved` runs a git write command: it saves the file first, then runs `git add`; if the file still contains conflict markers, it asks first.
 
-持续输出的长任务（如克隆）用 `RunStream` + `Keep`：`readChunks` 分段读输出，有进展时 `Touch` 重置超时计时，所以只在任务不再推进时才超时。
+- Conflicted files are in the Git panel's "Conflicts" group (`Change{Kind: Conflict}`); a single click opens them in the
+  editor (`OpenConflict`, falling back to opening a Diff if the file is gone), and the conflicts are resolved there.
+- The context menu can open two kinds of Diff: HEAD vs. the working tree, or "both sides" (`Code: 'S'`, where
+  `git ls-files -u` finds `:2:` ours and `:3:` theirs).
+- In a file tab, `ui/merge.go` colors the conflict blocks each frame from the parse result and draws red dots in the
+  line-number gutter (`conflictMarks`); the buttons are on the conflict bar (`mergeBar`).
+- Shortcuts (`mergeKeys`): ⌃⌥1 / 2 / 3 accept ours / theirs / both; ⌥F7 / ⌥⇧F7 or ⌃⌥↓ / ↑ jump to the next / previous conflict.
+- The change bar (GutterMarks) is used only for conflicts.
 
-失败时，`git.Explain` 认出常见错误（没有上游、被拒绝、认证失败、合并冲突等），给出简明说明；`AlertDetail` 把 git 原始输出的最后几行放进“详细信息”。
+### Operations in progress
 
-需要终端的 git 命令（`git.NeedsTerminal`：`-i`、`-p`、`commit` 不带 `-m` 之类）在命令面板 `>git` 里输入时不在后台跑，而是开一个终端去跑（`runGitInTerm`）。
+When a merge, rebase, cherry-pick or revert stops halfway (`git/state.go` recognizes only these four), the top of the
+repository's section shows a banner (`RowOngoing`) with progress (`ReadProgress`: rebase step n of m).
 
-### 凭据
+The buttons are Continue / Skip / Abort (`app/ongoing.go`: `ContinueOngoing`, `SkipOngoing`, `AbortOngoing`):
 
-git 要用户名、密码或 SSH 口令时，由 Grove 弹凭据对话框。代码在 `internal/askpass`（进程间那一层）和 `app/askpass.go`（对话框）。
+- You can't continue while there are still conflicted files.
+- Skip and Abort go through `AskDanger` first; a merge has no Skip.
+- Continue and Skip go through `runStep`: a non-zero exit code with `CONFLICT (` in the output is treated as stopping
+  again, not as an error; only other non-zero exits are failures.
 
-- 第一条写命令跑之前才（懒）起：在 `os.TempDir()` 下建 `grove-askpass-<pid>.sock`（0600 的套接字）和 `grove-askpass-<pid>.sh`（0700 的小脚本，内容就是 `exec Grove askpass "$@"`）。`Listen` 里先 `CleanStale` 清掉已经退出的进程留下的这两样。
-- 只有写命令的环境里带 `GIT_ASKPASS` / `SSH_ASKPASS` / `SSH_ASKPASS_REQUIRE=force` 指向它，另带 `WORKBENCH_ASKPASS_SOCK` / `WORKBENCH_ASKPASS_ID`；读命令不带，不会在刷新时弹框。
-- `Grove askpass <提示>` 子进程（`askpass.Main`）连接套接字，发一行 JSON（提示、`WORKBENCH_ASKPASS_ID` 的值），等回答后写到标准输出。
-- 应用端按 id 找到对应的窗口和命令（`askRegister` / `askDone`），`Classify` 认出提示的种类（四种），放进 `a.Cred` 显示对话框，用户回答后 `AnswerCred`；取消时 toast“已取消”。回答不进日志。
-- 对话框开着时命令的超时钟暂停（`Keep` 的 `Hold` / `Release`）。
-- HTTPS 的用户名对话框里可以顺手填密码：密码在 `credCache` 里留 2 分钟、只用一次，接着来的密码提示就不再弹框。
-- 测试的 `TestMain` 也认 askpass 模式，所以测试二进制也能当 askpass 脚本的入口。
+Everyday operations are in `app/gitdaily.go`: `Merge`, `RebaseOnto`, `CherryPick`, `Revert`, `ResetTo` (soft / mixed /
+hard; hard needs confirmation), `UndoCommit` (soft-resets one commit and puts its message back in the commit box),
+`PushForce` (`--force-with-lease`), `Sync` (pull, then push). When one stops on a conflict it hands off to the banner
+(`stopOp`). `inHead` tells whether a commit is on the current branch.
 
-### 冲突和三方合并
+#### Why an action is unavailable
 
-冲突标记由 `docs/conflicts.go` 解析：`ParseConflicts`，以及 `Doc` 的方法 `ConflictBlocks`（按 `Buf.Version` 缓存）；`Resolved` 算出解决一块后的替换文字和范围。
+All in `app/gitwhy.go`: one `XxxWhy` per kind of Git operation (`FetchWhy`, `PullWhy`, `PushWhy`, `PushForceWhy`,
+`SyncWhy`, `StageAllWhy`, `StashWhy`, `RefWhy` / `MergeWhy` / `RebaseOntoWhy`, `SwitchWhy`, `DeleteBranchWhy`,
+`RemoveWorktreeWhy`, `UndoWhy`, `PickWhy`, `ResetWhy`, `RebaseWhy`…). An empty string means the action is allowed;
+otherwise exactly one reason is reported, in a fixed "most fundamental first" order. They are used in:
 
-`app/conflicts.go` 的 `ResolveConflict` / `ResolveAll` 只改缓冲区：保留我的、他们的、两者。只有 `MarkResolved` 跑 git 写命令：先保存文件，再 `git add`；文件里还有冲突标记时先问。
+- Native menus: the ui's `whyItem` / `withWhy` append the reason in parentheses after the label;
+- Buttons: in the tooltip (`syncOf`);
+- The command registry's `Command.Why`: for the Command Palette (shown after the grayed-out command) and the menu bar (clicking shows the reason);
+- The action itself checks again at the start (`a.Blocked(XxxWhy(…))`: if non-empty, show a toast and don't run), so a
+  state change while a menu is open can't make it go ahead anyway.
 
-- 冲突的文件在 Git 栏的“冲突”组（`Change{Kind: Conflict}`），单击在编辑器里打开（`OpenConflict`，文件不在了就退回开 Diff），冲突就在那里解决。
-- 右键能开两种 Diff：HEAD 和工作区比，或者“两边”比（`Code: 'S'`，`git ls-files -u` 找到 `:2:` 我的和 `:3:` 他们的）。
-- 在文件标签里，`ui/merge.go` 每帧按解析结果给冲突块上色、在行号栏画红点（`conflictMarks`）；按钮在冲突条上（`mergeBar`）。
-- 快捷键（`mergeKeys`）：⌃⌥1 / 2 / 3 选我的 / 他们的 / 两者，⌥F7 / ⌥⇧F7 或 ⌃⌥↓ / ↑ 跳到下一处 / 上一处。
-- 改动条（GutterMarks）只给冲突用。
+Auto-push after commit, and the push half of sync after pulling, use the unchecked `pushNow` (the status hasn't been refreshed at that point).
 
-### 进行中的操作
+### Branches, tags, remotes
 
-合并、变基、拣选、还原停在一半时（`git/state.go` 只认这四种），仓库段顶上有横幅（`RowOngoing`），带进度（`ReadProgress`：变基第几步共几步）。
+`app/gitrefs.go`: `RefDialog` is one dialog with five uses (`RefDlgKind`: rename branch, new tag, delete tag, rename
+remote, add remote), with a live preview of the command to run at the bottom; `refNameErr` checks for duplicate names and characters git won't accept.
 
-按钮是继续 / 跳过 / 放弃（`app/ongoing.go`：`ContinueOngoing`、`SkipOngoing`、`AbortOngoing`）：
+- Before deleting a branch, Grove counts in the background how many commits aren't merged and then asks; deleting a
+  remote branch uses `splitRemote` to split off the remote name.
+- `TagRemote` figures out which remote a tag should be pushed to.
+- Tags and remotes are read in `git/refs.go`.
 
-- 还有冲突的文件时不能继续。
-- 跳过和中止先 `AskDanger`；合并没有跳过。
-- 继续和跳过走 `runStep`：退出码非 0 且输出里有 `CONFLICT (` 当成又停下了，不报错；别的非 0 才是失败。
+The right-panel history can show a branch's or tag's history (`Hist.RefKind`), or a worktree's.
 
-日常操作在 `app/gitdaily.go`：`Merge`、`RebaseOnto`、`CherryPick`、`Revert`、`ResetTo`（soft / mixed / hard，hard 要确认）、`UndoCommit`（软重置一个提交，把信息填回提交框）、`PushForce`（`--force-with-lease`）、`Sync`（拉了再推）。停在冲突上时交给横幅（`stopOp`）。`inHead` 判断某提交在不在当前分支上。
+### History
 
-#### 不能做的原因
+#### Reading and searching
 
-都在 `app/gitwhy.go`：每种 Git 操作一个 `XxxWhy`（`FetchWhy`、`PullWhy`、`PushWhy`、`PushForceWhy`、`SyncWhy`、`StageAllWhy`、`StashWhy`、`RefWhy` / `MergeWhy` / `RebaseOntoWhy`、`SwitchWhy`、`DeleteBranchWhy`、`RemoveWorktreeWhy`、`UndoWhy`、`PickWhy`、`ResetWhy`、`RebaseWhy`…），空串 = 能做，按“最根本的先”的固定顺序只报一条。用在：
+`git.LogQuery` builds the log arguments: search terms, all branches, path. The right panel's search box is parsed by `ParseHistQuery`:
 
-- 原生菜单：ui 的 `whyItem` / `withWhy` 括在标签后面；
-- 按钮：写进提示（`syncOf`）；
-- 命令注册表的 `Command.Why`：给命令面板（写在灰着的命令后面）和菜单栏（点了提示原因）；
-- 动作本身开头再查一次（`a.Blocked(XxxWhy(…))`：不为空就 toast、不执行），菜单开着时状态变了也不会照做。
+- `key:value`: `author:` / `作者:`, `path:` / `路径:`, `after:` / `since:` / `之后:`, `before:` / `until:` / `之前:`;
+- `/regex/`;
+- Dates are handed to git's own date parser (`git.ResolveDate`), so things like `2.weeks.ago` work.
 
-提交后自动推送、同步拉完再推用不查的 `pushNow`（那时状态还没刷新）。
+File history uses `--follow`; git can't combine `--follow` with search terms, so in that case up to `MaxFollowSearch`
+(5000) commits are read and filtered in Go (`matchLocal`).
 
-### 分支、标签、远程
+A page (`LogPage`) is 200 commits; scrolling down loads the next page.
 
-`app/gitrefs.go`：`RefDialog` 一个对话框五种用法（`RefDlgKind`：分支改名、新建标签、删除标签、远程改名、添加远程），底下实时预览要跑的命令，`refNameErr` 查重名和 git 不收的字符。
+#### Commit details, comparison, stashes
 
-- 删除分支前在后台数有几个提交没合并再问；删除远程分支用 `splitRemote` 拆出远程名。
-- `TagRemote` 找标签该推到哪个远程。
-- 标签和远程的读取在 `git/refs.go`。
+- The file list in commit details is `diffTreeFiles`: first `--name-status`, then `--numstat` for added / removed line counts.
+- Comparing two commits is in `app/compare.go` (`docs.Key.Parent` records which one is on the left).
+- Stashes (`app/stash.go`) can be expanded to show their files (untracked files of a `-u` stash are in `^3`);
+  `ApplyStashFiles` uses `restore --source` to take just a few files, and asks first if those files have changes in the working tree.
 
-右栏历史可以看某个分支或标签的历史（`Hist.RefKind`），也可以看某个工作树的。
+#### List rows
 
-### 历史
+The right-panel history's list rows are in `ui/history.go`, one row per commit.
 
-#### 读和搜索
+- Date headers are separate list rows (`HistRow.CI == DayRow`; `AllDay` for All Repositories). Grouping is `app.Bucket`:
+  Today, Yesterday, This week (starting Monday), Last week, This month, then one group per month for anything older; the
+  text is `groupLabel`, and the time at the end of each row (`rowWhen`) changes format with the group. Headers use
+  `ListState.Header`: pinned to the top while scrolling, pushed away by the next day, not selectable by keyboard or mouse, and they need a background.
+- The first row, "Uncommitted changes", only exists when the working tree has changes (or the status hasn't been read,
+  or you're viewing a worktree / tag) (`uncommittedRow`); when it comes and goes, `keepRowSel` moves `Hist.Sel` by one row.
+- An expanded commit doesn't draw the selection background: `commitTitle` is the card's first line, the `commitCard`
+  below it sits outside the selection background (`histParts`), the expanded files are separate list rows, and then the
+  card's sides and bottom are drawn (`histFileRow`).
+- The message body `bodyItems` is split into items, and `Hist.BodyOpen` records which commit's body is expanded; text
+  can't be measured in the list, so `bodyFits` estimates from character widths whether "Show all" is needed.
+- Branch labels go through `foldRefs`: a remote branch with the same name is folded into the local branch.
 
-`git.LogQuery` 拼 log 的参数：搜索词、所有分支、路径。右栏的搜索框由 `ParseHistQuery` 解析：
+#### Agent marker
 
-- `键:值`：`author:` / `作者:`、`path:` / `路径:`、`after:` / `since:` / `之后:`、`before:` / `until:` / `之前:`；
-- `/正则/`；
-- 日期交给 git 自己的写法认（`git.ResolveDate`），所以 `2.weeks.ago` 之类都行。
+`git.AgentOf` recognizes the `Co-Authored-By:` trailer in a commit message (a word in the name or the email domain
+matching the `agentPats` table) and fills in `Commit.Agent` while reading the log. List rows don't draw the marker; it goes
+on the info line of the expanded card (`commitMeta`).
 
-文件历史带 `--follow`；`--follow` 和搜索词 git 不能一起用，所以这时读最多 `MaxFollowSearch`（5000）条，在 Go 里过滤（`matchLocal`）。
+"Agent commits only" (`App.HistAgent`, not saved to state.json) reads a page and then filters it; `Hist.read` records how
+many commits git log has read, and the next page continues from there.
 
-一页 `LogPage`（200）条，往下滚读下一页。
+#### Blame
 
-#### 提交详情、比较、贮藏
+`app/blame.go`, `git/blame.go`: `ReadBlame` reads `blame --porcelain` and caches it by `BlameKey` (file + revision). A
+column is overlaid on the left of the editor (`ui/blame.go`, using the editor's Margin), and there is also an inline blame
+for the cursor line only. Clicking a block finds that commit in the right-panel history (`ShowInHistory`).
 
-- 提交详情里的文件列表是 `diffTreeFiles`：先 `--name-status` 再 `--numstat` 拿增删行数。
-- 比较两个提交在 `app/compare.go`（`docs.Key.Parent` 记左边是哪个）。
-- 贮藏（`app/stash.go`）可以展开看文件（`-u` 贮藏的未跟踪文件在 `^3`）；`ApplyStashFiles` 用 `restore --source` 只取几个文件，工作区里这些文件有改动时先问。
+### Commit graph
 
-#### 列表行
+`internal/graph` only does the computation: commits are passed to `Lanes.Next(hash, parents)` in display order, which
+returns the row's lane and its connections above and below (`Row{Lane, Edges}`). State lives in `Lanes` and carries over
+to the next page. When viewing all branches, `Reserve` pins HEAD to lane 0. The log uses `--date-order` so branch lines don't get too long.
 
-右栏历史的列表行在 `ui/history.go`，一个提交一行。
+`ui/graph.go` draws it:
 
-- 日期段头是单独的列表行（`HistRow.CI == DayRow`，所有仓库是 `AllDay`）。分段是 `app.Bucket`：今天、昨天、本周（从周一起）、上周、本月，再早的一个月一段；字是 `groupLabel`，行尾的时间 `rowWhen` 跟着段变格式。段头用 `ListState.Header`：滚动时钉在顶上、下一天推走它，键盘和鼠标选不中，要有底色。
-- 第一行“未提交的改动”只在工作区有改动（或没读到状态、看工作树 / 标签）时有（`uncommittedRow`），它来去时 `keepRowSel` 把 `Hist.Sel` 挪一行。
-- 展开的提交不画选中的底：`commitTitle` 是卡片的第一行，下面的 `commitCard` 在选中的底外面（`histParts`），展开的文件是单独的列表行，接着画卡片的两边和底（`histFileRow`）。
-- 正文 `bodyItems` 拆成一条条，`Hist.BodyOpen` 记哪个提交的正文展开着；列表里量不了字，`bodyFits` 按字宽估要不要“展开全文”。
-- 分支标记走 `foldRefs`：同名的远程分支折进本地分支。
+- Lanes are 12 apart and at most 6 are drawn; anything further right isn't drawn (lines fade out at the edge).
+- Colors are muted (no red): lane 0 is the accent color shifted slightly toward the secondary text color (`accentLane`),
+  then gray-green, gray-sand, gray-purple, gray-cyan, gray-brown and gray-blue, minus the one most similar to lane 0
+  (`laneColors`, one set remembered per accent color).
+- Lines are 1.5 wide; lines that change lanes follow `graphBend` (vertical, rounded corner, horizontal, rounded corner,
+  vertical). Nodes have no background-colored outline (no white halo on hovered or selected rows).
+- With a single lane (`GraphW <= 1`) it goes thin: a faint gray thin line and small dots, with gaps in the line before and
+  after each node (`nodeGap`); HEAD is a thin ring in the accent color.
+- The "Uncommitted changes" row is an orange dashed ring, connected to HEAD's lane by an orange dashed line (`dirtyLine`).
+- When the list is filtered (search terms, agent commits only, file history), no lanes are computed and only dots are drawn
+  (`HistDots` / `dotGraph`); adjacent dots are connected by a line segment only if they are parent and child.
+- "Graph" in the header's context menu (`St.HistNoGraph`) turns the whole graph off.
 
-#### agent 记号
+### Worktrees
 
-`git.AgentOf` 认提交正文里的 `Co-Authored-By:` trailer（名字里的词或邮箱域名对上 `agentPats` 表），读 log 时填进 `Commit.Agent`。列表行不画记号，写在展开卡片的信息行里（`commitMeta`）。
+`git worktree`'s linked worktrees appear as a "Worktrees" block in the repository's Git panel section, designed around
+"a worktree is an agent's workstation". The whole block only exists when "Show worktrees in the Git panel" is on in
+Settings (see [Show worktrees / stashes toggles](#show-worktrees--stashes-toggles) above). Code: `app/worktrees.go`,
+`app/wtstate.go`, `app/wtwatch.go`, `git/worktree.go`.
 
-“只看 agent 写的”（`App.HistAgent`，不进 state.json）读一页再筛，`Hist.read` 记 git log 读了几条，下一页从那里接着读。
+#### Reading
 
-#### blame
+- `worktree list --porcelain -z` is only run when the `<common>/worktrees` directory exists, to avoid an extra command for ordinary repositories.
+- Each worktree's change status and ahead / behind counts are only computed when its state is needed (`WtInfo`, at most 4
+  concurrently, `WtConcurrency`); see `WtTracked` below.
+- Path comparison always goes through `git.SamePath` / `Under` (handling case and symlinks).
+- When a worktree's folder is nested inside the repository root, the repository's file tree doesn't list the files under it (`dropNested`).
 
-`app/blame.go`、`git/blame.go`：`ReadBlame` 读 `blame --porcelain`，按 `BlameKey`（文件 + 版本）缓存。编辑器左边叠一列（`ui/blame.go`，用编辑器的 Margin），也有只显示光标行的行内 blame。点一段可以在右栏历史里找到那次提交（`ShowInHistory`）。
+#### State and sorting
 
-### 提交图
+`WtStateOf` combines the agent state (`WtAgent`) and `WtInfo` into one of seven states: waiting for you → running →
+ready to merge → has changes → idle → no agent → merged (lower values need you more).
 
-`internal/graph` 只负责算：按显示顺序把提交传给 `Lanes.Next(hash, parents)`，返回这一行的泳道及上下连接（`Row{Lane, Edges}`）。状态存在 `Lanes` 里，下一页接着用。只看所有分支时用 `Reserve` 把 HEAD 固定在第 0 道。log 用 `--date-order`，避免分支连线过长。
+- `SortWts` sorts by it (the main worktree first), and `WtTop` is the level shown on the collapsed group header.
+- "Merged" means 0 ahead and at least 1 behind (the branch is already in the mainline); a worktree whose folder is gone
+  (prunable) also counts. A freshly created worktree that is 0 ahead and 0 behind doesn't count as merged.
 
-`ui/graph.go` 画：
+#### Expanding, collapsing and "Needs you"
 
-- 泳道间距 12，最多画 6 道，更右边的不画（线到边上淡出）。
-- 颜色是淡的（不用红色）：第 0 道是强调色往次级字色挪一点（`accentLane`），后面是灰绿、灰沙、灰紫、灰青、灰褐、灰蓝，去掉和第 0 道最像的一个（`laneColors`，按强调色记住一套）。
-- 线宽 1.5，换泳道的线走 `graphBend`（竖、圆角、平、圆角、竖）。节点不描底色的边（行悬停、选中时不出白晕）。
-- 只有一条泳道（`GraphW <= 1`）时走 thin：淡灰细线和小点，线在节点前后留缝（`nodeGap`），HEAD 是强调色的细圈。
-- “未提交的改动”那行是橙色虚线圈，用橙色虚线（`dirtyLine`）接到 HEAD 那道。
-- 列表是筛过的（有搜索词、只看 agent、文件历史）时不算泳道，只画点（`HistDots` / `dotGraph`），相邻的点是父子才连一段线。
-- 头部右键菜单里的“提交图”（`St.HistNoGraph`）关掉整个图。
+- The group is collapsed by default: whether rows are listed (`Repo.WtShown`) depends only on the user opening it
+  (`WtOpen`, saved in the session; `GoToWorktree` opens it too). Even with worktrees waiting for you / running / ready to merge, it doesn't auto-expand.
+- Whether state is computed and folders are watched is separate: `Repo.WtTracked` = `WtOpen` or `wtAuto` (some worktree
+  is waiting for you / running / ready to merge, checked every frame by `SyncWtAuto`), so even when collapsed, the
+  "Needs you" bar and the group header's symbol stay current.
+- Only one worktree is expanded at a time (`App.WtExp`, not saved): `git.BranchFiles` first finds the merge-base and then
+  lists the files from merge-base → branch (i.e. `main...branch`); the rows are `RowWtSummary` / `RowWtFile` / `RowWtTerm`.
+- "Merge into main" goes through `App.Merge` after an `Ask`; the reason it's grayed out is `MergeWorktreeWhy`.
+- The "Needs you" bar is `NeedsYou` (waiting-for-you first, then ready-to-merge; ready-to-merge is only recognized for
+  groups whose `WtInfo` has been computed); previous / next are `StepNeedsYou` → `GoToWorktree`.
 
-### 工作树
+#### Operations
 
-`git worktree` 的链接工作树在 Git 栏仓库段里是一块“工作树”，按“工作树就是 agent 的工位”来设计。整块只在设置开了“在 Git 栏显示工作树”时有（见上面的[显示工作树 / 贮藏的开关](#显示工作树--贮藏的开关)）。代码：`app/worktrees.go`、`app/wtstate.go`、`app/wtwatch.go`、`git/worktree.go`。
+- Clicking a worktree shows its branch's history in the right panel (`viewWorktree`); "Open in Workspace" adds it as a repository (`OpenWorktree`).
+- New / Lock / Unlock / Remove / Prune are all a dialog + `RunOp`. Prune first runs `git.PruneList` (`prune --dry-run -v`,
+  reading what would be removed from stderr), and only after confirmation runs `worktree prune -v`.
 
-#### 读取
+#### Watching
 
-- 只有 `<common>/worktrees` 目录存在时才读 `worktree list --porcelain -z`，免得给普通仓库多跑一条命令。
-- 每个工作树的改动状态和领先 / 落后数只在要算状态时算（`WtInfo`，最多 4 个并发 `WtConcurrency`），见下面的 `WtTracked`。
-- 路径比较一律走 `git.SamePath` / `Under`（处理大小写和符号链接）。
-- 工作树的目录嵌在仓库根目录里时，仓库的文件树不列它下面的文件（`dropNested`）。
+While a repository's worktree block is tracked (`WtTracked`), each worktree in it gets its own watcher (`syncWtWatch` in
+`app/wtwatch.go`, `watch.StartTree`, at most `WtWatchMax` 16 per repository; prunable, bare and already-opened-as-a-repository
+worktrees aren't watched); a change refreshes only that row.
 
-#### 状态和排序
+### Submodules
 
-`WtStateOf` 把 agent 状态（`WtAgent`）和 `WtInfo` 算成七种之一：等你 → 运行中 → 可合并 → 有改动 → 空闲 → 没有 agent → 已合并（值越小越需要你）。
+`git.ReadSubmodules` reads `.gitmodules` (`git config -f .gitmodules`) and `submodule status --cached`, at most 200.
+porcelain v2's `S<c><m><u>` is recorded in `Change.Sub`.
 
-- `SortWts` 按它排（主工作树在最前），`WtTop` 是收起的组头放的那一档。
-- “已合并”是领先 0、落后至少 1（分支已经进了主线），目录没了（可清理）的也算；刚建、领先落后都是 0 的不算已合并。
+- A submodule is a single row in the file tree (it doesn't expand); its Diff in the Git panel is a note (`subDiffNote`:
+  which commit the pointer moved from and to, and whether there are changes inside).
+- Discarding a submodule's changes is `submodule update` (checking out the commit recorded by the parent repository), and
+  only happens when the pointer moved (`Sub` contains `C`); otherwise it just shows a toast: changes inside must be discarded in the submodule itself.
+- The context menu can initialize, update, open in a new window, and add to the workspace (`OpenSubmodule`: initializes
+  it first if needed; an initialized one is added as a repository).
 
-#### 展开、收起和“需要你”
+### Interactive rebase
 
-- 组默认收着：列不列行（`Repo.WtShown`）只看用户点开的（`WtOpen`，存会话；`GoToWorktree` 也会点开），有工作树在等你 / 在跑 / 可合并也不自动展开。
-- 算不算状态、盯不盯目录另算：`Repo.WtTracked` = `WtOpen` 或 `wtAuto`（有工作树在等你 / 在跑 / 可合并，每帧 `SyncWtAuto` 对一次），所以收着时“需要你”条和组头的符号照样跟得上。
-- 同时只展开一个工作树（`App.WtExp`，不存）：`git.BranchFiles` 先求 merge-base 再列 merge-base → 分支的文件（就是 `main...分支`），行是 `RowWtSummary` / `RowWtFile` / `RowWtTerm`。
-- “合并到 main”走 `App.Merge`，先 `Ask`；灰着的原因是 `MergeWorktreeWhy`。
-- “需要你”条是 `NeedsYou`（先等你、再可合并；可合并只有算过 `WtInfo` 的组才认得出），上一个 / 下一个是 `StepNeedsYou` → `GoToWorktree`。
+`app/rebase.go` and `docs.RebasePlan`. "Interactive Rebase from Here…" on a commit in the history opens a wizard tab: one
+row per commit, where you choose pick / reword / squash / fixup / drop / edit, drag to reorder, and edit messages directly.
 
-#### 操作
+- It only opens from the full history of the current branch (`RebaseView`); the range must be linear, with no merge
+  commits, and at most `RebaseLimit` 100 commits.
+- When it starts, it generates the todo: commits whose message changes (reword, or squashed together) are written as
+  `pick` / `fixup` plus a line `exec git commit --amend -F <message file>`, so the whole rebase never opens an editor.
+- The todo is swapped in with `GIT_SEQUENCE_EDITOR=cp <file>` and run via `RunOpEnv`.
+- When it stops on a conflict it hands off to the banner, and `followRebase` follows the progress.
 
-- 单击一个工作树在右栏看它分支的历史（`viewWorktree`），“在工作区中打开”把它加成一个仓库（`OpenWorktree`）。
-- 新建 / 锁定 / 解锁 / 移除 / 清理都是对话框 + `RunOp`。清理先 `git.PruneList`（`prune --dry-run -v`，从 stderr 读要清掉哪些），确认后再 `worktree prune -v`。
+### Clone
 
-#### 监听
+`app/clone.go`.
 
-仓库的工作树块在跟踪时（`WtTracked`），里面的工作树各有一个监听（`app/wtwatch.go` 的 `syncWtWatch`，`watch.StartTree`，每个仓库最多 `WtWatchMax` 16 个；可清理的、裸的、已经作为仓库打开的不盯），改了只刷新那一行。
+- The dialog takes the URL, the parent folder (defaulting to the last one, `St.CloneDir`) and the folder name (`CloneName`
+  derives it from the URL), with an "Include submodules" checkbox (`--recurse-submodules`); if the clipboard holds
+  something that looks like a git URL (`LooksGitURL`), it is prefilled.
+- `git clone --progress` runs in the parent folder via `RunStream`; stderr is read in chunks as progress (`CloneProgress`),
+  shown on a line at the top of the sidebar's files page.
+- A clone doesn't belong to any repository's queue (the repository doesn't exist yet); it follows the window (`a.Clones`).
+  Credential prompts and the timeout clock work the same as for write commands.
+- URLs in the log have the password scrubbed first (`redactURL`: the username stays, the password becomes `***`).
+- When the clone finishes, it is added to the list (or opened as the workspace if the workspace is empty); on cancel or
+  failure, the half-cloned folder is deleted — but only if that folder didn't exist before the clone.
 
-### 子模块
+### Remote web pages
 
-`git.ReadSubmodules` 读 `.gitmodules`（`git config -f .gitmodules`）和 `submodule status --cached`，最多 200 个。porcelain v2 的 `S<c><m><u>` 记在 `Change.Sub`。
+`git/web.go`: `ParseWeb` turns a remote URL (ssh / https / scp syntax) into a web URL, `KindOf` recognizes GitHub /
+GitLab / Gitea / Bitbucket, and self-hosted hosts get their style assigned in `Settings.WebHosts`.
 
-- 子模块在文件树里是一行（不展开），在 Git 栏里的 Diff 是一段说明（`subDiffNote`：指针从哪个提交到哪个、里面有没有改动）。
-- 丢弃子模块的改动是 `submodule update`（检出回父仓库记录的提交），只在指针变了（`Sub` 里有 `C`）时做；否则只 toast：里面的改动要在子模块自己里丢弃。
-- 右键能初始化、更新、在新窗口打开、加进工作区（`OpenSubmodule`：没初始化的先初始化，初始化过的加成一个仓库）。
+`Web.Commit` / `File` / `Lines` build links to a commit, a file, or some lines of a file; `App.WebOf` (`app/stash.go`)
+applies the per-host style from Settings, and `Repo.WebRef` is the revision pinned when viewing working-tree files (HEAD
+if it has been pushed, otherwise the remote's default branch).
 
-### 交互式变基
+### Plain folders
 
-`app/rebase.go` 和 `docs.RebasePlan`。从历史里某个提交“从这里开始交互式变基…”打开一个向导标签：每行一个提交，选 pick / reword / squash / fixup / drop / edit、拖动排序、直接改信息。
+Folders that aren't git repositories (`Repo.Plain`) can be opened too:
 
-- 只从当前分支的完整历史里开（`RebaseView`），范围必须是一条线、没有合并提交、最多 `RebaseLimit` 100 个。
-- 开始时生成 todo：要改信息的（reword、squash 合起来的）写成 `pick` / `fixup` 加一行 `exec git commit --amend -F <信息文件>`，所以整个变基不开编辑器。
-- todo 用 `GIT_SEQUENCE_EDITOR=cp <文件>` 换进去，经 `RunOpEnv` 跑。
-- 停在冲突上交给横幅，`followRebase` 跟着进度。
+- The file tree is built by walking with `files.Walk` (at most `WalkCap` 50,000 files), and watching uses `watch.StartPlain`.
+- In the Git panel it is a single grayed-out section header reading "Not a Git repository" that can't be expanded; it
+  doesn't appear in history. Commands that need git are disabled when they hit `git.NotRepo`.
+- Every refresh checks again whether it has been `git init`ed; the watcher still watches for changes to `.git` under the
+  root, so it catches up after a `git init`.
 
-### 克隆
+`Walk` doesn't descend into `node_modules` or dot-directories (`.venv`, `.pytest_cache`…):
 
-`app/clone.go`。
-
-- 对话框填地址、父目录（默认上次的 `St.CloneDir`）和目录名（`CloneName` 从地址推），可勾“含子模块”（`--recurse-submodules`）；剪贴板里像 git 地址（`LooksGitURL`）就预填。
-- `git clone --progress` 在父目录里经 `RunStream` 跑，stderr 一段段读成进度（`CloneProgress`），侧栏文件页顶上一行显示。
-- 克隆不属于哪个仓库的队列（仓库还没有），跟着窗口走（`a.Clones`），凭据提示和超时钟和写命令一样。
-- 日志里的地址先抹掉密码（`redactURL`：用户名留着，密码换成 `***`）。
-- 克隆完加进列表（空工作区时当工作区打开）；取消或失败时删掉没克隆完的目录，但只删克隆前不存在的目录。
-
-### 远程网页
-
-`git/web.go`：`ParseWeb` 把远程地址（ssh / https / scp 写法）转成网页地址，`KindOf` 认 GitHub / GitLab / Gitea / Bitbucket，自建的主机在 `Settings.WebHosts` 里指定风格。
-
-`Web.Commit` / `File` / `Lines` 拼出提交、文件、文件某几行的链接；`App.WebOf`（`app/stash.go`）套上设置里按主机指定的风格，`Repo.WebRef` 是看工作区文件时钉的版本（HEAD 推送过就用它，否则远程的默认分支）。
-
-### 普通文件夹
-
-不是 git 仓库的文件夹（`Repo.Plain`）也能开：
-
-- 文件树用 `files.Walk` 遍历（最多 `WalkCap` 50 000 个），监听用 `watch.StartPlain`。
-- Git 栏里是一行灰着的段头，写“不是 Git 仓库”，不能展开；历史里不出现。需要 git 的命令遇到 `git.NotRepo` 时禁用。
-- 每次刷新都重新看一下它是不是已经 `git init` 了；监听照样盯着根下 `.git` 的变化，`git init` 之后能跟上。
-
-`Walk` 不进 `node_modules` 和点开头的目录（`.venv`、`.pytest_cache`……）：
-
-- 把它们列成第四个返回值（名字后面带 `/`，同 `LsIgnored`），`LoadFiles` 当被忽略的目录传给 `Tree.Done`：树里灰显、收着，展开时 `ReadLazy` 读一层，`Paths` 里没有它们里面的（⌘P、全文搜索不进）。
-- 这一条不看“显示被忽略的文件”开关，`files.exclude` / “隐藏的文件”照样能藏掉；`.git` 不列也不进，`.DS_Store` 不列。
-- 监听（`ignorePlain`）照旧不看这些目录里面，根下增删这样的目录是根目录的变化，整棵重读时跟上。
+- It lists them as its fourth return value (names ending in `/`, like `LsIgnored`), and `LoadFiles` passes them to
+  `Tree.Done` as ignored folders: grayed out and collapsed in the tree, read one level at a time with `ReadLazy` when
+  expanded, and their contents aren't in `Paths` (⌘P and full-text search don't go into them).
+- This ignores the "Show Ignored Files" toggle; `files.exclude` / "Hidden files" can still hide them. `.git` is neither
+  listed nor entered, and `.DS_Store` isn't listed.
+- The watcher (`ignorePlain`) still doesn't look inside these folders; adding or removing such a folder under the root is
+  a change to the root folder, which a full reread picks up.

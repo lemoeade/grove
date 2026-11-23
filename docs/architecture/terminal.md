@@ -1,116 +1,182 @@
-# 终端
+# Terminal
 
-[← 架构总览](../architecture.md)
+[← Architecture overview](../architecture.md)
 
-终端标签和分屏、任务、agent 状态、回滚内容的保存，以及 termd 后台进程。
+Terminal tabs and splits, tasks, agent status, saving scrollback, and the termd background process.
 
-## 终端
+## Terminal
 
-### 标签和分屏
+### Tabs and splits
 
-模型和操作在 `app/terminals.go`，底栏的界面在 `ui/bottom.go`。
+The model and operations live in `app/terminals.go`; the bottom panel UI is in `ui/bottom.go`.
 
-- 每个仓库一排终端标签（`TermTab`），底栏显示当前仓库的那一排（`App.TermRepo`）。空工作区时终端开在家目录 `~`，不记进会话。
-- 每个标签是一格或分屏的几格（`TermNode` 拆分树：叶子是一格，否则左右 / 上下分两半），最多 `MaxPanes` 8 格（会话里校验用 `workspace.MaxTermPanes`，也是 8）。每格（`TermPane`）一个 shell。
-- shell 按需启动：首次需要显示（底栏开着、当前仓库是它、是它当前的标签）才起（`ui.termPane` 里调 `EnsurePane`）。切仓库再切回来还是同一个 shell。
-- 记进会话的：标签的名字、顺序、分屏、每格 shell 所在的目录（OSC 7 报的）、用的终端配置。
+- Each repository has its own row of terminal tabs (`TermTab`), and the bottom panel shows the current repository's row
+  (`App.TermRepo`). In an empty workspace the terminal opens in the home folder `~` and isn't recorded in the session.
+- Each tab is a single pane or several split panes (the `TermNode` split tree: a leaf is a pane, otherwise it splits into two
+  halves left / right or top / bottom), at most `MaxPanes` 8 panes (session validation uses `workspace.MaxTermPanes`, also 8). Each
+  pane (`TermPane`) runs one shell.
+- Shells start on demand: only when first needed for display (the bottom panel is open, its repository is current, and it is the
+  current tab), via `EnsurePane` called from `ui.termPane`. Switching to another repository and back keeps the same shell.
+- Recorded in the session: tab names, order, splits, each pane's shell folder (as reported by OSC 7), and the terminal profile used.
 
-底栏界面（`ui/bottom.go`）：`bottomBar` 画标签条（`termTab`，可改名、右键菜单）、输出和问题两页；`termNode` 按拆分树画格和拖条，`termPane` 画一格（文件树的行拖进来贴引号过的绝对路径），`termFind` 是查找条，`exitedBar` 是 shell 退出 / 和 termd 断开时的横条；`newTermButton` 是「+」，右键或 ⌥点用终端配置新建。
+The bottom panel UI (`ui/bottom.go`): `bottomBar` draws the tab strip (`termTab`, renamable, with a context menu) and the Output and
+Problems pages; `termNode` draws panes and drag handles following the split tree; `termPane` draws one pane (dragging file tree rows
+into it pastes their quoted absolute paths); `termFind` is the find bar; `exitedBar` is the bar shown when the shell has exited /
+the connection to termd is lost; `newTermButton` is the "+", and right-clicking or ⌥-clicking it creates a terminal from a profile.
 
-#### 进程号、前台命令和目录
+#### Process ids, foreground commands and folders
 
-终端里有没有程序在跑（关标签、关窗口要不要问），都在 `app/termjobs.go`：
+Whether a program is running in a terminal (whether to ask before closing a tab or window) is all handled in `app/termjobs.go`:
 
-- 认领进程号：mygo 的终端不给进程号，`pollPids` / `claimPids` 从应用的子进程里挑有终端（tty）的（`ps -A -o pid=,ppid=,tty=`），按进程号从小到大分给按启动先后排队的格。
-- 前台命令：`ps -o pid,pgid,tpgid,ucomm,args` 一次拿到进程组、终端的前台进程组、可执行文件名和命令行。关格前问一格（`TermPane.Job()`）用两次 `ps -p`；轮询 agent 时一次 `ps -A`（`foregroundJobs`）。
-- 名字都按 `jobName` 算：前台是解释器（node、bun、deno、python、python3、ruby）时按脚本名（改过进程名的按 argv[0]）；路径带空格时 argv[0] 被切断，按 ucomm。
-- 目录没报 OSC 7 时用 `lsof` 看 cwd（`procCwd`）。
-- termd 里的会话忙不忙由 termd 自己用 `TIOCGPGRP` 看（有不在任何窗口里的会话，应用不知道它们的进程号）。
+- Claiming process ids: mygo's terminal doesn't expose process ids, so `pollPids` / `claimPids` pick the app's child processes that
+  have a terminal (tty) (`ps -A -o pid=,ppid=,tty=`) and assign them, in ascending pid order, to panes queued in the order they
+  were started.
+- Foreground commands: `ps -o pid,pgid,tpgid,ucomm,args` gets the process group, the terminal's foreground process group, the
+  executable name and the command line in one go. Asking about one pane before closing it (`TermPane.Job()`) uses two `ps -p` calls;
+  polling for agents uses one `ps -A` (`foregroundJobs`).
+- Names are always computed by `jobName`: when the foreground process is an interpreter (node, bun, deno, python, python3, ruby), the
+  script name is used (or argv[0] for processes that renamed themselves); when the path contains spaces, argv[0] gets cut off, so
+  ucomm is used.
+- When a folder hasn't been reported via OSC 7, `lsof` is used to look up the cwd (`procCwd`).
+- Whether a session in termd is busy is checked by termd itself with `TIOCGPGRP` (some sessions aren't in any window, and the app
+  doesn't know their process ids).
 
-#### 按键和设置
+#### Keys and settings
 
-- 终端的命令走注册表：Terminal 上下文里的（分屏 ⌘D / ⇧⌘D、查找 ⌘F、清屏 ⌘K、关格 ⌘W……），和全局的新建终端 ⌃⇧`；别的键交给终端（`Options.OnKey` → `termKey`）。
-- 设置里有 ⌥ 作 Meta、选中即复制、光标闪烁、配色（跟着外观、浅 / 深，或 Ghostty 主题名）。
-- 终端配置（`TermProfiles`，最多 `workspace.MaxTermProfiles` 10 个）是 shell 加参数；第一格用了配置时标签名跟着它（`Repo.TermLabel`）。
+- Terminal commands go through the registry: those in the Terminal context (split ⌘D / ⇧⌘D, find ⌘F, clear ⌘K, close pane ⌘W, ...)
+  and the global New Terminal ⌃⇧`; all other keys go to the terminal (`Options.OnKey` → `termKey`).
+- The settings include "Use ⌥ as Meta key", "Copy on select", "Cursor blink", and colors (follow appearance, light / dark, or a
+  Ghostty theme name).
+- Terminal profiles (`TermProfiles`, at most `workspace.MaxTermProfiles` 10) are a shell plus arguments; when the first pane uses a
+  profile, the tab is named after it (`Repo.TermLabel`).
 
-#### ⌘ 点击
+#### ⌘-click
 
-终端里 ⌘ 点击（`app/links.go` 的 `OpenLink`）：
+⌘-clicking in the terminal (`OpenLink` in `app/links.go`):
 
-- 文件路径（绝对、`~/`、相对终端当前目录，`file://` 也算）在编辑器里打开，带 `:行[:列]` 就跳过去；
-- 仓库里的目录在文件树里显示；
-- 别的网址交给系统浏览器。
+- File paths (absolute, `~/`, relative to the terminal's current folder, and `file://` too) open in the editor, jumping to
+  `:line[:col]` if present;
+- folders inside a repository are revealed in the file tree;
+- other URLs go to the system browser.
 
-shell 报的目录可能是解开符号链接的（`/var` → `/private/var`），对不上时两边都解开再比（`linkRepo`）。
+The folder reported by the shell may have symlinks resolved (`/var` → `/private/var`); when they don't match, both sides are
+resolved before comparing (`linkRepo`).
 
-#### 开在编辑器区
+#### Opening in the editor area
 
-终端标签也能开在编辑器区（`app/termeditor.go`，⌃⇧⌘`；底栏标签的右键菜单也能挪过去）：一个 `TermTab` 要么在底栏（`Repo.Terms`），要么在编辑器区（`Repo.EdTerms`，对应一个 `docs.Term` 标签）。移动时不重启 shell，只改变显示位置；画法和底栏同一套（`ui.termNode`）。
+Terminal tabs can also be opened in the editor area (`app/termeditor.go`, ⌃⇧⌘`; the bottom panel tab's context menu can move them
+there too): a `TermTab` is either in the bottom panel (`Repo.Terms`) or in the editor area (`Repo.EdTerms`, matching a `docs.Term`
+tab). Moving it doesn't restart the shell, only changes where it's shown; it's drawn the same way as in the bottom panel
+(`ui.termNode`).
 
-#### 把终端内容开成标签
+#### Opening terminal output in a tab
 
-终端没有键盘选区，所以有“把终端内容开成标签”（⇧⌘C，`app/termtext.go`）：把一格的屏幕和回滚开成只读标签，在编辑器里选、搜、复制。内容是打开时的快照，可通过横幅刷新（`RefreshTermText`）。同一个文件里还有“复制全部输出”。
+The terminal has no keyboard selection, hence "Open Terminal Output in a Tab" (⇧⌘C, `app/termtext.go`): it opens a pane's screen and
+scrollback as a read-only tab, where you can select, search and copy in the editor. The content is a snapshot taken when it was
+opened and can be refreshed from a banner (`RefreshTermText`). The same file also has "Copy All Output".
 
-### 任务
+### Tasks
 
-`internal/tasks` 认仓库根上的任务，只读文件、不跑东西：
+`internal/tasks` recognizes tasks at repository roots; it only reads files and never runs anything:
 
-- package.json 的 scripts（锁文件定用哪个包管理器）、Makefile / justfile 的目标、Cargo.toml / go.mod 的常用命令；
-- 最多 200 条（`tasks.Max`）；`Stamp` 按那几个文件的名字、大小和修改时间决定要不要重扫。
+- package.json scripts (the lock file decides which package manager to use), Makefile / justfile targets, and common commands for
+  Cargo.toml / go.mod;
+- at most 200 (`tasks.Max`); `Stamp` decides whether to rescan based on the names, sizes and modification times of those files.
 
-跑在 `app/tasks.go`：
+Running happens in `app/tasks.go`:
 
-- ⇧⌘B（`task.run`）或面板 `!` 选一个（所有仓库的任务一起模糊匹配），文件树里 package.json 这些的右键也能跑。
-- `RunTask` 在那个仓库里跑：有叫任务名、前台没在跑命令的终端标签就用它，不然新开一个以任务名命名的；切到这个仓库、打开底栏、键盘给它。
-- 最近跑过的记在 `TaskHistory`（最多 `workspace.MaxTaskHistory` 20 条），面板里排前面。
+- ⇧⌘B (`task.run`) or `!` in the palette picks one (tasks from all repositories are fuzzy-matched together); the context menu on
+  package.json and similar files in the file tree can run them too.
+- `RunTask` runs it in that repository: it reuses a terminal tab named after the task with no foreground command running, or else
+  opens a new one named after the task; then it switches to that repository, opens the bottom panel and gives it the keyboard.
+- Recently run tasks are recorded in `TaskHistory` (at most `workspace.MaxTaskHistory` 20) and listed first in the palette.
 
-### agent 状态
+### Agent status
 
-终端里跑着 claude、codex 这类 agent 时，按格算它的状态，再按工作树汇总（`app/agents.go`）。全在本机算，只看 Grove 自己的终端，不读 agent 的日志、不接它的接口。
+When an agent such as claude or codex is running in a terminal, its status is computed per pane and then aggregated per worktree
+(`app/agents.go`). It's all computed locally and only looks at Grove's own terminals; it doesn't read agent logs or talk to their
+APIs.
 
-#### 三种状态
+#### Three states
 
-- 等你（`AgentWaiting`）：终端响铃（BEL）或要通知（OSC 9 / OSC 777），而键盘不在这一格（`paneLooked`）。
-  - 记在 `TermPane.bellAt`，用户切进这一格（`FocusPane`、`GoToPane`）时清。
-  - 认序列靠 mygo 终端的 `OnBell` / `OnNotify`（OSC 0/2/7/52 里当结束符的 BEL 它不算）。
-  - termd 的会话在无头终端上接这两个回调，发 `frameBell` 给窗口（没窗口接着时记下，接上时补一帧），窗口端是 `Conn.OnBell`。
-- 运行中 / 空闲（`AgentRunning` / `AgentIdle`）：前台命令在 agent 名单里（`DefaultAgents`：claude、codex、gemini、aider、opencode，加设置的「agent 命令」`AgentNames`），最近 10 秒（`agentQuiet`）有输出算运行中，否则空闲。
+- Waiting for you (`AgentWaiting`): the terminal rang the bell (BEL) or requested a notification (OSC 9 / OSC 777) while the
+  keyboard wasn't in that pane (`paneLooked`).
+  - Recorded in `TermPane.bellAt`, and cleared when the user switches into that pane (`FocusPane`, `GoToPane`).
+  - Sequences are recognized via the mygo terminal's `OnBell` / `OnNotify` (a BEL used as the terminator in OSC 0/2/7/52 doesn't
+    count).
+  - termd sessions hook these two callbacks on the headless terminal and send `frameBell` to the window (recorded when no window is
+    attached, with one frame sent on attach); on the window side it's `Conn.OnBell`.
+- Running / idle (`AgentRunning` / `AgentIdle`): the foreground command is on the agent list (`DefaultAgents`: claude, codex,
+  gemini, aider, opencode, plus the "Agent commands" setting `AgentNames`); output within the last 10 seconds (`agentQuiet`) counts
+  as running, otherwise idle.
 
-#### 后台轮询
+#### Background polling
 
-- 前台命令由后台 goroutine（`agentPoller`）每 2 秒（`agentPoll`）用一次 `ps -A` 读所有开着的格（`termjobs.go` 的 `foregroundJobs`）。
-- 读到的前台命令和运行中 / 空闲都和上一轮一样就不回主线程，免得空闲时每 2 秒多一帧。
-- 输出时间：termd 的格每来一帧屏幕记一次（`Conn.OnOutput`，原子量）；本地的格没有输出回调，前台是 agent 时看屏幕文字的指纹变没变。
+- Foreground commands are read by a background goroutine (`agentPoller`) every 2 seconds (`agentPoll`) with a single `ps -A` for all
+  open panes (`foregroundJobs` in `termjobs.go`).
+- If the foreground commands and running / idle states are the same as last round, it doesn't return to the main thread, to avoid
+  an extra frame every 2 seconds while idle.
+- Output time: termd panes record it on every screen frame received (`Conn.OnOutput`, atomic); local panes have no output callback,
+  so when the foreground process is an agent, a fingerprint of the screen text is checked for changes.
 
-#### 终端 → 工作树
+#### Terminal → worktree
 
-- 格现在的目录（`paneDir`：OSC 7，没有时上次 lsof 读的）落在哪个工作树里（`git.Under` / `SamePath`，套在里面的别的工作树归那个工作树）。
-- `WtAgent(r, w)` 取最需要你的一格（等你 > 运行中 > 空闲），带上开始运行 / 等你的时间和是哪个终端。
-- `GoToPane` 切到那一格（底栏的打开底栏、切仓库和标签，编辑器区的切到那个标签）。
+- Which worktree the pane's current folder (`paneDir`: OSC 7, or the last lsof reading if absent) falls in (`git.Under` /
+  `SamePath`; a folder inside a worktree nested within another counts toward the nested one).
+- `WtAgent(r, w)` takes the pane that most needs you (waiting for you > running > idle), along with when it started running /
+  waiting and which terminal it is.
+- `GoToPane` switches to that pane (for the bottom panel: open the bottom panel, switch repository and tab; for the editor area:
+  switch to that tab).
 
-#### 界面
+#### UI
 
-终端标签（底栏和编辑器区）的图标后面，等你画 7px 琥珀色圆点，运行中画 13px（`iconRow`）的灰色转圈（`ui/agents.go` 的 `agentMark`），空闲和没有 agent 不画。Git 栏的工作树行用同一套符号（`ui/wtrows.go` 的 `wtMark`）。
+After the icon of a terminal tab (bottom panel and editor area), waiting for you is drawn as a 7px amber dot and running as a 13px
+(`iconRow`) gray spinner (`agentMark` in `ui/agents.go`); idle and no agent draw nothing. Worktree rows in the Git sidebar use the
+same symbols (`wtMark` in `ui/wtrows.go`).
 
-### 回滚内容的保存
+### Saving scrollback
 
-`app/termhist.go`。未启用后台进程时，shell 随窗口关闭而结束；为便于重开后查看原有输出：
+`app/termhist.go`. Without the background process, shells end when the window closes; so that the previous output can still be
+seen after reopening:
 
-- 关闭窗口、退出或切换工作区前，每个启动过、在应用进程里的格都把回滚内容（`Terminal.History`，VT 序列）写入 `<状态目录>/termhist/<工作区哈希>/<毫秒>-<格 ID>.vt`，文件名保存在会话中对应分屏的 `hist`（`workspace.TermSplit.Hist`）。不定时写；全屏程序开着时（`History` 是空的）留着上一次写的。
-- 下次启动该格时（`takeHist`），先将内容输入新终端，并在前面加一行淡色分隔；读取后删除文件。
-- 每格最多保留 `TermHistCap` 256 KB（从行首截取，留最后的），整个目录上限为 `TermHistMax` 20 MB，超出时删除最早的文件；会话里没记着的文件由 `gcTermHist` 清掉。
-- termd 里的格不写：会话本来就在。
+- Before closing a window, quitting or switching workspaces, every started pane running in the app process writes its scrollback
+  (`Terminal.History`, as VT sequences) to `<state folder>/termhist/<workspace hash>/<milliseconds>-<pane ID>.vt`, and the file name
+  is saved in the session in the corresponding split's `hist` (`workspace.TermSplit.Hist`). There are no periodic writes; while a
+  full-screen program is open (`History` is empty), the previously written file is kept.
+- The next time the pane starts (`takeHist`), the content is first fed into the new terminal, preceded by a faint separator line;
+  the file is deleted after it is read.
+- Each pane keeps at most `TermHistCap` 256 KB (cut at a line start, keeping the end), and the whole folder is capped at
+  `TermHistMax` 20 MB, with the oldest files deleted beyond that; files not referenced by any session are cleaned up by
+  `gcTermHist`.
+- Panes in termd don't write: their sessions are still around.
 
 ### termd
 
-设置里开了“关掉窗口后终端继续在后台运行”（`TermDaemon`），新建分屏的 shell 会在终端后台进程 termd 中运行，窗口里的终端只是镜像。包在 `internal/termd`（`server.go`、`session.go`、`client.go`、`proto.go`、`spawn.go`、`pty_darwin.go`），应用这边在 `app/termd.go`。
+When "Keep terminals running after the window closes" (`TermDaemon`) is turned on in the settings, the shells of newly created
+panes run in the terminal background process termd, and terminals in the window are just mirrors. The package is `internal/termd`
+(`server.go`, `session.go`, `client.go`, `proto.go`, `spawn.go`, `pty_darwin.go`); the app side is in `app/termd.go`.
 
-- 进程：就是 Grove 自己带 `termd` 参数（`Grove termd <sock> <log>`），`main` 第一行分出去，不起 `mygo.App`。由 `termd.Spawn` 用 `Setsid` 起，等它能连上。
-- 套接字：状态目录里的 `termd.sock`，0600，不做别的认证（只有这个用户能连）。路径太长（macOS 的 `sun_path` 只有 104 字节）时换成 `$TMPDIR/grove-termd-<sha1 前 6 字节>.sock`（`SockPath`）。同时起了两个时靠 `<sock>.lock` 的 flock 只留一个。一个状态目录一个 termd，所以 `WORKBENCH_STATE` 的实例有自己的。
-- 会话：由一个 pty（自行实现的 `pty_darwin.go`，使用 `/dev/ptmx` + `ioctl`）、一个 shell 和一个无头 `terminal.Terminal` 组成。shell 输出传给无头终端，窗口中的终端通过 `terminal.Options.Conn` 获取镜像帧（`ResizeByConn`：屏幕大小跟着 termd 那边），保持屏幕和回滚内容一致。
-- 一个会话同时只允许一条连接：新连接会替换旧连接，旧的收到 `frameGone "kicked"`，那个窗口的格显示“这个终端在别的窗口里接上了”。
-- 断开和关掉：关窗口、⌘Q、换工作区是断开，会话留在 termd 里，会话记下 sid，再开同一个工作区接回去（会话不在了就开新的，并提示）；关格、关标签、移除仓库、重新启动是关掉会话（shell 收到 SIGHUP）。
-- 响铃：会话的无头终端响铃或要通知时发 `frameBell`（镜像帧里没有），见上面“agent 状态”。
-- 退出：shell 退出了、又没窗口接着的会话过 `Linger`（`DefaultLinger` 10 秒）拿掉；没有会话也没有连接 60 秒（`DefaultIdle`）后 termd 自己退出、删掉套接字。SIGTERM / SIGINT 挂断所有 shell 再退。
-- 设置窗口终端页显示 termd 在不在跑、几个会话（`TermdStatus`，2 秒没查就在后台重查），能“停止”（`StopTermDaemon`，菜单里是“停止终端后台进程…”）：先问，再挂断 termd 里所有的 shell，开着的格显示已退出，termd 没有会话、没有连接后自己退出。
-- 关掉设置只影响新开的格。
+- Process: it's Grove itself with the `termd` argument (`Grove termd <sock> <log>`), branched off on the first line of `main`,
+  without starting `mygo.App`. `termd.Spawn` starts it with `Setsid` and waits until it can connect.
+- Socket: `termd.sock` in the state folder, mode 0600, with no other authentication (only this user can connect). When the path is
+  too long (macOS's `sun_path` is only 104 bytes), `$TMPDIR/grove-termd-<first 6 bytes of sha1>.sock` is used instead (`SockPath`).
+  If two are started at once, a flock on `<sock>.lock` keeps only one. There is one termd per state folder, so `WORKBENCH_STATE`
+  instances have their own.
+- Session: one pty (the home-grown `pty_darwin.go`, using `/dev/ptmx` + `ioctl`), one shell and one headless `terminal.Terminal`.
+  Shell output feeds the headless terminal, and the terminal in the window receives mirror frames through `terminal.Options.Conn`
+  (`ResizeByConn`: the screen size follows the termd side), keeping screen and scrollback in sync.
+- A session allows only one connection at a time: a new connection replaces the old one, which receives `frameGone "kicked"`, and
+  that window's pane shows "This terminal was attached in another window".
+- Detaching and closing: closing a window, ⌘Q and switching workspaces detach; the session stays in termd and its sid is recorded
+  in the Grove session, so reopening the same workspace reattaches (if the session is gone, a new one is opened with a notice).
+  Closing a pane or tab, removing a repository and restarting close the session (the shell receives SIGHUP).
+- Bell: when a session's headless terminal rings the bell or requests a notification, it sends `frameBell` (mirror frames don't
+  carry it); see [Agent status](#agent-status) above.
+- Exiting: sessions whose shell has exited and that have no attached window are removed after `Linger` (`DefaultLinger`, 10
+  seconds); with no sessions and no connections for 60 seconds (`DefaultIdle`), termd exits on its own and deletes the socket.
+  SIGTERM / SIGINT hang up all shells and then exit.
+- The terminal page of the settings window shows whether termd is running and how many sessions it has (`TermdStatus`, rechecked in
+  the background if not checked for 2 seconds), and can stop it (`StopTermDaemon`; in the menu it's "Stop Terminal Background
+  Process…"): it asks first, then hangs up every shell in termd; open panes show as exited, and termd exits on its own once it has
+  no sessions and no connections.
+- Turning the setting off affects only newly opened panes.

@@ -1,121 +1,175 @@
-# 测试与验收
+# Testing and acceptance
 
-## 提交前
+## Before committing
 
-在仓库根目录运行：
+Run from the repo root:
 
 ```sh
 GOTOOLCHAIN=auto go vet ./...
-GOTOOLCHAIN=auto go test -count=1 ./...   # 整套几十秒，大头是 internal/ui
-GOTOOLCHAIN=auto go test -race ./...      # 界面测试也跑 -race，一两分钟
-WORKBENCH_TEST_WS=<.code-workspace 或目录> GOTOOLCHAIN=auto go test ./...   # 加上读真实工作区的只读测试（没设时它们跳过）
-mkdir -p <目录> && WORKBENCH_SHOT=<目录> GOTOOLCHAIN=auto go test -run 'TestScreenshot|TestAboutView' -v ./internal/ui/   # 截图，要更新的复制到 docs/screenshots/
-GOTOOLCHAIN=auto go test -run TestCatalog ./internal/i18n/   # 改了界面文案先 -update 收集 zh-CN.json，再给 en.json 补译文
-GOTOOLCHAIN=auto go test -run '^$' -bench . -benchtime 20x ./internal/search/ ./internal/fuzzy/   # 搜索 / 模糊匹配的速度
+GOTOOLCHAIN=auto go test -count=1 ./...   # the full suite takes tens of seconds, mostly internal/ui
+GOTOOLCHAIN=auto go test -race ./...      # UI tests also run under -race; a minute or two
+WORKBENCH_TEST_WS=<.code-workspace or directory> GOTOOLCHAIN=auto go test ./...   # adds the read-only tests against a real workspace (they skip when unset)
+mkdir -p <dir> && WORKBENCH_SHOT=<dir> GOTOOLCHAIN=auto go test -run 'TestScreenshot|TestAboutView' -v ./internal/ui/   # screenshots; copy the ones to update into docs/screenshots/
+GOTOOLCHAIN=auto go test -run TestCatalog ./internal/i18n/   # after changing UI text, first collect zh-CN.json with -update, then add translations to en.json
+GOTOOLCHAIN=auto go test -run '^$' -bench . -benchtime 20x ./internal/search/ ./internal/fuzzy/   # search / fuzzy-match speed
 GOTOOLCHAIN=auto go tool mygo build -skip-dmg -skip-notarize -sign -
-WORKBENCH_STATE=<目录> WORKBENCH_LOGS=<目录> GOTOOLCHAIN=auto go tool mygo dev -background -sign -   # 边改边看：存了 Go 代码就重编、重开 "Grove Dev"（在 .mygo/dev），-background 让它每次都在后台起、不抢到最前；Ctrl+C 停。一定带 WORKBENCH_STATE，别碰平时用的那份状态
-open -n -g -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WORKBENCH_LOGS=<目录>   # 30 秒后 footprint -p <pid> --noCategories -f bytes，然后只杀这个 pid
-open -n -g -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env "WORKBENCH_ALLOPEN=async def"   # "全开"的内存（两个 Diff、搜索、当前仓库的终端都起）
-open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WORKBENCH_FOCUS=editor   # 有焦点的内存（editor 或 terminal，lsappinfo front 核对在最前），无焦点加 -g；--env WORKBENCH_CARET_REST=off 对比不歇的光标
+WORKBENCH_STATE=<dir> WORKBENCH_LOGS=<dir> GOTOOLCHAIN=auto go tool mygo dev -background -sign -   # live reload: saving Go code rebuilds and relaunches "Grove Dev" (in .mygo/dev); -background makes it start in the background each time instead of coming to the front; Ctrl+C stops it. Always set WORKBENCH_STATE so your everyday state is left alone
+open -n -g -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<dir> --env WORKBENCH_LOGS=<dir>   # after 30 seconds, footprint -p <pid> --noCategories -f bytes, then kill only that pid
+open -n -g -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<dir> --env "WORKBENCH_ALLOPEN=async def"   # "everything open" memory (two diffs, search, the current repo's terminals all started)
+open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<dir> --env WORKBENCH_FOCUS=editor   # memory with focus (editor or terminal; check with lsappinfo front that it is frontmost); add -g for without focus; --env WORKBENCH_CARET_REST=off to compare with a caret that never rests
 ```
 
-日常测量内存使用 `tools/measure/measure.sh`，方法和要求见 [AGENTS.md](../AGENTS.md) 的“单实例、真窗口和量内存”一节。
+For routine memory measurement use `tools/measure/measure.sh`; the method and rules are in the
+[Single instance, real windows and measuring memory](../AGENTS.md#single-instance-real-windows-and-measuring-memory)
+section of AGENTS.md.
 
-截图无法验证的部分（系统菜单、原生对话框、毛玻璃、输入法、原生拖放、真实窗口中的快捷键）需要手动测试，并在 PR 中说明测试内容和方法。
+Anything screenshots can't verify (system menus, native dialogs, vibrancy, input methods, native drag and drop,
+shortcuts in a real window) needs manual testing; say in the PR what you tested and how.
 
-行为变更后，同步更新 README（功能、快捷键）、`CHANGELOG.md` 的“## 未发布”、`docs/architecture.md` 或 `docs/architecture/` 下对应的那篇、
-`docs/shortcuts.md`（`go test -run TestShortcutDoc ./internal/app/ -update`）。新遇到的问题记入 [mygo-pitfalls.md](mygo-pitfalls.md)。
+After a behavior change, update README.md and README.zh-CN.md (features, shortcuts), the "## Unreleased" section of
+`CHANGELOG.md`, `docs/architecture.md` or the matching page under `docs/architecture/`, and `docs/shortcuts.md`
+(`go test -run TestShortcutDoc ./internal/app/ -update`). Record newly hit problems in
+[mygo-pitfalls.md](mygo-pitfalls.md).
 
-整套测试并行运行且机器负载较高时，部分计时测试偶尔会超时（`internal/watch` 的监听测试）。
-可以先单独重跑，判断是否受负载影响；单独运行仍失败时，再进一步排查。
+When the full suite runs in parallel on a heavily loaded machine, some timing tests occasionally time out (the watch
+tests in `internal/watch`). Rerun them on their own first to see whether load is the cause; only dig further if they
+still fail when run alone.
 
-## 测试的分工
+## How testing is split up
 
-### 逻辑包
+### Logic packages
 
-`internal/app`、`git`、`files`、`docs`、`workspace`、`search`、`fuzzy`、`watch`、`i18n`、`testutil` 等包使用临时目录和临时仓库做单元测试，并运行 `-race`。
+`internal/app`, `git`, `files`, `docs`, `workspace`, `search`, `fuzzy`, `watch`, `i18n`, `testutil` and the other logic
+packages are unit tested with temporary directories and temporary repos, and run under `-race`.
 
-- 搜索的验收标准（10 万行 < 1 s）由 `internal/search` 的 `TestHundredThousandLines` 检查。性能测试见 `BenchmarkHundredThousandLines`、
-  `BenchmarkWorkspace`（`WORKBENCH_TEST_WS` 指的真实工作区，只读，没设就跳过）和 `internal/fuzzy` 的 `BenchmarkMatch`。
-- 监听的验收标准（外部修改文件或提交后 1 s 内更新）由 `internal/watch` 的 `TestWatchRepo` 和 `internal/app` 的
-  `TestWatchFollowsExternalChanges` 检查，覆盖外部修改、新建、提交、切换分支及切回，测量改动到界面状态更新的时间。
-  监听测试都使用 `t.TempDir()` 中的临时仓库；将 `TMPDIR` 指向外接卷，可在其他文件系统上再测一次。
-- 计时断言的预算写成 `testutil.Budget(…)`，`-race` 下自动放宽。
-- 命令注册表的表测试在 `internal/app`：`TestShortcutConflicts`（快捷键冲突，按分派域算）、`TestShortcutDoc`
-  （`docs/shortcuts.md` 和注册表一致，改了快捷键带 `-update` 重新生成）、`TestMenuStructure`。
-- `internal/i18n` 的 `TestCatalog` 检查 `zh-CN.json` 是否包含代码中的全部中文文案、`en.json` 是否完整，以及占位符是否一致。
+- The search acceptance criterion (100,000 lines < 1 s) is checked by `TestHundredThousandLines` in `internal/search`.
+  Performance tests are `BenchmarkHundredThousandLines`, `BenchmarkWorkspace` (on the real workspace
+  `WORKBENCH_TEST_WS` points to, read-only, skipped when unset) and `BenchmarkMatch` in `internal/fuzzy`.
+- The watch acceptance criterion (updates within 1 s of an external file change or commit) is checked by
+  `TestWatchRepo` in `internal/watch` and `TestWatchFollowsExternalChanges` in `internal/app`. They cover external
+  edits, new files, commits, switching branches and switching back, and measure the time from the change to the UI
+  state being updated. The watch tests all use temporary repos in `t.TempDir()`; point `TMPDIR` at an external volume
+  to run them again on another file system.
+- Budgets for timing assertions are written as `testutil.Budget(…)` and relaxed automatically under `-race`.
+- Table tests for the command registry are in `internal/app`: `TestShortcutConflicts` (shortcut conflicts, computed
+  per dispatch context), `TestShortcutDoc` (`docs/shortcuts.md` matches the registry; after changing shortcuts, run it
+  with `-update` to regenerate) and `TestMenuStructure`.
+- `TestCatalog` in `internal/i18n` checks that `zh-CN.json` contains every Chinese string in the code, that `en.json`
+  is complete, and that placeholders match.
 
-### 界面
+### UI
 
-`internal/ui` 使用 `ui.NewTester` 在内存中驱动整个窗口，不打开真实窗口；队列和等待工具来自 `internal/testutil`。
+`internal/ui` uses `ui.NewTester` to drive the whole window in memory without opening a real window; the queue and
+waiting helpers come from `internal/testutil`.
 
-- 界面测试也运行 `-race`。例如，重命名会在主线程修改文档字段，后台读取文件前需要先复制这些字段；这类竞争只有界面测试能覆盖。
-- 新功能的每个入口（快捷键、标题栏按钮、侧栏页、面板项、右键菜单、终端 ⌘点击）都要由 Tester 测试实际触发。
-- 设置窗口用第二个 Tester（`ui.SettingsView(a)`），和主窗口共用一个 `App`。
-- `newUI` 把编辑区的起始页画成空的（`bareStartPage = true`）：起始页上列着文件名、“工作树”这些字，会和侧栏、右栏里的撞（Tester 按字找元素，`HasText` 还是子串）。要看起始页的测试在 `newUI` 之后置回 `false` 并 `t.Cleanup` 恢复。
-- 英文界面用 `i18n.Set("en")` + `Tester.SetLocale(i18n.Locale())`；`TestEnglishUI` 查主窗口、右键菜单、命令面板里没有中文。
-- 编写 Tester 测试时的注意事项见 [mygo-pitfalls.md](mygo-pitfalls.md) 的“测试和 Tester”一节。
+- UI tests also run under `-race`. For example, renaming changes document fields on the main thread, so a background
+  file read has to copy those fields first; only UI tests cover races like this.
+- Every entry point of a new feature (shortcut, title bar button, sidebar page, panel item, context menu, ⌘-click in
+  the terminal) must actually be triggered by a Tester test.
+- The Settings window uses a second Tester (`ui.SettingsView(a)`) that shares one `App` with the main window.
+- `newUI` draws the editor area's start page empty (`bareStartPage = true`): the start page lists file names and words
+  like "Worktrees" that would collide with those in the sidebar and right panel (the Tester finds elements by text, and
+  `HasText` matches substrings). Tests that need the start page set it back to `false` after `newUI` and restore it with
+  `t.Cleanup`.
+- For the English UI use `i18n.Set("en")` + `Tester.SetLocale(i18n.Locale())`; `TestEnglishUI` checks that the main
+  window, context menus and the Command Palette contain no Chinese.
+- Things to watch out for when writing Tester tests are in the "Tests and Tester" section of
+  [mygo-pitfalls.md](mygo-pitfalls.md).
 
-### 多仓库
+### Multiple repos
 
-涉及“所有仓库同时可见”的行为都用 `testutil.ThreeRepos` 测试：同一工作区中有三个临时仓库，提交时间交错，其中两个有改动，一个干净。
-检查各仓库是否同时列出、第二个仓库的写操作是否只影响自身（对照另一仓库的 HEAD 和状态）、⌘1–9 是否跳转并切换当前仓库，以及合并历史的顺序和胶囊。
-新功能必须经过多仓库测试。
+Behavior that involves "every repo visible at once" is tested with `testutil.ThreeRepos`: three temporary repos in one
+workspace, with interleaved commit times, two with changes and one clean. Tests check that every repo is listed at
+the same time, that a write operation in the second repo affects only that repo (comparing the other repos' HEAD and
+status), that ⌘1–9 jumps to and switches the current repo, and the order and pills of the merged history.
+New features must pass multi-repo tests.
 
-### 真实工作区
+### Real workspaces
 
-写操作只在 `testutil.TempRepo` / `testutil.NewRepo` 建的临时仓库上测。读真实工作区的测试（`TestStatusMatchesPorcelain`、`TestWorkbenchView`、
-`TestTerminalChineseAndVim`、`TestRepoMenuAddRemove`、`TestScreenshot`、`BenchmarkWorkspace`）只读，只在设了
-`WORKBENCH_TEST_WS=<.code-workspace 或目录>` 时运行，未设置时跳过。只读冒烟测试前后，`git status --porcelain=v2` / `git submodule status` /
-`HEAD` / `git stash list` 应完全一致。
+Write operations are tested only on temporary repos created with `testutil.TempRepo` / `testutil.NewRepo`. Tests that
+read a real workspace (`TestStatusMatchesPorcelain`, `TestWorkbenchView`, `TestTerminalChineseAndVim`,
+`TestRepoMenuAddRemove`, `TestScreenshot`, `BenchmarkWorkspace`) are read-only and only run when
+`WORKBENCH_TEST_WS=<.code-workspace or directory>` is set; otherwise they skip. Before and after a read-only smoke test,
+`git status --porcelain=v2` / `git submodule status` / `HEAD` / `git stash list` must be identical.
 
-### 光标和内存
+### Caret and memory
 
-- 用 `Tester.Advance(CaretRest)` 推进模拟时间，确认光标停止闪烁后不再产生新帧（`TestCaretRestEditor` / `TestCaretRestDiff`），同时确认打字、输入法和 ↑ 仍正常。
-- 真实窗口的内存按 AGENTS.md 的方法测量：使用独立的 `WORKBENCH_STATE`，并以工作区各仓库的本地克隆作为测试工作区。需要排除 shell 影响时，终端 shell 使用 `/bin/cat`。
-  分别测量无焦点 / 有焦点 30 s / 有焦点 90 s 的情况，每 5 秒记录 `footprint` + `ps -o time`，用 `MYGO_FRAME_STATS=all` 记录帧数。
-- 发布前测量四组：空闲、全开、编辑器有焦点 90 s、终端有焦点 90 s。启动峰值另以每 0.3 s 一次的分类 footprint 采样检查。测量时不要开启 `WORKBENCH_CAPTURE`。
+- Advance simulated time with `Tester.Advance(CaretRest)` to confirm that no new frames are produced once the caret
+  stops blinking (`TestCaretRestEditor` / `TestCaretRestDiff`), and that typing, input methods and ↑ still work.
+- Measure real-window memory the way AGENTS.md describes: with a separate `WORKBENCH_STATE`, and with local clones of
+  the workspace's repos as the test workspace. To rule out the shell's influence, use `/bin/cat` as the terminal shell.
+  Measure without focus / with focus for 30 s / with focus for 90 s separately, recording `footprint` + `ps -o time`
+  every 5 seconds and frame counts with `MYGO_FRAME_STATS=all`.
+- Before a release, measure four scenarios: idle, everything open, editor focused for 90 s, terminal focused for 90 s.
+  Check the launch peak separately with categorized footprint samples every 0.3 s. Don't turn on `WORKBENCH_CAPTURE`
+  while measuring.
 
 ### Git
 
-涉及写操作的测试都使用临时仓库，真实仓库仅用于只读测试。
+Tests involving write operations all use temporary repos; real repos are only used for read-only tests.
 
-- **块级操作**：`git.HunkPatch` 的补丁在 `internal/git` 中实际交给 `git apply` 核对索引 / 工作区（头尾、没有末尾换行、CRLF、特殊文件名、
-  两块只动一块、读 diff 后文件又改过）；界面上 `TestHunkOps` 是 `TestGitOps` 的块级部分（暂存 / 取消暂存 / 丢弃一块、J / K、⌥J / ⌥K）。
-- **行级暂存**：`TestLinesPatch` 将 `LinesPatch` 的补丁实际交给 `git apply --cached` / `git apply` 核对（已配对的行、多出的行、只选旧侧、没有末尾换行），
-  `TestLinesEdits` 检查配对规则；界面的 `TestLineStaging` 用 `DiffState.LineSelection` 选行，暂存 / 取消暂存 / 丢弃各一次，再对照 `git diff --cached`。
-- **blame**：`internal/git` 的 `TestBlameParse` 运行实际的 `git blame --porcelain`（`--author` / `--date` 固定作者和时区，`git mv` 改名，最后一行改了不提交）；
-  界面的 `TestBlameGutter` 检查装订线随滚动更新、点击后选中历史提交、未保存改动以淡色显示、保存 / 提交后重读，以及历史版本标签和关闭行为。
-- **子模块**：`testutil.SubmoduleRepo(t, name)` 创建一个库仓库（两次提交）和一个主仓库；主仓库中的 `vendor/lib` 已初始化，`vendor/lib 2`（路径带空格）已 deinit。
-  从本机路径克隆要 `protocol.file.allow=always`，只在测试的环境里开：`SubmoduleRepo` 自己用 `-c`；界面测试的初始化走应用的 `RunOp`，所以测试先
-  `t.Setenv("GIT_CONFIG_COUNT", "1")`、`GIT_CONFIG_KEY_0=protocol.file.allow`、`GIT_CONFIG_VALUE_0=always`。应用里不加这个配置。
-  `TestReadSubmodules` / `TestStatusSubField` 检查状态读取和 Diff 说明，`TestSubmodules` 覆盖树行、添加为仓库、仓库菜单、胶囊、丢弃、初始化。
-- **只读行为**：启动、刷新和打开标签都不执行写命令。
+- **Hunk operations**: in `internal/git`, patches from `git.HunkPatch` are actually fed to `git apply` and checked
+  against the index / working tree (start and end of file, no trailing newline, CRLF, special file names, touching only
+  one of two hunks, the file changing again after the diff was read); in the UI, `TestHunkOps` is the hunk part of
+  `TestGitOps` (stage / unstage / discard a hunk, J / K, ⌥J / ⌥K).
+- **Line staging**: `TestLinesPatch` feeds patches from `LinesPatch` to `git apply --cached` / `git apply` (paired
+  lines, extra lines, only the old side selected, no trailing newline), and `TestLinesEdits` checks the pairing rules;
+  the UI's `TestLineStaging` selects lines with `DiffState.LineSelection`, stages / unstages / discards once each, and
+  compares against `git diff --cached`.
+- **blame**: `TestBlameParse` in `internal/git` runs a real `git blame --porcelain` (`--author` / `--date` pin the
+  author and time zone, a rename with `git mv`, an uncommitted change to the last line); the UI's `TestBlameGutter`
+  checks that the gutter updates on scroll, clicking selects the commit in the history, unsaved changes are shown
+  faded, it rereads after save / commit, and the history version tab and closing behavior.
+- **Submodules**: `testutil.SubmoduleRepo(t, name)` creates a library repo (two commits) and a main repo; in the main
+  repo, `vendor/lib` is initialized and `vendor/lib 2` (a path with a space) is deinitialized.
+  Cloning from a local path needs `protocol.file.allow=always`, enabled only in the test environment: `SubmoduleRepo`
+  uses `-c` itself; UI tests initialize through the app's `RunOp`, so the test first sets
+  `t.Setenv("GIT_CONFIG_COUNT", "1")`, `GIT_CONFIG_KEY_0=protocol.file.allow` and `GIT_CONFIG_VALUE_0=always`. The app
+  itself never adds this config.
+  `TestReadSubmodules` / `TestStatusSubField` check status reading and the diff description; `TestSubmodules` covers
+  tree rows, adding as a repo, the repo menu, the pill, discarding and initializing.
+- **Read-only behavior**: startup, refresh and opening tabs never run write commands.
 
-### 网页和剪贴板
+### Web pages and clipboard
 
-测试中将 `App.OpenURL` 替换为只记录地址、不打开浏览器的函数，使用虚构的远程地址，不连接网络。剪贴板操作通过 `app.CopyText`，测试时替换为只记录内容的函数，不修改系统剪贴板。
+Tests replace `App.OpenURL` with a function that only records the address without opening a browser, and use made-up
+remote URLs, so nothing touches the network. Clipboard operations go through `app.CopyText`, which tests replace with
+a function that only records the content, leaving the system clipboard alone.
 
-### 终端
+### Terminal
 
-- 界面测试里 shell 用 `/bin/sh`（`setBar` 写进 state.json，不跑用户的 zsh 配置），初始状态（底栏开关、会话中的 `terms`）需在 `newUI` 之前写好。
-- `readyPane` 等待 shell 提示符，`typeLine` 输入一行后等待输出（`testutil.WaitTerm` / `WaitTermGone`）。
-- 按需启动通过 `App.StartedPanes()` 检查（已启动且仍运行的 shell 数）；会话通过 `SaveState` 后的 `sessions[…].terms` 检查，目录比较前调用 `EvalSymlinks`。
-- 终端 ⌘点击用 `Tester.HoldModifiers(Cmd)` + `Move` 沿竖直方向移动，通过 `Terminal.HoveredLink()` 查找链接位置，并用 `Tester.OpenedURLs()` 检查打开的网址。
-- 内存按 AGENTS.md 的方法测量：使用实际的 zsh，单独记录子进程的 footprint；关闭各仓库底栏，对比按需启动前后，`WORKBENCH_TERMS=all` 量 3 × 2 的无焦点 / 有焦点 90 s。
+- In UI tests the shell is `/bin/sh` (`setBar` writes it into state.json so the user's zsh config doesn't run); the
+  initial state (bottom panel open or closed, `terms` in the session) has to be written before `newUI`.
+- `readyPane` waits for the shell prompt; `typeLine` types a line and waits for output (`testutil.WaitTerm` /
+  `WaitTermGone`).
+- Starting on demand is checked with `App.StartedPanes()` (the number of shells started and still running); sessions
+  are checked through `sessions[…].terms` after `SaveState`, calling `EvalSymlinks` before comparing directories.
+- ⌘-click in the terminal uses `Tester.HoldModifiers(Cmd)` + `Move` vertically, finds link positions with
+  `Terminal.HoveredLink()`, and checks opened URLs with `Tester.OpenedURLs()`.
+- Measure memory the way AGENTS.md describes: with a real zsh, recording child processes' footprint separately; close
+  the bottom panel of every repo, compare before and after starting on demand, and with `WORKBENCH_TERMS=all` measure
+  3 × 2 without focus / with focus for 90 s.
 
-### 终端后台进程（termd）
+### Terminal background process (termd)
 
-- `internal/termd` 的测试在测试进程内启动 `Server`，套接字是 `SockPath(t.TempDir())`（`t.TempDir()` 太长时会换到 `$TMPDIR` 下按目录取名的短路径），
-  `t.Cleanup` 里 `Stop` 并删掉套接字和 `.lock`。
-- 只有 `TestSpawnDetached` 会实际启动子进程（测试二进制带 `WORKBENCH_TERMD_HELPER=1` 和 `termd` 参数重入 `Main`），最后关掉。
-- 界面测试把 `app.TermdStart` 换成进程内的 `Server`，设置的 `termDaemon` 在 `newUI` 之前写进 state.json。`termKey` 经 `a.Update` 走，输入后需用 `wait(...)` 等待队列处理完成；
-  ⇧⌘C 之后再往终端里敲字先 `a.FocusTerm = true; tt.Frame()`。
-- **冒烟测试**（实际应用和 termd）：使用独立的 `WORKBENCH_STATE` / `WORKBENCH_LOGS`，使该实例拥有自己的 termd。
-  1. 首次启动时带 `WORKBENCH_TERM_CMD='echo MARK-$$'`，等待提示符后用 TERM 终止应用；用 `pgrep -f 'Grove.app/Contents/MacOS/Grove termd'` 确认 termd 仍在运行，且该 shell 仍是其子进程。
-  2. 第二次启动不带该变量，确认屏幕上仍是同一个 `MARK-<pid>`（`WORKBENCH_CAPTURE` 截一张看），termd.log 里只有 1 个会话。
-  3. 最后 `kill -TERM` 这个 termd（它会挂断 shell、删掉套接字），只终止自己启动的进程。
-- **测量 termd 内存**：分别记录应用、termd 和其子 shell 的内存（shell 是 termd 的子进程，不是应用的），窗口保持在后台，只采用 front=other 时的数据：
+- Tests in `internal/termd` start a `Server` inside the test process, with the socket at `SockPath(t.TempDir())`
+  (when `t.TempDir()` is too long, it switches to a short path under `$TMPDIR` named after the directory), and
+  `t.Cleanup` calls `Stop` and removes the socket and `.lock`.
+- Only `TestSpawnDetached` actually starts a child process (the test binary re-enters `Main` with
+  `WORKBENCH_TERMD_HELPER=1` and the `termd` argument), and shuts it down at the end.
+- UI tests replace `app.TermdStart` with an in-process `Server`, and the `termDaemon` setting is written into
+  state.json before `newUI`. `termKey` goes through `a.Update`, so after typing, use `wait(...)` until the queue has
+  been processed; to type into the terminal again after ⇧⌘C, first do `a.FocusTerm = true; tt.Frame()`.
+- **Smoke test** (real app and termd): use a separate `WORKBENCH_STATE` / `WORKBENCH_LOGS` so the instance has its own
+  termd.
+  1. Launch the first time with `WORKBENCH_TERM_CMD='echo MARK-$$'`, wait for the prompt, then end the app with TERM;
+     use `pgrep -f 'Grove.app/Contents/MacOS/Grove termd'` to confirm termd is still running and the shell is still its
+     child.
+  2. Launch a second time without that variable and confirm the screen still shows the same `MARK-<pid>` (take a look
+     with a `WORKBENCH_CAPTURE` shot), and that termd.log has only 1 session.
+  3. Finally `kill -TERM` this termd (it hangs up the shell and removes the socket); only end processes you started.
+- **Measuring termd memory**: record the memory of the app, termd and its child shells separately (the shells are
+  children of termd, not of the app); keep the window in the background and only use samples taken with front=other:
 
   ```bash
   A=…/Grove.app; P=$(pgrep -nf "$A/Contents/MacOS/Grove\$"); D=$(pgrep -f "$A/Contents/MacOS/Grove termd")
@@ -123,16 +177,24 @@ open -n -a build/darwin-arm64/Grove.app --env WORKBENCH_STATE=<目录> --env WOR
   for k in $(pgrep -P $D); do footprint -p $k --noCategories -f bytes | grep phys_footprint; done; ps -o pid,ppid,rss,command -p $D
   ```
 
-### 发布前检查
+### Pre-release checks
 
-- **无障碍标签**：`TestAccessLabels` 遍历主窗口的十几种状态、设置的每一页和关于窗口，检查按钮是否有可供读屏使用的名称。新加的区域 / 浮层 / 窗口需要在测试中增加绘制步骤，
-  才能纳入检查。`TestAccessProbe` 核对 reflect 读取的字段是否仍匹配，升级 mygo 时会先由它报错。
-- **打开路径**：`TestOpenArgs` 在临时仓库上测（工作区里的、不在工作区的、普通目录、找不到的、别的 `.code-workspace`），“添加仓库”后确认 `.code-workspace` 的内容完全未变。
-  真实的单实例、`open -a` 要起两个进程：用独立的 `WORKBENCH_STATE` / `WORKBENCH_LOGS` 加 `WORKBENCH_SINGLE=1`，先 `pgrep -fl Grove` 确认没有别的实例
-  （否则参数会交给已运行的实例），仅按 pid 终止自己启动的进程。
-- **崩溃日志**：`internal/crash` 的测试在临时目录里；真机用 `WORKBENCH_PANIC=1` + `WORKBENCH_LOGS=<临时目录>`，不动 `~/Library/Logs/Grove/`。
-- **版本**：`TestVersions` 检查 CHANGELOG 中是否有 `mygo.json` 对应版本的小节，以及 mygo 版本是否与锁定版本一致；发布步骤见 [release.md](release.md)。
+- **Accessibility labels**: `TestAccessLabels` walks through a dozen or so states of the main window, every page of
+  Settings and the About window, checking that buttons have names a screen reader can use. New regions / overlays /
+  windows need drawing steps added to the test before they are covered. `TestAccessProbe` checks that the fields read
+  via reflect still match; when upgrading mygo, it is the first to fail.
+- **Opening paths**: `TestOpenArgs` tests on temporary repos (in the workspace, outside the workspace, a plain
+  directory, not found, another `.code-workspace`), and confirms after "Add Repository" that the contents of the
+  `.code-workspace` are completely unchanged.
+  Real single-instance and `open -a` testing needs two processes: use a separate `WORKBENCH_STATE` / `WORKBENCH_LOGS`
+  plus `WORKBENCH_SINGLE=1`, check first with `pgrep -fl Grove` that no other instance is running (otherwise the
+  arguments go to the running instance), and end only the processes you started, by pid.
+- **Crash logs**: tests in `internal/crash` run in a temporary directory; on a real machine use `WORKBENCH_PANIC=1` +
+  `WORKBENCH_LOGS=<temp dir>`, leaving `~/Library/Logs/Grove/` alone.
+- **Versions**: `TestVersions` checks that CHANGELOG has a section for the version in `mygo.json` and that the mygo
+  version matches the pinned one; the release steps are in [release.md](release.md).
 
-## 验收标准
+## Acceptance criteria
 
-验收标准由上述计时、内存和行为测试检查。所有测试通过，并完成必要的手动测试后，才算验收完成。内存要求为空闲 ≤ 100 MB，硬上限 300 MB。
+The acceptance criteria are checked by the timing, memory and behavior tests above. Acceptance is complete only when
+all tests pass and the necessary manual testing is done. Memory requirements: idle ≤ 100 MB, hard cap 300 MB.

@@ -1,689 +1,691 @@
-# 踩过的坑
+# Pitfalls
 
-本文记录开发 Grove 时遇到的问题和处理约定。大部分与 mygo 的行为有关（以 go.mod 锁定的版本为准），也涉及 git、macOS 和 Go 标准库。
-每条先说明现象或约定，再介绍处理方法。升级 mygo 后，部分条目可能不再适用，修改代码前需在新版本上确认。
+This document records problems we ran into while building Grove and the conventions we settled on. Most are about mygo's behavior
+(as of the version pinned in go.mod); some concern git, macOS and the Go standard library. Each entry first describes the symptom or
+convention, then how we handle it. After a mygo upgrade some entries may no longer apply, so confirm on the new version before changing code.
 
-新问题记入对应小节；已有同类记录时，直接更新原条目，避免重复。
+Add new problems to the matching section. If a similar entry already exists, update it instead of adding a duplicate.
 
-## 布局与绘制
+## Layout and drawing
 
-- `Grow(1)` 的 flex 基准是 0：带 Grow 的文字旁再放 `Spacer().Grow(1)`，两者平分空间，文字被省略号截断。需要文字占满空间时，只给文字设置 Grow。
-- `TextArea` 要 `.MinHeight(0)`，否则会撑开面板。
-- `PassThrough()` 只管这个元素自己，不管子元素：自己在 Overlay 里画的提示盖在别的元素上时，里面的 `Text` 也要 `PassThrough()`，
-  不然按在提示下面那一行上的点击落到字上（文件树的行提示盖着下一行，⌘点下一行加选不上，见 `TestTreeRowTip`）。mygo 自己的 `Tooltip` 按下就收掉，碰不到这个。
-- `wui.SplitPercent` 取 0–100，`wui.Split` / `SplitVertical` 取 DIP。
-- `Row` 默认把子元素竖直居中。要子元素撑满行高（分隔条、整行可点的区域），给 Row 加 `.AlignItems(wui.Stretch)`。
-- Row 里的子节点用了 `Fill()` 又没给宽度，会超出行宽，导致元素移出窗口、无法点击。侧栏这类定宽的用 `Width(w).Shrink(0)`。
-- Column 中还有其他子元素时，不要用 `Fill()`：它占父容器宽高的 100%，加上其他子元素后会超出可用高度，底部内容被压到状态栏下面（Git 栏的提交框、
-  文件页的筛选框都曾因此被遮挡）。用 `Grow(1).MinWidth(0).MinHeight(0)`，由 `TestSidebarFits` 检查。
-- 滚动容器的子节点默认会缩。想让它比外面高（比如把横向滚动条挤到裁掉的地方），要 `Shrink(0)`。
-- 同一行中有多个可收缩的片段（如面包屑）：
-  - 不作处理时，所有片段会一起收缩成省略号。带 `Ellipsis` 的文字只要被缩了零点几个 DIP 就出"…"。
-  - 全都 `Shrink(0)` 又会溢出、画到旁边的元素上。
-  - 需要根据可用宽度自行计算（`crumbFit`：`c.MeasureText` 量文字，`Element.LayoutBounds()` 拿上一帧的宽，`c.Size()` 是这一帧的窗口大小），
-    用 `Shrink(0)` 阻止片段收缩，用 `MaxWidth` 限制宽度，再用 `ClipX` 裁剪溢出内容。
-- `LayoutBounds` / `Bounds` 是上一帧的，新元素的边界为空。这时用 `c.AnimationFrame()` 请求下一帧（`Context` 上没有 `Invalidate`）。
-- 滚动条宽度是主题的 `ScrollbarWidth`，整个窗口一份，不能按元素改；横向滚动条（6 pt 宽，轨道 12 pt 高）画在滚动容器的底边里。
-  标签条的处理方式：滚动容器比外面的 `Clip` 框高 `stripHidden`、底下 `Padding` 同样多，滚动条落在裁掉的那截里；
-  再自己按 `ScrollState`（`TrackScroll`，`s.Bounds(c)` 是视口）画一条 2 pt 的细条。
-- 列表选中行的颜色：
-  - 选中行里的输入框（文件树的新建 / 重命名）要显式 `.TextColor(t.Text)`，否则会继承选中行的颜色，导致文字难以辨认。
-  - 默认的选中样式是淡底，字不换色；只有设置里开了实心选中（`SolidSelection`）才是强调色底。判断"在强调色上"
-    （字、图标换 `AccentText`）一律用 `onAccent(a, row.Selected())`，别直接用 `row.Selected()`。
-    行里强调色的文字按钮用 `textButtonOn(…, onAccent(a, sel), …)`，否则实心选中时文字会与背景同色。
-  - 测试里要量"选中变 `AccentText`"的，先 `a.St.Settings.SolidSelection = true`。
-- `List` 选中行的圆角取主题的 `Radius`，没有单独的参数：侧栏的列表（圆角 5）在改了 `Radius` 的主题副本下建（`sideList`）。
-- `c.SetTheme` 会重设根节点的底色和文字样式。卡片里用 `withTheme` 换主题副本之后，根节点的背景色会被重置。所以：
-  - `root()` 在最后才按 `c.Vibrancy()` 设根的底色（透明 / `windowBg`）。
-  - 列表的行可能在布局时才建（`root()` 已经跑完），行里换主题照样会改掉根的底色，那一帧整个窗口底变成卡片色：
-    滚动时（尤其往上滚、钉着的段头换了一个）整个窗口一闪一闪。所以 `withTheme` 换回原主题以后自己把根的底色设回
-    `rootBg`。换主题一律走 `withTheme`，别直接 `c.SetTheme`。`TestHistScrollKeepsWindowBg` 每一帧都量窗口底：
-    Tester 一次输入会连推几帧直到不再要帧，只看最后一帧看不出来，要在 `beforeFrame`（ui_test.go）里取上一帧的像素。
-  - 新列表沿用此写法：`l := newListLook(a, c, radius)`，`l.build(c, func(){ … wui.List(…).Rows(l.rows(fn)) })`。
-  - 强调色的默认值是 `workspace.DefaultAccent`；`applyAccent` 要在每个窗口的根函数开头调（主窗口、设置、关于）。
-- 每帧给卡片建一份主题副本，指针每帧都是新的。编辑器（`DefaultTheme(t)` 按值取色）和终端（只看 `Dark`）不会因此每帧重建；
-  后续组件若按主题指针缓存数据，需留意这一点。
-- 减少视觉装饰（见 `ui/accent.go` 开头的说明）：强调色只给"当前 / 焦点 / 可以放"和按类别分的色板。新加的角标、胶囊、横幅、文字按钮用
-  `quietFill` / `bannerFill` 和正文色 / 次级色。
-- mygo 的 `Split` 分隔线固定 1 px、不能改宽。面板之间的缝是自己的拖条（`resizer`、分屏的 `splitDivider`），悬停时画 `gapLine`。
-- `Border` 画在元素里面，而且占布局：内容往里挪一个边宽。只在悬停、高亮时才加的框会让字跟着跳 1 pt，看着像换了字体；要一道只在某些状态才有的框，用 `Draw` 画（不占布局），或者干脆只换底色（Grove 菜单的高亮项就是这样）。`Clip` 的元素的描边盖在子节点上面（卡片的描边不会被编辑器盖住）；`Shadow` 只画在外面，缝只有 6 pt，blur 不宜过大。
-- 大片的模糊色斑用 `Painter.Shadow` 画，别用 `Element.Blur` 或 `Canvas`：
-  - `Element.Blur` 是整层离屏位图，全窗口几 MB。
-  - `Shadow(r, …)` 平时只画在 r 外面，但 r 宽或高为 0 时整块模糊的形状都画出来。给一条线段（宽 w−h、高 0）加 spread = h/2 + 余量
-    就是一团圆角椭圆，sigma 是 blur 的一半。
-  - 根节点可以 `Draw`（在背景之后、子节点之前，`Draw(nil)` 清掉）。盖在窗口底上的不透明元素（Git 栏贴顶的段头）要 `underBackdrop`
-    再画一份同样的色斑、`Clip` 到自己，坐标用整个窗口的（滚动列表里 `Draw` 拿到的也是窗口坐标）。`TestBackdrop` 量接缝。
-- 标题栏和红绿灯：
-  - `TrafficLightPosition` 是整数 Point（关闭按钮的左上角），红绿灯 14 pt 高：标题栏高度取偶数（38）红绿灯才能正好居中。
-  - `TitleBarHidden` 时 mygo 的 `c.TitleBar()` 报的是高 38、左边留 72（`TitleBarHiddenInset` 是 66 × 79）。
-  - 文字在 Row 里竖直居中时，墨迹中心比图标低 0.5–0.75 pt。标题栏、标签条这类和图标同一行的字用 `textNudge` 往上挪（`TestTitleBarAlign` 检查误差是否在 ±0.5 pt 内）。
-- `Tooltip` 默认在元素上面，只要上面放得下就往上，所以紧贴标题栏下面的元素的提示会盖住红绿灯。用 `tooltip(c, el, s)`：
-  上一帧 `Bounds().Y` 不到 `tipBelowY` 就用 `TooltipBase` 往下弹，样子和 `Tooltip` 一样。
-- 画虚线用 `Path.Dash(0, 段长)`。`Path` 的线帽默认是圆的，1.5 宽的线两头各多 0.75，2 的空隙只剩 0.5：配 `Cap(wui.ButtCap)`。
-- mygo 测量文字宽度时不计末尾空格：`Text(c, " / ")` 画出来是"a /b"。两边要留空就用 `"/"` 加 Row 的 `Gap`（或 `PaddingX`），别靠文字里的空格。
-- `wui.Color.Alpha` 会乘以原 alpha，而非直接设置：`t.Text.Alpha(0.62).Alpha(0.16)` 的 alpha 是 0.1。底块颜色从图形颜色算时，图形本身带 alpha 的话底块跟着更淡。
-- 界面缩放是按窗口的：`c.SetZoom` 只作用于所在窗口，所以工作台的 `root`、`SettingsView`、`AboutView` 每帧各自 `c.SetZoom(a.ZoomFactor())`。
-  新开一种窗口也要加这一句，否则新窗口会保持 100% 缩放。设置窗口、关于窗口不在工作台的帧里，设置一变要在 main 里 `Invalidate` 它们才重画。
-  终端视图会先接键（它自带的 ⇧⌘= 改终端字号），`termKey` 里 `termZoomKeyFor` 把这几个键截下来交给界面缩放。
-- `Painter.Scale()` 不含界面缩放。要按屏幕像素出位图（`ui/mdrender.go`），倍数是 `p.Scale() * a.ZoomFactor()`；只乘其中一项时，按 ⌘= 后图像会模糊，
-  或在 Retina 屏幕上清晰度不足。首次绘制前尚不确定所在屏幕，暂用 2；绘制时由 `SeenScale` 记录实际值。
-- 对话框只用 `dialogFrame`（`ui/dialogframe.go`），别用 `wui.AlertDialog` / `wui.Modal`：
-  - 按钮用 `dlgButton`（普通 / 主 / 危险三种一样高），字段用 `dlgField` + `dlgInput`，命令预览用 `dlgCommand`。
-  - 丢数据、改远程、改历史的确认用 `a.AskDanger`（红的），调用位置由 `app/danger_test.go` 扫描源码检查，新加一处要把函数名加进去；别的确认用 `a.Ask`。
-  - 底部那行按钮先建（`Reverse()`）：提示里的"⏎ 删除分支"和按钮同字，按名字找（`Find` / `mustClick`）要先找到按钮。
+- `Grow(1)` has a flex basis of 0: put `Spacer().Grow(1)` next to text that also has Grow and the two split the space evenly, so the text gets cut off with an ellipsis. When the text should fill the space, give Grow to the text only.
+- `TextArea` needs `.MinHeight(0)`, otherwise it stretches the panel.
+- `PassThrough()` applies only to the element itself, not to its children: when a tip you draw yourself in an Overlay covers other elements, the `Text` inside it needs `PassThrough()` too,
+  otherwise a click on the row under the tip lands on the text (the file tree's row tip covers the next row, and ⌘-clicking that row failed to add it to the selection; see `TestTreeRowTip`). mygo's own `Tooltip` dismisses itself on press, so it never hits this.
+- `wui.SplitPercent` takes 0–100; `wui.Split` / `SplitVertical` take DIPs.
+- `Row` centers its children vertically by default. To make children fill the row height (dividers, a whole-row click area), add `.AlignItems(wui.Stretch)` to the Row.
+- A child of a Row that uses `Fill()` without a width overflows the row, pushing elements out of the window where they can't be clicked. For fixed-width things like the sidebar use `Width(w).Shrink(0)`.
+- Don't use `Fill()` in a Column that has other children: it takes 100% of the parent's width and height, so together with the other children it exceeds the available height and the bottom content is pushed under the status bar (the Git sidebar's commit box
+  and the Files page's filter box were both hidden this way). Use `Grow(1).MinWidth(0).MinHeight(0)`; `TestSidebarFits` checks this.
+- Children of a scroll container shrink by default. To make one taller than the container (for example to push the horizontal scrollbar into a clipped-off area), use `Shrink(0)`.
+- Several shrinkable pieces on one line (such as breadcrumbs):
+  - Left alone, all the pieces shrink to ellipses together. Text with `Ellipsis` shows "…" as soon as it is squeezed by a fraction of a DIP.
+  - Making them all `Shrink(0)` overflows instead and draws over the neighboring elements.
+  - You have to compute the fit from the available width yourself (`crumbFit`: `c.MeasureText` measures the text, `Element.LayoutBounds()` gives last frame's width, `c.Size()` is this frame's window size),
+    then use `Shrink(0)` to stop the pieces from shrinking, `MaxWidth` to cap their width, and `ClipX` to clip what overflows.
+- `LayoutBounds` / `Bounds` are from the previous frame, and a new element's bounds are empty. In that case request another frame with `c.AnimationFrame()` (`Context` has no `Invalidate`).
+- The scrollbar width is the theme's `ScrollbarWidth`, one value for the whole window; it can't be set per element. The horizontal scrollbar (6 pt wide, on a 12 pt tall track) is drawn inside the bottom edge of the scroll container.
+  The tab strip's workaround: the scroll container is `stripHidden` taller than the outer `Clip` box and has the same amount of bottom `Padding`, so the scrollbar lands in the clipped-off strip;
+  it then draws its own 2 pt thin bar from the `ScrollState` (`TrackScroll`; `s.Bounds(c)` is the viewport).
+- Colors of a selected list row:
+  - A text field inside a selected row (new file / rename in the file tree) needs an explicit `.TextColor(t.Text)`, otherwise it inherits the selected row's color and the text becomes hard to read.
+  - The default selection style is a faint background with the text color unchanged; only with solid selection (`SolidSelection`) turned on in the settings is it an accent-colored background. To decide whether something is "on the accent color"
+    (text and icons switch to `AccentText`), always use `onAccent(a, row.Selected())`, never `row.Selected()` directly.
+    Accent-colored text buttons in a row use `textButtonOn(…, onAccent(a, sel), …)`, otherwise with solid selection the text is the same color as the background.
+  - Tests that check "selected turns `AccentText`" must set `a.St.Settings.SolidSelection = true` first.
+- The corner radius of a selected `List` row comes from the theme's `Radius`; there is no separate parameter. Sidebar lists (radius 5) are built under a copy of the theme with a modified `Radius` (`sideList`).
+- `c.SetTheme` resets the root node's background color and text style. Switching to a theme copy with `withTheme` inside a card resets the root's background. Therefore:
+  - `root()` sets the root background from `c.Vibrancy()` (transparent / `windowBg`) only at the very end.
+  - List rows may be built during layout (after `root()` has finished), and switching the theme inside a row still clobbers the root background, so for that frame the whole window background turns card-colored:
+    while scrolling (especially scrolling up, when the pinned section header changes) the whole window flickers. So after `withTheme` switches back to the original theme it sets the root background back to
+    `rootBg` itself. Always switch themes through `withTheme`, never call `c.SetTheme` directly. `TestHistScrollKeepsWindowBg` measures the window background on every frame:
+    a single Tester input pushes several frames until no more are requested, so looking only at the last frame shows nothing; sample the previous frame's pixels in `beforeFrame` (ui_test.go).
+  - New lists follow the same pattern: `l := newListLook(a, c, radius)`, `l.build(c, func(){ … wui.List(…).Rows(l.rows(fn)) })`.
+  - The default accent color is `workspace.DefaultAccent`; `applyAccent` must be called at the start of every window's root function (main window, settings, about).
+- Each frame builds a fresh theme copy for cards, so the pointer is new every frame. The editor (`DefaultTheme(t)` reads colors by value) and the terminal (looks only at `Dark`) don't rebuild every frame because of this;
+  watch out if a future component caches data keyed by the theme pointer.
+- Keep visual decoration down (see the notes at the top of `ui/accent.go`): the accent color is reserved for "current / focused / can drop here" and for category palettes. New badges, pills, banners and text buttons use
+  `quietFill` / `bannerFill` with the body or secondary text color.
+- mygo's `Split` divider is fixed at 1 px and can't be made wider. The gaps between panels are our own drag bars (`resizer`, and `splitDivider` for split groups), which draw `gapLine` on hover.
+- `Border` is drawn inside the element and takes up layout space: content moves in by the border width. A border added only on hover or highlight makes the text jump by 1 pt, which looks like a font change. For a border that exists only in some states, draw it with `Draw` (no layout space), or just change the background instead (that is what the highlighted item in Grove's menus does). A `Clip` element's stroke is drawn on top of its children (a card's outline isn't covered by the editor); `Shadow` is drawn only outside, and the gaps are only 6 pt, so keep the blur small.
+- Draw large blurry color blobs with `Painter.Shadow`, not `Element.Blur` or `Canvas`:
+  - `Element.Blur` is a whole offscreen layer bitmap, several MB for the full window.
+  - `Shadow(r, …)` normally draws only outside r, but when r has zero width or height the whole blurred shape is drawn. Give a line segment (width w−h, height 0) a spread of h/2 plus some margin
+    and you get a rounded ellipse blob; sigma is half the blur.
+  - The root node can `Draw` (after the background, before the children; `Draw(nil)` clears it). Opaque elements covering the window background (the Git sidebar's sticky section headers) must `underBackdrop`:
+    draw the same blobs again, `Clip`ped to themselves, using whole-window coordinates (`Draw` inside a scrolling list also gets window coordinates). `TestBackdrop` measures the seams.
+- Title bar and traffic lights:
+  - `TrafficLightPosition` is an integer Point (the top-left corner of the close button), and the traffic lights are 14 pt tall: the title bar height must be even (38) for them to sit exactly centered.
+  - With `TitleBarHidden`, mygo's `c.TitleBar()` reports a height of 38 with 72 reserved on the left (`TitleBarHiddenInset` is 66 × 79).
+  - When text is vertically centered in a Row, the center of its ink sits 0.5–0.75 pt lower than an icon's. Text on the same line as icons, such as in the title bar and tab strip, is shifted up with `textNudge` (`TestTitleBarAlign` checks the error stays within ±0.5 pt).
+- `Tooltip` defaults to above the element and goes up whenever there is room, so tips for elements right below the title bar cover the traffic lights. Use `tooltip(c, el, s)`:
+  when last frame's `Bounds().Y` is below `tipBelowY` it pops downward with `TooltipBase`, looking the same as `Tooltip`.
+- Draw dashed lines with `Path.Dash(0, segment length)`. `Path` line caps are round by default: a 1.5-wide line extends 0.75 past each end, leaving only 0.5 of a 2-wide gap. Pair it with `Cap(wui.ButtCap)`.
+- mygo ignores trailing spaces when measuring text width: `Text(c, " / ")` renders as "a /b". To leave space on both sides, use `"/"` plus the Row's `Gap` (or `PaddingX`), not spaces in the text.
+- `wui.Color.Alpha` multiplies the existing alpha instead of setting it: `t.Text.Alpha(0.62).Alpha(0.16)` has an alpha of 0.1. When a background block's color is derived from a shape's color and the shape already has alpha, the block gets fainter too.
+- UI zoom is per window: `c.SetZoom` only affects its own window, so the workbench's `root`, `SettingsView` and `AboutView` each call `c.SetZoom(a.ZoomFactor())` every frame.
+  A new kind of window needs this line too, otherwise it stays at 100%. The settings and about windows aren't part of the workbench's frame, so when the settings change, main must `Invalidate` them to redraw.
+  The terminal view gets keys first (it has its own ⇧⌘= to change the terminal font size); `termZoomKeyFor` in `termKey` intercepts these keys and hands them to UI zoom.
+- `Painter.Scale()` doesn't include UI zoom. To render a bitmap at screen pixels (`ui/mdrender.go`), the factor is `p.Scale() * a.ZoomFactor()`; multiply by only one and the image goes blurry after ⌘=,
+  or isn't sharp enough on a Retina display. Before the first draw the screen isn't known yet, so use 2 for now; `SeenScale` records the actual value when drawing.
+- Dialogs use only `dialogFrame` (`ui/dialogframe.go`), never `wui.AlertDialog` / `wui.Modal`:
+  - Buttons use `dlgButton` (normal / primary / danger, all the same height), fields use `dlgField` + `dlgInput`, and command previews use `dlgCommand`.
+  - Confirmations that lose data, change remotes or rewrite history use `a.AskDanger` (red); `app/danger_test.go` scans the source for the call sites, so add the function name there for each new one. Other confirmations use `a.Ask`.
+  - The bottom row of buttons is built first (`Reverse()`): the hint "⏎ Delete Branch" uses the same words as the button, so finding by name (`Find` / `mustClick`) must hit the button first.
 
-- 自己画的部件（`internal/ged`）：
-  - `Painter.Line` 只画横线、竖线，两点 x、y 都不同时画的是包着它们的框的上边或左边；斜线（斜纹）用 `StrokePolyline`，一条一段。
-  - `HandleInput` 没有"指针离开"的事件：悬停状态每帧问 `Element.Hovered()`，不在上面了就清掉。
-  - `ShapeRichText` 排出来的 `TextLayout` 里颜色是排的时候定的，留着复用的话换深浅色（主题）、换字体时要整个作废，不然深色里还是浅色的字。
-  - `TextLayout.SelectionRects` / `Caret` 的下标是 UTF-16 单元，不是字节、不是 rune：按字节记的范围先换算（`ged.lineLayout.u16`）。
-  - 测试里按无障碍名找自己的部件（`Tester.Find`）可能先找到别处同名的（侧栏那一行文件名）：让部件记下上一帧的位置（`ged.Diff.Bounds`）给测试用。
-  - `Element.Bounds()` 是上一帧的位置：滚动过的这一帧拿它算子元素在哪会差一截（点“暂存这一块”点到了底下的行）。绝对定位的子元素按这一帧的
-    滚动自己算位置，`Bounds()` 只拿来量大小。同理，要在 `View` 里用滚动位置时先把这一帧要滚到哪（`want`）应用了再算。
-  - 父元素的 `HandleInput` 先于子元素按钮的 `Clicked()` 收到按下：父元素一律接住按下（拖选）的话，子元素的按钮就点不动了。
-    父元素要自己记子元素占的那块（本地坐标），按在里面的不接。
-  - `Tester` 没有双击：紧挨着两次 `ClickAt` 就是双击（按它自己的钟算间隔），三次是三击。
-  - `ShapeRichText` 的宽给了就折行：`Lines()` 的个数是折成几行，第 k 行的顶是 k·（排出来的行距），这个行距和 Grove 自己的行高 `lh` 不一定一样，
-    画、点、量光标时都按 `round(y / 行距)` 换成第几行再乘 `lh`（`ged.lineLayout.rowY` / `caretRow`），不然折得越多越往下错。
-  - 自己收事件的部件要 Grove 的右键菜单：别再挂一个 `HandleInput`（一个元素只认一个），把右键的按下、拖、松开转给 `menuPointer`。
-    菜单开着时的接收层盖着部件，部件收不到别处的右键，所以它不登记 `AddTarget`（登记了会拿上一次按的位置开）。
-  - ⇧⌘G 是全局的“Git 栏”（`view.git`，在菜单里），轮不到 Diff 里的“查找上一个”：ged 的查找条用 ⇧↩，菜单上没有上一个。
+- Widgets we draw ourselves (`internal/ged`):
+  - `Painter.Line` only draws horizontal and vertical lines. When the two points differ in both x and y it draws the top or left edge of their bounding box; for diagonals (hatching) use `StrokePolyline`, one segment per line.
+  - `HandleInput` has no "pointer left" event: ask `Element.Hovered()` every frame for hover state and clear it once the pointer is gone.
+  - The colors in a `TextLayout` from `ShapeRichText` are fixed at shaping time. If you keep layouts for reuse, invalidate all of them when switching between light and dark (the theme) or changing fonts, or dark mode still shows light-mode text.
+  - `TextLayout.SelectionRects` / `Caret` indices are UTF-16 units, not bytes and not runes: convert byte ranges first (`ged.lineLayout.u16`).
+  - Finding our own widgets by accessibility name in tests (`Tester.Find`) may hit something else with the same name first (the file's row in the sidebar): have the widget record its position from the last frame (`ged.Diff.Bounds`) for tests.
+  - `Element.Bounds()` is last frame's position: in a frame that scrolled, using it to place children is off (clicking "Stage Hunk" hit the row below). Absolutely positioned children compute their position from this frame's
+    scroll themselves and use `Bounds()` only for size. Likewise, before using the scroll position in `View`, apply where this frame should scroll to (`want`) first.
+  - A parent's `HandleInput` receives a press before a child button's `Clicked()`: if the parent always takes presses (for drag selection), the child buttons can't be clicked.
+    The parent must remember the area its children occupy (in local coordinates) and not take presses inside it.
+  - `Tester` has no double click: two `ClickAt`s back to back are a double click (the interval is measured by its own clock), three are a triple click.
+  - `ShapeRichText` wraps once given a width: the number of `Lines()` is how many lines it wrapped into, and line k's top is k × (the shaped line spacing). That spacing isn't necessarily Grove's own line height `lh`,
+    so for drawing, hit testing and caret placement convert with `round(y / spacing)` to a line index and multiply by `lh` (`ged.lineLayout.rowY` / `caretRow`), otherwise the error grows with every wrapped line.
+  - A widget that handles its own events and wants Grove's context menu must not attach a second `HandleInput` (an element accepts only one); forward right-button press, drag and release to `menuPointer`.
+    While the menu is open its catcher layer covers the widget, so the widget never gets right-clicks elsewhere; it therefore doesn't register `AddTarget` (if it did, the menu would open at the last press position).
+  - ⇧⌘G is the global "Git Sidebar" command (`view.git`, in the menu), so it never reaches "Find Previous" in the Diff: ged's find bar uses ⇧↩, and the menu has no Find Previous item.
 
-## 列表、点击和拖动
+## Lists, clicks and dragging
 
-- 列表上 `TrackScroll` 的 `ScrollState.ScrollTo` 滑动期间，`ListState.ScrollTo` / `ScrollIntoView` / `ScrollToEnd` 不起作用：滑动每帧在
-  `adoptScroll` 里把偏移写回滑动的路上，压过列表在布局时挪的。侧栏的滚轮滑动因此自己每帧写 `ScrollState.Y`（`app.SideScroll`）。
-- 鼠标滚轮（非 precise）mygo 一行算 40 DIP，macOS 加速后一次事件好几行，缓动前重后轻（40 的一格第一帧走 11.5，400 走 115），
-  行高 24 的列表看着一顿一顿的；`Tester.Wheel` 发这种滚轮、`Tester.Scroll` 发触控板的。
-- 元素的 `Bounds()` 是上一帧的布局；拿它当行的位置画叠在列表上的东西（吸顶栈）会比行晚一帧，要按列表两帧偏移之差挪一下。
-- 输入回调里 `Context.Now()` 不是事件的时间，用 `InputEvent.Time`。
-- 输入回调（`HandleInput`）里取 `c.Root().Bounds()` 是 0×0：那个 `c` 是建树时的，事件来的时候根还没排。右键菜单的 `PopMenu.OpenRow`
-  按 0×0 的窗口排，菜单只剩一小块、还压在指针上，看着就是“闪一下”。窗口大小和元素自己上一帧的位置都在**建元素时**取好
-  （`b := el.Bounds()`、`root := c.Root().Bounds()`），闭包里只用这两个快照（`menuPress`、`openTreeMenuByKey`）。
-  无头的 Tester 里事件处理时取得到窗口大小，这一条测不出来，只能靠约定（真窗口里用日志查到的，mygo v0.8.x；v0.9.0 上没有再验，快照的写法两边都对）。
-- macOS 的右键、触摸板的相位事件会送来 `DY` 是 0 的 `InputScroll`。“在菜单外面滚就关菜单”这类逻辑要先滤掉它
-  （`PopMenu.Scroll` 里 `dy` 小于 0.01 当没滚），不然菜单在打开的那一帧就被关掉。
-- 判断“窗口失焦”用 `c.WindowActive()`，不要用某个元素的 `Focused()`：窗口里别的元素会在按下时自己拿键盘（列表），
-  系统的浮层（快速查看、输入法）拿键盘时窗口也还活跃。测试里对应 `tt.SetWindowActive(false)`，`tt.SetFocused(false)` 只是键盘离开。
-- `SetMenuPresentation(PopoverMenus)` 下 `ContextMenu` / `Menu` 的菜单每帧重建（系统菜单是打开时的快照）：开着时状态变了，项跟着变灰；
-  测试里"选了打开时还能用、现在不能用的项"这种场景不再有，`Tester.Menu` / `ChooseMenuItem` 照样能用。
-  Grove 画的菜单（`app.PopMenu`）也每帧重建：建菜单时按打开那一帧的下标取切片（搜索结果的 `s.Res.Matches[sr.Match]`），
-  菜单开着时结果变少就越界。先核对还在、还是那一个，不在了什么也不加（菜单关掉）。
-- 在树建完以后（`root` 的末尾）换掉列表的状态（换工作区）会让这一帧的布局在 `layoutList` 里空指针：动作要在建树之前做（Grove 菜单的选中项在 `root` 开头执行）。
-- 行装了 `menuPress`（`HandleInput`）以后接输入的是行，不是列表的格子：`tt.Click(名字)` 报"不是输入目标"，用 `clickRow`。
-- 双击：List 的行用 `RowDoubleClicked`，普通元素用 `DoubleClicked`。
-- 行里的子元素一旦 `Clicked()` / `Pressed()` / `Drag`，会消耗该事件，列表无法再收到。不要为了获取修饰键而给行添加 `Clicked()`。
-  文件树的做法：只让选中的行当拖动源（没选中的按下还是列表的拖选）；选中行的点击由 `TreeRowClicked` 记下，列表构建完成后，`ApplyTreeClick`
-  按列表规则补充处理（⇧点、⌘点、双击）。大纲行的内容也 `Clicked()` 了，因此点击大纲行后焦点会移到编辑器；若要聚焦大纲，需点击列表下方的空白区域。
-- List 对已经单独选中的行再点一次不发 `Changed`，带修饰键也一样。由此：
-  - "再点一次回去"不能靠 `Changed`。工作树的行单击 / ↑↓ 是看历史（`viewWorktree`，不切回），回车 / `RowDoubleClicked` 是在工作区中打开；
-    回去走菜单"查看分支历史"或胶囊的 ×（`ClearRefHistory` 顺带放开 `gitWt`）。
-  - ⌥点文件行在侧边打开，是在 `Changed()` 那一帧看 `c.Modifiers()&wui.Alt`，所以 ⌥点一个已经只选着它的行什么都不做（用 ⌥回车 / 右键）。
-    列表自己的回车提交是 `Shortcut(0, KeyEnter)`，会精确匹配修饰键，因此 ⌥回车不会被当作普通回车，要另挂 `FileList.OnShortcut(c, wui.Alt, wui.KeyEnter, …)`。
-  - 比较段的标题行（`ui/history.go` 的 `compareRow`）自己用 `Clicked()` 切展开。双击、回车都会让列表报 `Submitted`，而双击的第一下已经切过一次，
-    所以 `Submitted` 时鼠标在标题上（`compareRow` 返回 `Hovered()`）就不再切；代价是鼠标停在标题上按回车不切。
-- 区分鼠标点击和键盘选择：行的 `Hovered()` 记下来，`Changed()` 时 `hover == sel` 就是鼠标点的。Git 栏每帧先把 `a.GitHover` 清成 -1 再画行。
-- `ListState.Header` 的行贴在顶上，点击和方向键都不会选中它，要自己给底色（否则滚动时下方的行会透出来）。
-  `ListState.ScrollTo(row, wui.Start)` 下一次排版时才滚。设了 `Key` 时行号变了，选中跟着 key 走。
-- mygo 里已经选中的行自己数双击时，第二下按下报 `DoubleClicked()`，松开又报一次 `Clicked()`。`ApplyTreeClick` 记下双击的行和时间（`dbl` / `dblAt`），
-  500 ms 内同一行紧跟的那次单击丢掉，否则双击目录会先展开再收起。
-- mygo 的列表没有设置 ⇧ 选择锚点的接口。`ApplyTreeClick` 补的单击 / ⌘点、`chooseOnly`、`ClearTreeSel` 列表都不知道，它的锚点还在上一次它自己接的那行
-  （可能已经收起看不见，⇧点就只选一行）。所以这几处记 `treeClick.anchor` / `own`，`list.Changed()` 时调 `TreeListChanged(mods)`：
-  没按 ⇧ 的清掉 `own`，按着 ⇧ 且 `own` 就 `extendFrom` 按应用的锚点重选。其他地方也应通过 `chooseOnly` 修改选中状态。
-- 文件树的列表开着 `MenuKeepsSelection`：不开时右键一行会先当成单击（换选中、去预览那一行）。多选菜单按 `a.MenuRows(row)` 决定作用于选中的全部还是只这一行；
-  右键没选中的行由菜单回调里的 `a.MenuSelect(i)` 选中它（不预览）。
-- Git 栏的光标 `GitSel` 和选中集合 `GitChosen` 必须同步更新。List 开着 `Selection = &a.GitChosen`，单击、方向键时 mygo 两个一起改；
-  应用自己换行（跟着当前标签、跳过分组标题、Esc 收回多选）走 `a.chooseGit(rows, i)`。只改 `GitSel` 的话，高亮、回车开哪些 Diff（`ChosenChanges`）、
-  右键算不算多选（`MenuChanges`）都还按旧行。测试里程序选行用 `pickGit(a, i)`。
-- 列表上的 `OnShortcut` 会优先于行内输入框接收按键：键交给焦点链上最里面一个注册了这个键的元素，所以挂在列表上的 Esc、⌫ 会比提交框、搜索框自己的先拿到。
-  列表级的键只在列表自己有焦点（`Focused(c)`，不是 `FocusWithin`）而且真用得上时才注册：Git 栏的 Esc 要 `GitChosen.Len() > 1`，搜索结果的 ⌘↩ / ⌫ 要 `s.List.Focused(c)`。
-- List 行里的按钮或右键菜单改了行，要等列表建完再做。`rowButton` 在建的过程中按下就同步跑回调，而 mygo 的 `List` 接着还会拿开始建时的行数调
-  `Key` / `Label`，若 `Rows` 已缩短，就会越界崩溃。搜索结果的"替换这一处" / "排除"交给 `do`，`sideList` 返回之后才跑；`Key` / `Label` 里也查一下下标。
-  只开标签、复制这类不改行的动作不用等。
-- 构建列表 / 菜单时不要修改仓库列表。菜单的构建函数和 `Drop` 都在建这一帧时跑，那时挪仓库、移除仓库会让列表拿着旧的行数接着建（Key 重复会崩）。
-  记成 `a.MoveReq` / `a.RemoveReq`，`ui/view.go` 的 `pending()` 在这一帧画完后做。`TreeRows()` 是就地重建的：行的回调里别 `tree.ver++` 了再接着用手里的 rows。
-- 同一个父元素下两个一样的 `c.Key` 会 panic（Tester 里也一样）。一项可能在好几个循环里各画一次时（设置搜索结果按页列），外层按页
-  `wui.Column(c.Key(p))` 包一层、里面再 `c.Key(i)`。按下标画的表都照这个来。
-- 元素不带 key 时按在父元素里的次序认。悬停才画的兄弟（Git 栏段头的"全部暂存"）插在按钮前面时，指针一移上去后面按钮的身份就变了，
-  按下和松开不是同一个元素，`Clicked()` 不来。段头的拉取 / 推送按钮因此带 `c.Key("pull")` / `c.Key("push")`。
-- 可点的父元素（Git 栏段头点了收起 / 展开）里的灰按钮，要是不调 `Clicked()`，这一下会落到父元素上。灰着也调 `Clicked()` 接住，只是不跑回调（`syncButton`）。
-- 列表的 `Label` 既给键盘找字用，也是读屏念的名字。找字去掉开头的点（`Row.FindLabel`），VoiceOver 念的也就没有点；要两边不一样得等 mygo 把这两个分开。
-  mygo 的键盘找字只认 A–Z、0–9、空格，中文名打不中，别在应用里绕。
-- `repoMenu(a, m, r, tree)`：`tree` 为真时才有文件树专用的几项（收起其他仓库、展开有改动的目录、粘贴）；Git 栏、右栏历史的仓库菜单传 false。
-- 应用内的值拖放（`wui.DragOver[T]` / `wui.Drop[T]`）：一个元素只有一个 `accepts`，后注册的类型会覆盖先注册的类型；命中链中，由最内层接受该值的元素处理。
-  要同时接两种就套两层：仓库行外面包一层 `slot` Column 接 `RepoDrag`，里面那行接 `TreeDrag`；编辑器组的卡片外层接 `TreeDrag`、里面的内容区接 `*docs.Doc`。
-  若内层也接收外层的类型，事件就不会再传到外层。
-- 原生拖放（`DropData`）中，按格式接收的目标也会消耗文件拖放事件。命中链从里往外，匹配拖放板格式的目标会消耗整个拖放事件，不再退回 `DroppedFiles` / 窗口的 `OnFileDrop`。
-  访达拖来的文件在拖放板上可能还带着文件名的文字，只接 `Text` 的目标会把它当成一段字。所以：
-  - 编辑器和终端的 `DataDrop` 也接 `FileList`，包含文件时按文件处理（`OpenArgs` / `ShellFiles`）。
-  - 值（`Drop[T]`）和格式（`DropData`）是两个字段，同一个元素两样都能登记。
-  - `transfer.Drop` 没有落点，编辑器只能插在光标处（`ui/editor` 的 `offsetAt` 没导出）。
-- mygo 的 `terminal.View` 自己登记了 `DroppedFiles`，按反斜杠转义、末尾不加空格贴进去。Grove 在格子外框登记格式目标（`DataDrop`，含 `FileList`）先接住，
-  `ShellFiles` 贴单引号版，和从文件树拖行（`app.PastePaths`）一个写法。shell 已退出的分屏登记只接文件的 `ExitedDrop`（按窗口的规则打开），
-  不登记的话访达的文件会落到视图自己的 `DroppedFiles`，写入没有 shell 的终端，无法显示结果。
-- 拖动悬停触发展开时，需等所有行绘制完成：`DwellTree` 在行的落点里只记到点了没有，`EndTreeDrop`（列表建完之后）才 `SetOpen` / `ToggleRepo`、请求下一帧。
-  指针不动时 mygo 不会产生新帧，要 `c.After(还差多久)`。Tester 的 `Release` 不带修饰键，⌥ 松手复制只能在 app 包里调 `DropTree(…, alt)` 测。
-- 真窗口里拖文件树的行要先点一下选中（没选中的按住拖是拖着选）。合成拖动用 CGEvent 发按下 → 若干拖动 → 松开（一个小的 Swift 程序就够，
-  坐标是窗口左上角起的 pt，每一下前确认前台进程是它）；两个动作之间停 1 秒，别被当成双击。
+- While a list's `TrackScroll` `ScrollState.ScrollTo` animation is running, `ListState.ScrollTo` / `ScrollIntoView` / `ScrollToEnd` have no effect: every frame of the animation
+  writes the offset back onto the animation's path in `adoptScroll`, overriding whatever the list moved during layout. The sidebar's wheel animation therefore writes `ScrollState.Y` itself every frame (`app.SideScroll`).
+- For a mouse wheel (not precise), mygo counts one line as 40 DIP, and macOS acceleration sends several lines per event. The easing is front-loaded (one 40 notch moves 11.5 in the first frame, 400 moves 115),
+  so a list with 24-high rows looks jerky. `Tester.Wheel` sends this kind of wheel scroll; `Tester.Scroll` sends trackpad scrolls.
+- An element's `Bounds()` is last frame's layout. Using it as a row's position to draw something layered over the list (the sticky header stack) lags the row by one frame; shift it by the difference between the list's offsets in the two frames.
+- Inside input callbacks `Context.Now()` is not the event's time; use `InputEvent.Time`.
+- `c.Root().Bounds()` read inside an input callback (`HandleInput`) is 0×0: that `c` is the one from building the tree, and the root hasn't been laid out when the event arrives. A context menu's `PopMenu.OpenRow`
+  then lays out against a 0×0 window, so the menu shrinks to a tiny piece on top of the pointer and looks like it "flashes". Capture the window size and the element's own last-frame position **while building the element**
+  (`b := el.Bounds()`, `root := c.Root().Bounds()`) and use only those two snapshots in the closure (`menuPress`, `openTreeMenuByKey`).
+  The headless Tester does have the window size during event handling, so tests can't catch this; it rests on convention (found via logs in a real window on mygo v0.8.x; not rechecked on v0.9.0, but the snapshot approach is correct on both).
+- macOS right-clicks and trackpad phase events deliver `InputScroll` with a `DY` of 0. Logic like "scrolling outside the menu closes it" must filter these out first
+  (`PopMenu.Scroll` treats `dy` below 0.01 as no scroll), or the menu closes in the very frame it opens.
+- To tell whether the window lost focus use `c.WindowActive()`, not some element's `Focused()`: other elements in the window grab the keyboard on press (lists),
+  and the window stays active while a system overlay (Quick Look, an input method) has the keyboard. In tests the equivalent is `tt.SetWindowActive(false)`; `tt.SetFocused(false)` only moves the keyboard away.
+- Under `SetMenuPresentation(PopoverMenus)`, `ContextMenu` / `Menu` menus are rebuilt every frame (a system menu is a snapshot taken when it opens): if state changes while it's open, items gray out accordingly;
+  the test scenario "choose an item that was enabled when the menu opened but no longer is" no longer exists, and `Tester.Menu` / `ChooseMenuItem` still work.
+  Grove's own menus (`app.PopMenu`) are also rebuilt every frame: a menu built by indexing a slice with the index from the frame it opened (search results' `s.Res.Matches[sr.Match]`)
+  goes out of range if the results shrink while it's open. Check that the item is still there and still the same one first; if not, add nothing (the menu closes).
+- Swapping out a list's state after the tree is built (at the end of `root`, e.g. switching workspaces) makes this frame's layout hit a nil pointer in `layoutList`: do the action before building the tree (the chosen item of a Grove menu runs at the start of `root`).
+- Once a row has `menuPress` (`HandleInput`), input goes to the row rather than the list cell: `tt.Click(name)` fails with "is not the input target"; use `clickRow`.
+- Double clicks: List rows use `RowDoubleClicked`; ordinary elements use `DoubleClicked`.
+- As soon as a child element in a row uses `Clicked()` / `Pressed()` / `Drag`, it consumes the event and the list no longer gets it. Don't add `Clicked()` to a row just to read the modifier keys.
+  The file tree's approach: only selected rows act as drag sources (pressing an unselected row is still the list's drag selection); clicks on selected rows are recorded by `TreeRowClicked`, and after the list is built `ApplyTreeClick`
+  applies the list's rules on top (⇧-click, ⌘-click, double click). Outline rows' contents also use `Clicked()`, so clicking an outline row moves focus to the editor; to focus the outline, click the empty area below the list.
+- A List doesn't fire `Changed` when you click a row that is already the only selected one, with or without modifiers. Consequently:
+  - "Click again to go back" can't rely on `Changed`. A single click / ↑↓ on a worktree row shows its history (`viewWorktree`, without switching); Return / `RowDoubleClicked` opens it in the workspace;
+    going back is the "Show Branch History" menu item or the pill's × (`ClearRefHistory` also releases `gitWt`).
+  - ⌥-clicking a file row opens it to the side by checking `c.Modifiers()&wui.Alt` in the frame where `Changed()` fires, so ⌥-clicking a row that is already the only selected one does nothing (use ⌥Return or the context menu).
+    The list's own Return submit is `Shortcut(0, KeyEnter)`, which matches modifiers exactly, so ⌥Return isn't treated as a plain Return; it needs its own `FileList.OnShortcut(c, wui.Alt, wui.KeyEnter, …)`.
+  - The title row of a compare section (`compareRow` in `ui/history.go`) toggles expansion with its own `Clicked()`. Both a double click and Return make the list report `Submitted`, and the first click of a double click has already toggled once,
+    so on `Submitted` it doesn't toggle again when the mouse is over the title (`compareRow` returns `Hovered()`); the cost is that Return doesn't toggle while the mouse rests on the title.
+- To tell a mouse click from keyboard selection: record the row's `Hovered()`; on `Changed()`, `hover == sel` means it was a mouse click. The Git sidebar resets `a.GitHover` to -1 every frame before drawing rows.
+- `ListState.Header` rows stick to the top and are never selected by clicks or arrow keys; give them a background yourself (otherwise rows below show through while scrolling).
+  `ListState.ScrollTo(row, wui.Start)` only scrolls at the next layout. With `Key` set, the selection follows the key when row indices change.
+- When mygo counts a double click on an already selected row itself, the second press reports `DoubleClicked()` and the release reports `Clicked()` again. `ApplyTreeClick` records the double-clicked row and time (`dbl` / `dblAt`)
+  and drops a single click on the same row that follows within 500 ms; otherwise double-clicking a folder would expand it and then collapse it.
+- mygo's list has no API to set the ⇧ selection anchor. The list knows nothing about the clicks / ⌘-clicks that `ApplyTreeClick` applies, or about `chooseOnly` and `ClearTreeSel`; its anchor is still the row it last handled itself
+  (which may be collapsed out of sight, so a ⇧-click selects just one row). So these places record `treeClick.anchor` / `own`, and on `list.Changed()` call `TreeListChanged(mods)`:
+  without ⇧ it clears `own`; with ⇧ and `own` set it reselects from the app's anchor via `extendFrom`. Other places should also change the selection through `chooseOnly`.
+- The file tree's list has `MenuKeepsSelection` on: without it, right-clicking a row first acts as a click (changes the selection and previews that row). Multi-selection menus use `a.MenuRows(row)` to decide whether to act on the whole selection or only that row;
+  right-clicking an unselected row selects it via `a.MenuSelect(i)` in the menu callback (without previewing).
+- The Git sidebar's cursor `GitSel` and its selection set `GitChosen` must be updated together. The List has `Selection = &a.GitChosen`, so on clicks and arrow keys mygo changes both;
+  when the app moves the row itself (following the current tab, skipping group headers, Esc collapsing a multi-selection) it goes through `a.chooseGit(rows, i)`. If only `GitSel` changes, the highlight, which Diffs Return opens (`ChosenChanges`)
+  and whether a right-click counts as multi-selection (`MenuChanges`) all still follow the old row. Tests select rows programmatically with `pickGit(a, i)`.
+- `OnShortcut` on a list receives keys before a text field inside a row: a key goes to the innermost element on the focus chain that registered it, so Esc and ⌫ on a list get there before the commit box's or search box's own handlers.
+  Register list-level keys only when the list itself has focus (`Focused(c)`, not `FocusWithin`) and actually needs them: the Git sidebar's Esc requires `GitChosen.Len() > 1`; the search results' ⌘↩ / ⌫ require `s.List.Focused(c)`.
+- When a button or context menu in a List row changes the rows, wait until the list has been built. `rowButton` runs its callback synchronously when pressed during the build, but mygo's `List` then keeps calling
+  `Key` / `Label` with the row count from the start of the build, and if `Rows` has shrunk it crashes out of range. The search results' "Replace This Match" / "Dismiss" are handed to `do` and run after `sideList` returns; `Key` / `Label` also bounds-check the index.
+  Actions that don't change rows, like opening a tab or copying, don't need to wait.
+- Don't modify the repository list while building a list or menu. Menu builders and `Drop` both run while the frame is being built; moving or removing a repository then makes the list keep building with the old row count (duplicate Keys crash).
+  Record them as `a.MoveReq` / `a.RemoveReq`, and `pending()` in `ui/view.go` performs them after the frame is drawn. `TreeRows()` rebuilds in place: in a row callback, don't `tree.ver++` and then keep using the rows you're holding.
+- Two identical `c.Key`s under the same parent panic (in the Tester too). When an item may be drawn once in each of several loops (settings search results listed by page), wrap each page in
+  `wui.Column(c.Key(p))` and use `c.Key(i)` inside. Every table drawn by index follows this.
+- Elements without a key are identified by their order within the parent. When a sibling drawn only on hover (the Git sidebar section header's "Stage All") is inserted before a button, moving the pointer over it changes the following button's identity,
+  so press and release land on different elements and `Clicked()` never fires. That is why the section header's Pull / Push buttons carry `c.Key("pull")` / `c.Key("push")`.
+- A grayed-out button inside a clickable parent (a Git sidebar section header collapses / expands on click): if it doesn't call `Clicked()`, the click falls through to the parent. Call `Clicked()` even when grayed out to catch it, just don't run the callback (`syncButton`).
+- A list's `Label` is used both for keyboard type-to-find and as the name the screen reader reads. Type-to-find strips the leading dot (`Row.FindLabel`), so VoiceOver doesn't read the dot either; making the two differ has to wait until mygo separates them.
+  mygo's type-to-find only recognizes A–Z, 0–9 and space, so Chinese names can't be matched; don't work around it in the app.
+- `repoMenu(a, m, r, tree)`: only when `tree` is true does it include the file-tree-only items (Collapse Other Repositories, Expand Changed Folders, Paste); the repository menus of the Git sidebar and the history right pane pass false.
+- In-app value drag and drop (`wui.DragOver[T]` / `wui.Drop[T]`): an element has only one `accepts`, and a type registered later overrides an earlier one; along the hit chain, the innermost element that accepts the value handles it.
+  To accept two types, nest two layers: the repository row is wrapped in a `slot` Column that accepts `RepoDrag`, and the row inside accepts `TreeDrag`; an editor group's card accepts `TreeDrag` on its outer layer and `*docs.Doc` on the content area inside.
+  If the inner layer also accepts the outer layer's type, the event never reaches the outer layer.
+- In native drag and drop (`DropData`), format-based targets also consume file drops. The hit chain goes inside out, and a target matching a pasteboard format consumes the whole drop, which no longer falls back to `DroppedFiles` / the window's `OnFileDrop`.
+  Files dragged from Finder may also carry the file names as text on the pasteboard, and a target that only accepts `Text` takes them as a piece of text. So:
+  - The editor's and terminal's `DataDrop` also accept `FileList`, and handle drops containing files as files (`OpenArgs` / `ShellFiles`).
+  - Values (`Drop[T]`) and formats (`DropData`) are two separate fields; one element can register both.
+  - `transfer.Drop` has no drop location, so the editor can only insert at the cursor (`offsetAt` in `ui/editor` isn't exported).
+- mygo's `terminal.View` registers its own `DroppedFiles`, which pastes paths backslash-escaped without a trailing space. Grove registers a format target (`DataDrop`, including `FileList`) on the pane's outer frame to catch the drop first;
+  `ShellFiles` pastes single-quoted paths, the same format as dragging rows from the file tree (`app.PastePaths`). A split pane whose shell has exited registers `ExitedDrop`, which accepts only files (opened by the window's rules);
+  without it, files from Finder would land in the view's own `DroppedFiles` and be written into a terminal with no shell, with nothing to show for it.
+- Expanding on drag hover must wait until all rows are drawn: in a row's drop target `DwellTree` only records whether the dwell fired; `EndTreeDrop` (after the list is built) does the `SetOpen` / `ToggleRepo` and requests the next frame.
+  mygo produces no new frames while the pointer is still, so use `c.After(time remaining)`. The Tester's `Release` carries no modifiers, so ⌥-release-to-copy can only be tested in the app package by calling `DropTree(…, alt)`.
+- In a real window, a file tree row has to be clicked to select it before dragging (pressing and dragging an unselected row is drag selection). Synthesize drags with CGEvent: press → several drags → release (a small Swift program is enough;
+  coordinates are pt from the window's top-left corner, and before each event confirm the frontmost process is Grove); pause 1 second between two actions so they aren't taken as a double click.
 
-- 只有图标的按钮灰着时别调 mygo 的 `Disabled`：它不出悬停提示，按钮上又没有字，用户不知道为什么点不了。提交按钮（`ui/gitbar.go` 的 `commitRow`）
-  是 `toolStyle(c, b, false, 灰)` 画灰、`能点 && b.Clicked()` 才做，提示里用 `withWhy` 写原因（`app.CommitWhy`）。要键盘能按到用 `wui.ButtonBase`，
-  `squareButton` 的 `Box` Tab 到不了。
+- Don't use mygo's `Disabled` for a grayed-out icon-only button: it shows no tooltip, and with no text on the button the user can't tell why it doesn't work. The commit button (`commitRow` in `ui/gitbar.go`)
+  is drawn gray with `toolStyle(c, b, false, gray)`, acts only on `canClick && b.Clicked()`, and explains why in its tooltip with `withWhy` (`app.CommitWhy`). To make it keyboard reachable use `wui.ButtonBase`;
+  `squareButton`'s `Box` can't be reached with Tab.
 
-## 键盘和快捷键
+## Keyboard and shortcuts
 
-- mygo v0.8 起所有键都送到 `HandleInput` / `ObserveInput` / 编辑器的 `OnInput`：单按的修饰键、Caps Lock、F13 这些没有名字的键也作为 `InputKeyDown` 来，
-  `Key` 和 `PhysicalKey` 都是 `KeyUnknown`，只有 `Code`（`CodeShiftLeft` 等）。用 `switch` 挑键的不受影响；对"按了随便一个键"起反应的地方
-  （录键卡片、`restingEditor` 叫醒光标、`docKeys` 清 `EatText`）先用 `ui/keybind.go` 的 `unnamedKey` 滤掉，不然按 ⌘K 时先到的 ⌘ 就把录键卡片标成"不能用"。
-  Tester 里用 `CodeDown(mods, wui.CodeSuperLeft)` 模拟单按。终端的 `OnKey` 收不到这类键（插件自己滤掉了）。
-- 菜单快捷键先于编辑器接到按键（mygo 在 darwin 上没有覆盖 performKeyEquivalent）：编辑器有焦点时 ⌘K 照样打开 `>git ` 面板，
-  mygo 编辑器的 ⌘K 和弦（⌘K ⌘0 等）一个都到不了编辑器。没有菜单栏的地方（测试、`OnShortcut`）才是编辑器先接，因此测试中能使用 ⌘K 和弦，不代表真实窗口中也能使用。
-- 窗口快捷键会盖掉 mygo 编辑器自带的同一个键：⇧⌘G（找上一个）给了 Git 侧栏，⇧⌘H（替换）给了搜索页的替换（当前文件里的替换走 ⌥⌘F），
-  ⇧⌘\ 给了 `view.openInOtherGroup`（编辑器的 `MoveToBracket` 还有 ⌃M）。`TestShortcutConflicts` 只认识注册表里的命令，不知道 mygo 编辑器的键位，
-  所以加窗口级快捷键前先查 mygo `ui/editor` 的 keymap，被盖掉的要在 `docs/shortcuts.md` 里改成剩下的那个键。
-- 同一个键在不同标签上是不同命令（⌥⌘F：Diff 标签是全文 diff，文件标签是替换）。按键和菜单项都走 `a.RunKey(mods, key)`，它按注册顺序查找第一个当前可执行的命令；
-  别在菜单项或 `OnShortcut` 里直接 `Exec` 某个 id。
-- 窗口快捷键会在终端前面接走键。同一个键既是窗口快捷键又要给终端（⌘W、⌘K），只能在注册表里加一条 `Context: Terminal` 的命令、排在全局那条前面，
-  让 `RunKey` 优先处理终端命令。只在终端里有意义的键（⌘D、⇧⌘[）别注册成窗口快捷键，走终端的 `Options.OnKey`。
-- 快捷键冲突按分派域算（`app/keybind.go` 的 `keyDomain` / `clash`）：窗口（全局、Diff 标签、编辑器）、终端、文件树、提交框、搜索结果各自为一个分派域，
-  同一个键在两处各是一个命令不算冲突；窗口里上下文相同或有一个是全局才算。新加一个自己接键的地方（列表、输入框）要给它一个 `Context`，并进 `keyDomain`。
-- 这个应用里 ⌘1–9 是 Git 栏跳到第几个仓库的段（`TestJumpRepo`），不是第几个标签。测试里换标签用 `a.SelectDoc(i)`。
-- ⌘C / ⌘V / ⌘A 在真窗口里到不了 `OnShortcut`：菜单栏的编辑菜单会接收这几个键，作为 `InputCommand`（`copy` / `paste` / `selectAll`）发给有焦点元素的 `HandleInput`。
-  - 文件树用 `HandleInput(treeCommands(a))` 接（不是这几个命令的返回 false）。编辑菜单项只在焦点元素能做时才亮，`HandleInput` 不接的再当按键发给快捷键，不会两边都跑。
-  - `tt.Command("copy")` 测的是这条路；`tt.Key(Cmd, KeyC)` 测的 `OnShortcut` 只在测试里有用。
-  - 菜单栏里有项的键（⌘D 是终端的"左右分屏"）由菜单接到、`RunKey` 分派；`RunKey` 也看 `Context: FileTree` 且有 `Run` 的命令（`a.TreeFocused` 时）。
-- 编辑器中使用 ⌥ 快捷键可能额外输入一个字符。mygo 的 `keyDown:` 先发 KeyPressed，只要键盘在文字输入里、没按 ⌘ / ⌃，无论按键由谁处理，都会继续执行 interpretKeyEvents，
-  ⌥ 打出的字（⇧⌥F 是"Ï"）随后以 InputText 送进编辑器；登记在窗口上的键（`OnShortcut`）还会让编辑器的 OnInput 连 KeyDown 都看不到。
-  所以编辑器里只带 ⌥ 的键：命令带 `Local`（不登记在窗口上），由编辑器的 OnInput（`ui.docKeys`）接 KeyDown、吞掉紧跟着的那段 InputText。
-  Tester 不会自己送这段字，测试里接着 `tt.Type("Ï")` 模拟。
-- `wui.SearchField` 里面的输入框拿不到：`OnTextKey`、`TextSelection` / `SetTextSelection` 对它没用（接在外面那层上）。⇧⏎ 也照样发 `Submitted`，
-  而 `c.Modifiers()` 是建帧时按着的键、不是那下回车的，真窗口里 ⇧ 先松开就当成 ⏎（测试里看不出来）。要分 ⏎ / ⇧⏎、要光标的框用 `TextInput` / `TextArea` + `OnTextKey`
-  （`k.Mods` 是那下按键的），搜索栏的框因此是自己的 `searchBox`。框从单行换成 `TextArea` 的那一帧焦点给不上（新框还没建），下一帧再 `Focus` / `SetTextSelection`（`placeCaret`）。
-- `OnTextKey` 一个元素只有一个，后设置的处理函数会覆盖先前的处理函数。单行搜索框的 ⏎ / ⇧⏎ / ⌥⏎ 都在 `shiftEnter` 一个处理函数里分；多行的 `TextArea` 也只有一个（⏎ 和 ⌥⏎ 搜，⇧⏎ 放给框换行）。
-  别在别处再给同一个框挂一个。
-- 窗口级的 Esc 用 `OverlayShortcut`：它只拿焦点链上没人用的键，编辑器收起选区、查找条、对话框的 Esc 都先轮到。注册成普通快捷键会覆盖编辑器自身的 Esc 处理。
-- 点击工具栏按钮后，键盘焦点会移到按钮：按钮 `Focusable`，点完 `tt.Key` 或真键盘的 `=` `-` `0` 都落到按钮上，画布收不到。图片工具栏点完设 `imgFocus`，
-  画布下一帧拿回焦点；UI 测试里点完要 `tt.Frame()` 一帧再按键。别的"点按钮后该接着按键"的地方一样。
-- `menuSignature` 要带上 `keyRev`（`app/menu.go`）：菜单栏只在签名变了时重建。快捷键改了（`applyKeybindings` 每次加一）或正在录键（`KeyRecording`，录着的时候菜单栏不带键）
-  不进签名的话，菜单仍会使用旧快捷键。
-- 键从注册表读，别写死：右键菜单项用 `shortcut(it, id)`，元素自己接的键用 `onKey` / `app.KeyOf(id)`（`ui/keybind.go`），帮助文字里的键用 `app.Find(id).Keys()`。
-  写死 `wui.Modifiers` + 键的，用户改键后，菜单标注会与实际响应的快捷键不一致。改了命令跑 `go test -run TestShortcutDoc ./internal/app/ -update`。
-- 提示文字里的键也别写死（`app/commands.go`）：
-  - 句尾括号里的用 `app.Tip(text, id)`（没键时不加括号；中文全角括号、英文半角）。
-  - 句子中间的用 `app.KeyHint(id, 有键的句子, 没键的句子, args…)`，两句都写成完整的字面量（i18n 目录只收字面量），没键的那句改说命令名，别拼出一对空括号。
-  - 列几个命令的键用 `app.KeyList`。`KeyText` 对不存在的 id 直接 panic，id 写错会导致测试失败。
-  - 只写修饰键的（"⌥点""⇧回车"）、列表和输入框自己接的键、编辑器自己的撤销留字面。
-- 换一个全局快捷键要连带改的：测试里按那个键的地方（比如 `ui/terms_test.go`）、`keyNames` 里没有的键（⌃⇧` 要加 `KeyBackquote`）、
-  `docs/shortcuts.md`（`TestShortcutDoc -update`）、README / README.en 里写的键。修改前先搜索所有引用。
+- Since mygo v0.8 every key is delivered to `HandleInput` / `ObserveInput` / the editor's `OnInput`: modifier keys pressed alone, Caps Lock, F13 and other unnamed keys also arrive as `InputKeyDown`,
+  with both `Key` and `PhysicalKey` set to `KeyUnknown` and only `Code` (`CodeShiftLeft` etc.) filled in. Code that picks keys with a `switch` is unaffected; places that react to "any key pressed"
+  (the key-recording card, `restingEditor` waking the caret, `docKeys` clearing `EatText`) must filter these out first with `unnamedKey` from `ui/keybind.go`, or when you press ⌘K the ⌘ that arrives first marks the recording card "This key can't be used".
+  In the Tester, simulate a lone modifier press with `CodeDown(mods, wui.CodeSuperLeft)`. The terminal's `OnKey` never receives these keys (the plugin filters them out itself).
+- Menu shortcuts receive keys before the editor (mygo doesn't override performKeyEquivalent on darwin): with the editor focused, ⌘K still opens the `>git ` palette,
+  and none of the mygo editor's ⌘K chords (⌘K ⌘0 etc.) reach the editor. Only where there is no menu bar (tests, `OnShortcut`) does the editor get keys first, so ⌘K chords working in tests doesn't mean they work in a real window.
+- Window shortcuts override the mygo editor's built-in binding for the same key: ⇧⌘G (Find Previous) goes to the Git sidebar, ⇧⌘H (Replace) goes to the search page's replace (replace within the current file is ⌥⌘F),
+  and ⇧⌘\ goes to `view.openInOtherGroup` (the editor's `MoveToBracket` still has ⌃M). `TestShortcutConflicts` only knows the commands in the registry, not the mygo editor's keymap,
+  so before adding a window-level shortcut check the keymap in mygo's `ui/editor`, and for any binding that gets overridden, change `docs/shortcuts.md` to the remaining key.
+- The same key can be different commands on different tabs (⌥⌘F: full-file diff on a Diff tab, replace on a file tab). Keys and menu items both go through `a.RunKey(mods, key)`, which finds the first currently runnable command in registration order;
+  don't `Exec` a specific id directly from a menu item or `OnShortcut`.
+- Window shortcuts take keys before the terminal. For a key that is both a window shortcut and needed by the terminal (⌘W, ⌘K), the only way is to add a command with `Context: Terminal` to the registry, ordered before the global one,
+  so `RunKey` handles the terminal command first. Keys that only make sense in the terminal (⌘D, ⇧⌘[) shouldn't be registered as window shortcuts; handle them in the terminal's `Options.OnKey`.
+- Shortcut conflicts are computed per dispatch domain (`keyDomain` / `clash` in `app/keybind.go`): the window (global, Diff tab, editor), the terminal, the file tree, the commit box and the search results are each a dispatch domain,
+  and the same key being a different command in two of them isn't a conflict; within the window it's a conflict only if the contexts are the same or one of them is global. A new place that handles its own keys (a list, a text field) needs its own `Context` and an entry in `keyDomain`.
+- In this app ⌘1–9 jump to the nth repository's section in the Git sidebar (`TestJumpRepo`), not to the nth tab. Tests switch tabs with `a.SelectDoc(i)`.
+- In a real window ⌘C / ⌘V / ⌘A never reach `OnShortcut`: the menu bar's Edit menu takes these keys and sends them as `InputCommand` (`copy` / `paste` / `selectAll`) to the focused element's `HandleInput`.
+  - The file tree handles them with `HandleInput(treeCommands(a))` (returning false for anything else). Edit menu items are only enabled when the focused element can perform them; what `HandleInput` doesn't take is sent on to shortcuts as a key press, so the two never both run.
+  - `tt.Command("copy")` tests this path; `tt.Key(Cmd, KeyC)` tests `OnShortcut`, which only matters in tests.
+  - Keys that have a menu bar item (⌘D is the terminal's "Split Right") are received by the menu and dispatched by `RunKey`; `RunKey` also considers commands with `Context: FileTree` and a `Run` (when `a.TreeFocused`).
+- An ⌥ shortcut in the editor may type an extra character. mygo's `keyDown:` sends KeyPressed first, and as long as the keyboard is in text input and neither ⌘ nor ⌃ is held, it goes on to interpretKeyEvents no matter who handled the key,
+  so the character ⌥ produces (⇧⌥F is "Ï") then arrives in the editor as InputText; keys registered on the window (`OnShortcut`) additionally keep the editor's OnInput from even seeing the KeyDown.
+  So for ⌥-only keys in the editor, the command is marked `Local` (not registered on the window), and the editor's OnInput (`ui.docKeys`) takes the KeyDown and swallows the InputText that immediately follows.
+  The Tester doesn't send that text on its own; simulate it in tests with a following `tt.Type("Ï")`.
+- The text field inside `wui.SearchField` is unreachable: `OnTextKey` and `TextSelection` / `SetTextSelection` don't work on it (they attach to the outer layer). ⇧⏎ also sends `Submitted`,
+  and `c.Modifiers()` is the keys held when the frame was built, not during that Return, so in a real window releasing ⇧ first counts as ⏎ (tests can't tell). For a box that must tell ⏎ from ⇧⏎ or needs the caret, use `TextInput` / `TextArea` + `OnTextKey`
+  (`k.Mods` is from that key press); that's why the search bar's box is our own `searchBox`. In the frame where the box switches from single-line to `TextArea`, focus can't be given (the new box isn't built yet); `Focus` / `SetTextSelection` in the next frame (`placeCaret`).
+- An element has only one `OnTextKey`; a handler set later replaces the earlier one. The single-line search box distinguishes ⏎ / ⇧⏎ / ⌥⏎ all in one handler, `shiftEnter`; the multi-line `TextArea` also has just one (⏎ and ⌥⏎ search, ⇧⏎ is left to the box as a newline).
+  Don't attach another one to the same box elsewhere.
+- Window-level Esc uses `OverlayShortcut`: it only takes keys nobody on the focus chain uses, so the editor clearing its selection, the find bar and dialogs all get Esc first. Registering it as a normal shortcut overrides the editor's own Esc handling.
+- After clicking a toolbar button, keyboard focus moves to the button: buttons are `Focusable`, so after the click `tt.Key` or real `=` `-` `0` key presses land on the button and the canvas never sees them. The image toolbar sets `imgFocus` after a click,
+  and the canvas takes focus back the next frame; UI tests must run one `tt.Frame()` after the click before pressing keys. The same goes for any other place where "keys should follow a button click".
+- `menuSignature` must include `keyRev` (`app/menu.go`): the menu bar is rebuilt only when the signature changes. If changed shortcuts (`applyKeybindings` increments it each time) or active key recording (`KeyRecording`; the menu bar shows no keys while recording)
+  aren't part of the signature, the menu keeps showing the old shortcuts.
+- Read keys from the registry, don't hard-code them: context menu items use `shortcut(it, id)`, keys an element handles itself use `onKey` / `app.KeyOf(id)` (`ui/keybind.go`), and keys in help text use `app.Find(id).Keys()`.
+  With hard-coded `wui.Modifiers` + key, once the user rebinds a key the menu labels no longer match the shortcut that actually responds. After changing commands run `go test -run TestShortcutDoc ./internal/app/ -update`.
+- Don't hard-code keys in tooltip text either (`app/commands.go`):
+  - For keys in parentheses at the end of a sentence use `app.Tip(text, id)` (no parentheses when there's no key; full-width parentheses in Chinese, half-width in English).
+  - For keys mid-sentence use `app.KeyHint(id, sentence with key, sentence without key, args…)`, writing both as complete literals (the i18n catalog only collects literals); the keyless sentence names the command instead, never leaving an empty pair of parentheses.
+  - To list the keys of several commands use `app.KeyList`. `KeyText` panics on an id that doesn't exist, so a mistyped id fails the tests.
+  - Leave as literals: text that names only modifiers ("⌥-click", "⇧Return"), keys that lists and text fields handle themselves, and the editor's own undo.
+- Changing a global shortcut means also updating: the places in tests that press that key (e.g. `ui/terms_test.go`), keys missing from `keyNames` (⌃⇧` needs `KeyBackquote`),
+  `docs/shortcuts.md` (`TestShortcutDoc -update`), and the keys written in README.md / README.zh-CN.md. Search for every reference before making the change.
 
-## 编辑器
+## Editor
 
-- 自己画的编辑部件（`internal/ged`）要收 `InputText`，得在有焦点时调 `el.TextCaret(rect)`：没有它输入法不接，KeyDown 没被接走也不会再来字。
-  macOS 上先来 KeyDown、没接才来字，所以 `HandleInput` 对 KeyDown 返回 false 才打得进字（J、空格这种 ged 只看时接走的键，编辑时要放过）。
-  `InputCompose` 的 `Caret` 是 rune 下标，`Text` 为空表示组字结束；编辑菜单（`RoleEditMenu`）的剪切、粘贴、撤销、重做到焦点元素时是 `InputCommand`。
-- `editor.Buffer.Edit` 每次都是一步撤销：mygo 把连着打的字合成一步的逻辑（`editTyping`）没导出，只有它自己的编辑器视图用得上。
-  ged 自己记每组合了几次 `Edit`、撤销时连调几次 `Undo`（`ged/edit.go`）；缓冲区被别处改过（版本对不上）就不再按组撤。
-- `editor.State.Label` 会把编辑器登记成文本框标签，Tester 里可以 `tt.Click("编辑 a.txt")` 聚焦。
-- 有焦点的编辑器会持续绘制：mygo 的 `ui/editor` 只要建的那一刻 `Focused()` 为真，就每 500 ms 排一帧闪光标，没有开关；帧内存 2 秒没有新帧才放，
-  因此会额外占用一两百 MB 内存，并持续消耗 CPU。新加的编辑器 / Diff 视图要走 `ui/caret.go` 的 `restingEditor` / `restingDiff`（停手 30 s 不闪），别直接用 `editor.View` / `editor.DiffView`。
-- mygo 编辑器在光标移动后自动滚动，只给光标上下留 min(3 行, 半屏)，没有选项可以改（像 VS Code 的 cursorSurroundingLines 那样的选项它没有）。
-  `restingEditor` 先让 mygo 滚完，然后由 `caretMargin` 补到 min(5 行, 视图高 1/5)。只有键盘移动了光标才补，靠 `Rest.Keyed`：`OnInput` 里收到按键 / 文字 / 命令时为真，指针按下时为假，每帧用完就清（不然没挪光标的 Esc、⌘S 留下来，之后内容从外面变了会把滚走的视图拽回光标）。
-  这样点击、滚轮、拖滚动条都不受影响，程序里调的 `GoTo` 本来就滚到正中，也够余量。光标所在行被软换行折成几行时不补，因为公开接口拿不到光标落在第几折。
-- `DiffState.GoToHunk(i)` 把光标放到那块开头，不在视图里才滚、滚到正中（等视图排过版才滚）。mygo 没有公开的滚动 API，所以"第一处改动"在视图正中，不是上三分之一。
-  `ExpandAll` / `CollapseAll`（局部 ↔ 全文）不保留改动的位置，之后再 `GoToHunk` 一次（`Doc.ToHunk`）。
-- `editor.State.LineBackgrounds` / `GutterMarks` 记的是设的时候的行号，不会随编辑自动移动：插一行之后底色还留在原来那几行。冲突块的染色（`ui/merge.go` 的 `conflictMarks`）
-  所以每帧照现在的块重设，没有块就置 nil；块本身按 `Buf.Version()` 缓存（`Doc.ConflictBlocks`），每帧重设不会增加大量计算。别的地方要按内容染色也照这个来，别只在打开时设一次。
-- `editor.Buffer.Modified()` 只要当前文本和存盘文本不是同一棵 rope（改过，哪怕又撤回到一样），就把两份都拼成整串再比较，大文件一次几 MB 分配。
-  每帧要问的地方（标签圆点、状态栏、菜单）一律走 `Doc.Modified`，它按缓冲区指针、`Version()`、存盘次数缓存。`Buffer.MarkSaved()` 不动 `Version()`，
-  所以 Grove 里只经 `Doc.markSaved` 调它（顺带让缓存失效），别直接 `d.Buf.MarkSaved()`。
-- `GutterMarks` 归冲突块，诊断只走 `SetDiagnostics`（`app/lint.go`）：`conflictMarks` 每帧整个重设 `GutterMarks`，别的东西往里放下一帧就没了。
-  检查报的问题交给 mygo 编辑器自带的诊断（`st.SetDiagnostics`：波浪线、悬停、滚动条标记），装订线不画点。
-- `SetDiagnostics(version, ds)` 的 version 是 ds 按哪一版文字算的，编辑器沿那一版之后的编辑历史把位置挪到现在。缓冲区未保留那段历史（重读过、版本对不上）时什么都不设，也不报错。
-  所以（`SyncProblems`）：先 `SetDiagnostics(cur, nil)` 清掉，再按记下的版本设；设完 `Diagnostics()` 还是空的，就按现在的文字重算、用现在的版本设。
-  位置按跑命令那一刻的文字和版本算（`snapOf` 在保存 / 手动检查时拍下），不要在结果返回时按当前文本计算。
-- 编辑器的 `OnInput` 是 View 那一刻取的，后设置的处理函数会覆盖先前的处理函数。`restingEditor` 自己挂了 `OnInput`，额外的键要串进它的 `keys` 参数（比如 `mergeKeys`），不能在外面再 `.OnInput(...)`。
-  返回 true 会消耗该按键事件（⌃⌥1 不会再插个字）；只接 `InputKeyDown`，键按命令注册表比（`ev.Mods == cmd.Mods`，`Key` 或 `KeyUnknown` 时的 `PhysicalKey`）。
-  这类本地命令（`Run` 为 nil）不进窗口快捷键、不在面板里。Tester 里 `tt.Key(wui.Ctrl|wui.Alt, wui.Key2)` 能走到它；真窗口里 ⌃⌥ 的键会不会被输入法吃掉要手测。
-- `editor.NewBuffer` 可以在后台建：它只建 rope、不碰界面，`Buffer` 的方法从哪个 goroutine 调都安全。大文件的缓冲区在 `ReadFile` 里建好，主线程只换指针。
-  换 `St.Buffer` 的指针时 mygo 会重设选区、折叠、查找和滚动，要留着的（光标、`ScrollY`）先记下、换上后放回去（`docs.setText`）。
-- `Buffer.Reset` 把整段旧文字记进撤销日志（mygo 留 256 条），重读几 MB 的文件每次都多留一份旧的。大文件重读不走 Reset，换一个后台建好的新缓冲区。
-- 普通编辑器（`editor.State`）不能在两行之间留一块高度给调用方画东西：mygo 内部有这种块（`blockAnnotation`，排版时把下面的行往下推），但只经 `DiffState.Annotations` + `RenderAnnotation` 开放给 Diff 查看器。
-  所以改动预览卡（`ui/peek.go`）只能叠在代码上、盖住块下面几行，做不成 VS Code 那样插在行间。要做得跟 mygo 要一个 `State` 上的同类接口（行号、高度、Key，行号随编辑挪），记作 mygo 的需求。
-- Diff 改了的行的底色是 mygo 按固定比例把 `Theme.Added` / `Deleted` 混进背景（浅色 12%、行号槽 9%、词 15% 透明度，深色 20 / 15 / 20；v0.10.0 还是这样），比例改不了，挑颜色也到不了 VS Code 的浓淡；
-  `editor.State` 有 `LineBackgrounds` / `TextBackgrounds`，但 `DiffState` 不往两边的编辑器传。Grove 的办法（`ui/difftint.go`）是自己画在底下：
-  - `NoBackground = true` 关掉改了的行的底，`Theme.Background` 设成编辑器底色、`A` 为 0（别设成全零的 `Color{}`：mygo 当没设，补回不透明的默认底色；RGB 还用来判断深浅色）。
-  - 外面包一个涂编辑器底色的 `Column`，`Draw` 里按 `DiffState.Hunks` / `LineTop(side, line) - ScrollY()` 现算。`Draw` 每帧都跑，滚动不用另外同步。
-    并排时旧的一边宽 `(W-1) × SplitPercent`（0 当 50%），新的一边从它右边 1 pt 开始；行高和 mygo 一样按屏幕像素取整（`round(字号 × 行高倍数 × scale) / scale`）。
-  - 选中的行 mygo 也是混进 `Background` 的，底透明后看不见，要自己画。
-  - 用 WebView 换一个 Diff 编辑器（Monaco、CodeMirror）不行：一个 WKWebView 连 WebContent、GPU 进程要两三百 MB（`render.IdleClose` 那条），超过内存上限。
-- mygo v0.10.0 的 `Buffer` 每行记自己的换行，`Modified` 连换行一起比；`SetLineEnding` 不动内容版本，按版本缓存 `Modified` 的（`docs.textModified`）换了换行要自己让缓存失效。
-- 行里改了的词：只有 `Indicators` 是 `DiffBars` 时 mygo 才涂成竖条色的 22%（`lineLook.word`）；`DiffClassic`（+ / -）和 `DiffNoIndicators` 下竖条色是空的，改了的词退成 `Theme.Occurrence`（灰），两边一个颜色，看着发脏。要红绿的词就得开竖条。
-- Diff 的滚动条槽里 mygo 自己画改动的标记（增、删、改各一色），别再在旁边加一条概览尺：试过一回，画出来是并排的两条一样的东西。
-- `DiffSeparator` 只导出行数、`Step`、`First` / `Last`，不说那段间隔从哪行开始（字段 `a` 没导出）。折叠条上写所在函数要这个数，`ui/diffsep.go` 的 `sepStart` 用 reflect 读，
-  读不到就不写；`TestSepStart` 在升级 mygo 改了字段时先报。间隔之后第一行看得见的是 `a + 上面留的上下文 + Lines`，改动的第一行再加一份上下文（文件开头那条上面没有上下文；`ContextLines` 为 0 时是 3）。别拿第一行看得见的找所在函数：那常是上一个函数的 `}`。
-- 重读时 `Loading` 不置上：标签已经有缓冲区时重读不清空它。测试里等重读完成要看内容（`strings.HasSuffix(d.Buf.String(), …)`）或 `Gen`，别等 `!d.Loading`。
-- `unsafe.String` 仅用于调用方独占的字节数据：`decode(data, …, owned=true, …)` 把 UTF-8 的 `data` 直接借成字符串、不拷，调用方之后不能再改 `data`
-  （`ReadFile` 读的、`git.Blob` 返回的可以）。别人传进来的字节用 `Decode`（会拷一份），由 `TestSameBaseHash` 检查这一约定。
-- mygo 的 `Highlighter` 返回"还没好"会让编辑器每帧重画：`Highlight` 返回 false、或 `Tokens` 返回 final 为假，编辑器都会接着要帧（后者每帧重问看得见的、没准的行）。
-  后台高亮的 `Highlight` 因此总是返回 true，`invalidate` 只在越过要的行和算完时各调一次；别在每批里都调，也不要让未完成的行长期保持 final 为假。
-- mygo 换掉高亮器时不调 Close（接口里没有）：换语言、换缓冲区、撤销日志对不上重建，都会直接丢掉旧的。自己开 goroutine 的高亮器要算完自己退出、`Edit` 时停下旧的，
-  不能常驻等待新任务。测试用 `highlight.Running()` 等它们都退出。
-- `editor.State.Run` 不管 ReadOnly（mygo 只在键盘输入的路上查）：只读的标签（历史版本、大文件）上 `St.Run(editor.DeleteLine)` 照样改文字。
-  命令面板里的编辑器命令必须在 `Run` 里自己查 `Enabled`（`inEditorChecked`），不能仅依赖面板中的禁用状态，`Exec`、自定义快捷键、菜单都会走 `Run`。
-- 处理全文的 mygo 编辑器命令在主线程上计算：全部折叠 / 折叠到第 N 级 / 递归折叠要算所有折叠范围，选中所有相同的、拆成每行一个光标要扫整篇。
-  64 MB 的文件上全部折叠五分钟没完、拆光标 18.7 s，所以命令表里标了 `whole`，超过 `MaxWholeTextBytes`（1 MB）时禁用。往表里加命令时先在 64 MB 的文件上试一次。
-- 叠在编辑器上的层会盖住编辑器自己的查找条（`ui/sticky.go`）：查找条、跳到行条是 mygo 编辑器在自己里面建的，后建的 `Absolute` 叠层画在它们上面、也先接点击。
-  要知道它们在哪，就换 `State.RenderFindBar` / `RenderGoToLine`（记下 `bar.Bounds()` 再调 `editor.DefaultFindBar` / `DefaultGoToLine`），叠层右边停在它们左边；拿到的是上一帧的位置。
-  mygo 也没有"装订线多宽"的接口，`stickyGutter` 是照 editor 的 `gutterWidth` 抄的估算，mygo 改了装订线要跟着改。
-- blame 装订线画的时候还要核对滚动：编辑器在 `Draw` 里自己还会滚（光标跳出视图、拖选到边上、软换行量出新的行高），建界面时读的 `ScrollY` / `LineTop`
-  到画的时候可能已经变了。列上的 `Draw` 比一下，变了就 `Invalidate` 再建一帧，否则装订线会与代码错开一帧。
-  装订线的宽用编辑器的左 `Margin` 留出来（不是在编辑器外面套一列），滚轮才落在编辑器上。
-- 长期保存的大纲名称需要 `strings.Clone`（`app/symindex.go`）：按行正则认出来的 `Name` / `Detail` 是整篇文字的子串，存进索引不拷贝就把整个文件的文字留在内存里。
-  索引看文件列表变没变靠 `files.Tree.Paths` 的切片身份（`samePaths`）：`Paths` 只整体换，别在原地 `append` / 改它。
-- 共用缓冲区的几份标签，读盘之后要 `relink`（`app/mirror.go`）：镜像和正本共用 `*editor.Buffer`，但 `Doc.ApplyFile` 读到新文件时换的是缓冲区指针。
-  读盘、保存、冲突横幅、保留我的、换编码 / 语言 / 缩进 / 换行之后都要 `a.relink(d)` 让别的几份 `Share` 过来，否则修改一份标签后，其他标签不会同步。
-  新加一条会换 `Buf` / 对比基准 / 编码的路径也要接上。没保存的计数、退出名单、监听重读只认正本（`Copy == 0`），别数重了。
-- 文件标签写盘只走 `WriteDoc` → `diskWrite`（`app/localhist.go`）：保存、全部保存、退出时保存、自动保存、格式化后保存、转成 UTF-8 都经它，
-  本地历史（写之前记"保存前磁盘上的"、写完记"保存"）和 keybindings.json 的重读靠它。新增文件标签保存入口时，不要直接调用 `os.WriteFile`，否则会绕过本地历史；
-  应用里别的写盘（重命名 / 移动、恢复、`>restore`）自己调 `LocalHist()` 记。
-- 设置文档的保存不写盘：`docs.SettingsDoc` 是可编辑的内存文档，`Save` / `WriteDoc` 见到它交给 `applySettingsDoc`。加新的保存入口时不要让它进入文件写入流程（它没有 `Abs`）。
-  设置从别处改了（设置窗口、⌘=、导入），`SettingsChanged` 里 `syncSettingsDocs` 换掉没改过的设置文档，改过的不动。
-- ged 的文件编辑器底下 `editor.State` 没有视图：`Selections` / `GoTo` / `Select` / `Insert` / `Run` 照样能用（只碰缓冲区，撤销也是缓冲区的），
-  但 `ScrollY` / `LineTop` / `VisibleLines` 这些按排版算的没有意义，`Run(Copy / Cut / Paste)` 碰不到窗口的剪贴板（要走 `app.CopyText` / `ReadClipboard`）。
-  要知道看得见哪几行、要滚，走 `Doc.VisibleLines` / `ScrollTo`（`docs/edit.go`），别直接问 St；新加碰 St 视图的地方先看 `Doc.UsingEd`。
-- 测 ged 的文件编辑器时键盘不会自己落到编辑器上：`OpenFile` 之后要 `a.FocusDoc = true`，等 `d.Ed.Focused()` 再敲键（`openGedFile`）。
+- For a self-drawn editing widget (`internal/ged`) to receive `InputText`, it must call `el.TextCaret(rect)` while focused: without it the input method doesn't engage, and a KeyDown that isn't taken won't be followed by text either.
+  On macOS KeyDown arrives first and text only comes if the KeyDown wasn't taken, so `HandleInput` must return false for a KeyDown for typing to work (keys like J and space, which ged takes in view mode, must be let through while editing).
+  `InputCompose`'s `Caret` is a rune index, and an empty `Text` means composition ended; the Edit menu's (`RoleEditMenu`) cut, paste, undo and redo arrive at the focused element as `InputCommand`.
+- Every `editor.Buffer.Edit` is one undo step: mygo's logic for merging consecutive typing into one step (`editTyping`) isn't exported, and only its own editor view can use it.
+  ged records how many `Edit`s each group merged and calls `Undo` that many times on undo (`ged/edit.go`); if the buffer was changed elsewhere (version mismatch) it stops undoing by group.
+- `editor.State.Label` registers the editor as a text field label, so in the Tester `tt.Click("编辑 a.txt")` focuses it.
+- A focused editor keeps drawing: as long as `Focused()` is true when it's built, mygo's `ui/editor` schedules a frame every 500 ms to blink the caret, with no switch to turn it off; frame memory is only released after 2 seconds without new frames,
+  so this costs an extra 100–200 MB and continuous CPU. New editor / Diff views must go through `restingEditor` / `restingDiff` in `ui/caret.go` (stops blinking after 30 s idle); don't use `editor.View` / `editor.DiffView` directly.
+- After the caret moves, the mygo editor auto-scrolls leaving only min(3 lines, half a screen) above and below the caret, with no option to change it (it has nothing like VS Code's cursorSurroundingLines).
+  `restingEditor` lets mygo finish scrolling, then `caretMargin` tops it up to min(5 lines, 1/5 of the view height). It only tops up when the keyboard moved the caret, via `Rest.Keyed`: true when `OnInput` receives a key / text / command, false on pointer press, and cleared after each frame (otherwise an Esc or ⌘S that didn't move the caret would linger, and a later external content change would yank a scrolled-away view back to the caret).
+  This leaves clicks, the wheel and scrollbar dragging alone, and programmatic `GoTo` already scrolls to the center, which is margin enough. It doesn't top up when the caret's line is soft-wrapped into several rows, because the public API doesn't say which wrapped row the caret is on.
+- `DiffState.GoToHunk(i)` puts the caret at the start of that hunk and scrolls only if it's out of view, to the center (after the view has been laid out). mygo has no public scrolling API, so "first change" lands in the center of the view, not the upper third.
+  `ExpandAll` / `CollapseAll` (around changes ↔ full file) don't preserve the position of the change; call `GoToHunk` again afterwards (`Doc.ToHunk`).
+- `editor.State.LineBackgrounds` / `GutterMarks` store line numbers as of when they were set and don't move with edits: after inserting a line the backgrounds stay on the old lines. Conflict block coloring (`conflictMarks` in `ui/merge.go`)
+  therefore resets them every frame from the current blocks, setting nil when there are none; the blocks themselves are cached by `Buf.Version()` (`Doc.ConflictBlocks`), so resetting every frame doesn't add much work. Anything else that colors by content should do the same, not set it once on open.
+- `editor.Buffer.Modified()`, whenever the current text and the saved text aren't the same rope (edited, even if undone back to identical), concatenates both into whole strings to compare them, a several-MB allocation each time for big files.
+  Anything that asks every frame (tab dot, status bar, menus) goes through `Doc.Modified`, which caches by buffer pointer, `Version()` and save count. `Buffer.MarkSaved()` doesn't change `Version()`,
+  so Grove calls it only through `Doc.markSaved` (which also invalidates the cache); never call `d.Buf.MarkSaved()` directly.
+- `GutterMarks` belong to conflict blocks; diagnostics go only through `SetDiagnostics` (`app/lint.go`): `conflictMarks` resets all of `GutterMarks` every frame, so anything else put there disappears the next frame.
+  Problems reported by checks are handed to the mygo editor's built-in diagnostics (`st.SetDiagnostics`: squiggles, hover, scrollbar marks); no dots are drawn in the gutter.
+- The version in `SetDiagnostics(version, ds)` is the text version ds was computed against; the editor moves the positions to the present along the edit history after that version. If the buffer doesn't have that history (reloaded, version mismatch) it sets nothing and reports no error.
+  So (`SyncProblems`): first clear with `SetDiagnostics(cur, nil)`, then set with the recorded version; if `Diagnostics()` is still empty afterwards, recompute against the current text and set with the current version.
+  Positions are computed against the text and version at the moment the command ran (`snapOf` takes the snapshot on save / manual check), not against the current text when the result comes back.
+- The editor's `OnInput` is captured at `View` time, and a handler set later replaces the earlier one. `restingEditor` attaches its own `OnInput`, so extra keys must be chained in through its `keys` parameter (e.g. `mergeKeys`), not with another `.OnInput(...)` outside.
+  Returning true consumes the key event (⌃⌥1 doesn't also insert a character); handle only `InputKeyDown`, and compare keys against the command registry (`ev.Mods == cmd.Mods`, and `Key`, or `PhysicalKey` when `Key` is `KeyUnknown`).
+  These local commands (`Run` is nil) aren't window shortcuts and don't appear in the palette. In the Tester `tt.Key(wui.Ctrl|wui.Alt, wui.Key2)` reaches them; whether an input method swallows ⌃⌥ keys in a real window needs manual testing.
+- `editor.NewBuffer` can be built in the background: it only builds the rope and doesn't touch the UI, and `Buffer` methods are safe to call from any goroutine. Buffers for big files are built in `ReadFile`, and the main thread just swaps the pointer.
+  When the `St.Buffer` pointer is swapped, mygo resets selections, folds, find and scroll; save what should survive (caret, `ScrollY`) first and restore it after the swap (`docs.setText`).
+- `Buffer.Reset` records the entire old text in the undo log (mygo keeps 256 entries), so every reload of a several-MB file keeps another copy of the old text. Big-file reloads don't use Reset; they swap in a new buffer built in the background.
+- A plain editor (`editor.State`) can't reserve a block of height between two lines for the caller to draw in: mygo has such blocks internally (`blockAnnotation`, which pushes the lines below down during layout), but only exposes them to the Diff viewer through `DiffState.Annotations` + `RenderAnnotation`.
+  So the change peek card (`ui/peek.go`) can only be layered over the code, covering a few lines below the hunk, rather than inserted between lines as in VS Code. Doing that needs a similar API on `State` from mygo (line number, height, Key, with the line number moving with edits); it's noted as a mygo feature request.
+- The background of changed lines in a Diff is mygo blending `Theme.Added` / `Deleted` into the background at fixed ratios (light: 12%, gutter 9%, words 15% opacity; dark: 20 / 15 / 20; still the case in v0.10.0). The ratios can't be changed, and no choice of color reaches VS Code's intensity;
+  `editor.State` has `LineBackgrounds` / `TextBackgrounds`, but `DiffState` doesn't pass them to the editors on either side. Grove's approach (`ui/difftint.go`) is to draw underneath itself:
+  - `NoBackground = true` turns off the changed-line backgrounds, and `Theme.Background` is set to the editor background color with `A` at 0 (don't use the all-zero `Color{}`: mygo treats it as unset and fills in the opaque default background; the RGB is also used to decide light vs. dark).
+  - Wrap it in a `Column` painted with the editor background, and compute in `Draw` from `DiffState.Hunks` / `LineTop(side, line) - ScrollY()`. `Draw` runs every frame, so scrolling needs no separate sync.
+    In side by side, the old side is `(W-1) × SplitPercent` wide (0 counts as 50%) and the new side starts 1 pt to its right; line height is rounded to screen pixels the same way mygo does (`round(font size × line height factor × scale) / scale`).
+  - mygo also blends selected lines into `Background`, so with a transparent background they become invisible and have to be drawn ourselves.
+  - Replacing the Diff editor with a WebView (Monaco, CodeMirror) is not an option: one WKWebView with its WebContent and GPU processes takes 200–300 MB (see `render.IdleClose`), over the memory limit.
+- In mygo v0.10.0 `Buffer` records each line's own line ending, and `Modified` compares line endings too; `SetLineEnding` doesn't bump the content version, so anything caching `Modified` by version (`docs.textModified`) must invalidate the cache itself when the line ending changes.
+- Changed words within a line: only when `Indicators` is `DiffBars` does mygo paint them at 22% of the bar color (`lineLook.word`); under `DiffClassic` (+ / -) and `DiffNoIndicators` the bar color is empty and changed words fall back to `Theme.Occurrence` (gray), the same color on both sides, which looks muddy. For red / green words the bars must be on.
+- mygo draws change marks in the Diff's scrollbar track itself (one color each for added, deleted, modified); don't add an overview ruler next to it: we tried once and it drew two identical strips side by side.
+- `DiffSeparator` exports only the line count, `Step` and `First` / `Last`, not the line where the gap starts (the field `a` is unexported). Showing the enclosing function on the fold bar needs that number, so `sepStart` in `ui/diffsep.go` reads it via reflect
+  and shows nothing if it can't; `TestSepStart` fails first if a mygo upgrade changes the field. The first visible line after the gap is `a + context kept above + Lines`, and the first changed line adds one more context's worth (the separator at the top of the file has no context above it; when `ContextLines` is 0 it's 3). Don't look up the enclosing function from the first visible line: that is often the previous function's `}`.
+- `Loading` isn't set on reload: reloading a tab that already has a buffer doesn't clear it. In tests, wait for a reload by checking the content (`strings.HasSuffix(d.Buf.String(), …)`) or `Gen`, not `!d.Loading`.
+- `unsafe.String` is only for byte data the caller owns exclusively: `decode(data, …, owned=true, …)` borrows the UTF-8 `data` as a string without copying, and the caller must never modify `data` afterwards
+  (fine for what `ReadFile` read or what `git.Blob` returned). For bytes passed in by others use `Decode` (which copies); `TestSameBaseHash` checks this convention.
+- A mygo `Highlighter` that reports "not ready yet" makes the editor redraw every frame: if `Highlight` returns false, or `Tokens` returns final as false, the editor keeps requesting frames (the latter re-asks for visible, unsettled lines every frame).
+  The background highlighter's `Highlight` therefore always returns true, and `invalidate` is called only twice: once when it passes the requested lines and once when it finishes. Don't call it on every batch, and don't leave unfinished lines with final false for long.
+- mygo doesn't call Close when it replaces a highlighter (the interface has none): switching language, switching buffer, or rebuilding after an undo log mismatch all just drop the old one. A highlighter that starts its own goroutines must exit on its own when done and stop the old work on `Edit`;
+  it can't stay resident waiting for new jobs. Tests use `highlight.Running()` to wait for them all to exit.
+- `editor.State.Run` ignores ReadOnly (mygo only checks it on the keyboard input path): on read-only tabs (historical versions, big files) `St.Run(editor.DeleteLine)` still changes the text.
+  Editor commands in the command palette must check `Enabled` themselves inside `Run` (`inEditorChecked`), not rely on the palette's disabled state alone; `Exec`, custom shortcuts and menus all go through `Run`.
+- mygo editor commands that process the whole text compute on the main thread: Fold All / Fold Level N / Fold Recursively compute every fold range, and Select All Occurrences and splitting into one cursor per line scan the entire document.
+  On a 64 MB file Fold All hadn't finished after five minutes and splitting cursors took 18.7 s, so the command table marks these `whole`, disabled above `MaxWholeTextBytes` (1 MB). Before adding a command to the table, try it once on a 64 MB file.
+- Layers over the editor cover the editor's own find bar (`ui/sticky.go`): the find bar and Go to Line bar are built by the mygo editor inside itself, so an `Absolute` overlay built later draws on top of them and gets clicks first.
+  To know where they are, replace `State.RenderFindBar` / `RenderGoToLine` (record `bar.Bounds()`, then call `editor.DefaultFindBar` / `DefaultGoToLine`) and stop the overlay's right edge at their left; the position you get is last frame's.
+  mygo also has no API for the gutter width; `stickyGutter` is an estimate copied from the editor's `gutterWidth`, and must follow if mygo changes the gutter.
+- The blame gutter must re-check the scroll position at draw time: the editor still scrolls itself inside `Draw` (caret jumping out of view, drag-selecting at an edge, soft wrap measuring new line heights), so `ScrollY` / `LineTop` read while building the UI
+  may have changed by the time it draws. The column's `Draw` compares them and, if they changed, calls `Invalidate` to build another frame; otherwise the gutter is one frame out of step with the code.
+  The gutter's width is reserved with the editor's left `Margin` (not as a column outside the editor), so the wheel still lands on the editor.
+- Outline names kept long-term need `strings.Clone` (`app/symindex.go`): `Name` / `Detail` found by per-line regexes are substrings of the whole document, and storing them in the index without copying keeps the entire file's text in memory.
+  The index detects file list changes by the slice identity of `files.Tree.Paths` (`samePaths`): `Paths` is only ever replaced wholesale; don't `append` to or modify it in place.
+- Tabs sharing one buffer need `relink` after reading from disk (`app/mirror.go`): mirrors and the original share an `*editor.Buffer`, but when `Doc.ApplyFile` reads a new file it swaps the buffer pointer.
+  After reading from disk, saving, the conflict banner, Keep Mine, and changing encoding / language / indentation / line endings, call `a.relink(d)` so the other copies `Share` the new one; otherwise editing one tab doesn't update the others.
+  Any new path that swaps `Buf`, the comparison base or the encoding must hook in too. The unsaved count, the quit list and watcher reloads only consider the original (`Copy == 0`); don't count twice.
+- File tabs write to disk only via `WriteDoc` → `diskWrite` (`app/localhist.go`): Save, Save All, save on quit, auto save, save after formatting and Convert to UTF-8 all go through it,
+  and local history (recording "On disk before save" before writing and "Save" after) and reloading keybindings.json depend on it. When adding a new save entry point for file tabs, don't call `os.WriteFile` directly, or it bypasses local history;
+  other disk writes in the app (rename / move, restore, `>restore`) call `LocalHist()` themselves to record.
+- Saving the settings document doesn't write to disk: `docs.SettingsDoc` is an editable in-memory document, and `Save` / `WriteDoc` hand it to `applySettingsDoc`. When adding a save entry point, keep it out of the file write path (it has no `Abs`).
+  When settings change elsewhere (the settings window, ⌘=, import), `syncSettingsDocs` in `SettingsChanged` replaces settings documents that haven't been edited and leaves edited ones alone.
+- The `editor.State` under ged's file editor has no view: `Selections` / `GoTo` / `Select` / `Insert` / `Run` still work (they touch only the buffer, and undo is the buffer's too),
+  but layout-based values like `ScrollY` / `LineTop` / `VisibleLines` are meaningless, and `Run(Copy / Cut / Paste)` can't reach the window's clipboard (go through `app.CopyText` / `ReadClipboard`).
+  To know which lines are visible or to scroll, use `Doc.VisibleLines` / `ScrollTo` (`docs/edit.go`) rather than asking St; before adding new code that touches St's view, check `Doc.UsingEd`.
+- When testing ged's file editor the keyboard doesn't land on the editor by itself: after `OpenFile` set `a.FocusDoc = true` and wait for `d.Ed.Focused()` before typing (`openGedFile`).
 
-## 终端和 termd
+## Terminal and termd
 
-- `cmd/workbench` 的 `main` 第一行派发 termd：`Grove termd <sock> <log>` 是终端后台进程，`if len(os.Args) > 1 && os.Args[1] == "termd"`
-  要在解析参数、单实例锁、载字体、开窗口之前。别在它前面加东西：后台进程不能开窗口，也不能抢单实例锁。
-- 终端的 `Options.OpenLink` 在主线程、终端锁外面调，里面可以调 `Terminal.Dir()`；返回 false 时网址交给系统浏览器，路径什么都不做。
-- 终端的光标闪烁（`terminal.Options.NoBlink`）只在 `terminal.New` 时定，运行中改不了（只有字体、主题、选中即复制、最低对比度能改），所以设置里的"光标闪烁"仅对新终端生效。
-- mygo 的终端不给 shell 的进程号，`ps -E` 在 macOS 上也看不到别的进程的环境。要进程号只能找应用的子进程、按启动顺序认领；
-  关掉还没认领到的格时等 `Term.Done()`（最多 300 ms），否则它的 shell 可能被下一个分屏认领。
-- 刚起的 shell 还没认领到进程号时，`TermPane.Job()` 是 `"?"`（当作"可能有命令在跑"）。测试里先等 `Job() == ""` 再换工作区 / 关终端。
-  空工作区里底栏开着会起一个 `~` 的 shell，换工作区时就会问"关掉终端？"：测空工作区的 UI 测试先 `termState(t, false)` 再 `newUI`（第一帧就决定了要不要起 shell）。
-- 终端的 `Text()` 去掉了每行末尾的空格：等提示符时别等 `"$ "`，等 `"\n名字 $"` 这类不带尾空格的。
-- 接在 termd 上的格（`ResizeByConn`）只在收到 `resized` 时才 `Term.Resize`：改大小只是发给 termd（`Conn.ResizePixels`），屏幕按 termd 回的大小排。
-  本地若先调用 `Resize`，下一镜像帧仍按 termd 的旧尺寸排版，会造成错行。`attachPane` 里 `conn.OnResized = term.Resize`，别的地方别调。
-- 镜像帧不带 OSC 7：`terminal.Mirror` 的帧只有屏幕和回滚，shell 报的目录 termd 单独发（`OnDir`），窗口里的 `Term.Dir()` 在后台格里是空的。
-  要目录用 `shellDir()`（先 `Term.Dir()`、再 termd 发来的 `rdir`），没报过的 termd 按进程号读 cwd。
-- 后台格里别在本地 `ClearScreen`：⌘K 交给 termd 清（`conn.Clear`，`OnClear` 也接到它），本地清了下一个镜像帧又把内容画回来。全屏程序里 termd 回 `N`（不清屏）。
-- 设了 `WORKBENCH_STATE` 的实例有自己的 termd：套接字跟着状态目录（`termd.SockPath(StateDir)`），不会接到日常开着的那个 Grove 的会话。
-  用完只 `kill -TERM` 自己这个 termd（`pgrep -f '<自己的 .app>/Contents/MacOS/Grove termd'`），别杀别的。
-  套接字 0600、协议不认证，能连接套接字的进程就能向 shell 发送输入，别把它放到别人能读的目录里。
-- 恢复上次输出必须早于 shell 的首次输出（`app/termhist.go`）：`Terminal.History()` 的序列最后让光标停在它下面一行，`startLocal` 建好终端马上 `Feed`。
-  晚了（shell 读完 rc、提示符已经出来）就会盖在提示符上或者夹在两行之间。连接 termd 的分屏不恢复这份输出，因为镜像帧自带回滚；连接失败并退回本地时仍需恢复。
-- termd 里退出了的会话由两端分别管理：termd 这边，shell 退出了、没有窗口接着的会话过 `Server.Linger` 拿掉（接回去过就作废，`session.linger` 代数对不上）；
-  窗口这边，关窗口 / 换工作区时退出了的格直接 `Kill`（被别的窗口接走的 `lost` 只断开），`sessionTerms` 只记没退出的会话号。
-  改其中一边要看另一边：仅依赖 termd，下次打开窗口可能先连到即将清除的会话；仅依赖窗口，窗口崩溃后留下的会话无法清理。
+- The first line of `main` in `cmd/workbench` dispatches termd: `Grove termd <sock> <log>` is the terminal background process, and `if len(os.Args) > 1 && os.Args[1] == "termd"`
+  must come before argument parsing, the single-instance lock, font loading and opening windows. Don't put anything in front of it: the background process must not open windows or grab the single-instance lock.
+- The terminal's `Options.OpenLink` is called on the main thread outside the terminal lock, so it may call `Terminal.Dir()`; when it returns false, URLs go to the system browser and paths do nothing.
+- The terminal's cursor blink (`terminal.Options.NoBlink`) is fixed at `terminal.New` and can't be changed while running (only font, theme, copy on select and minimum contrast can), so the "Cursor blink" setting only applies to new terminals.
+- mygo's terminal doesn't expose the shell's process ID, and on macOS `ps -E` can't see other processes' environments. The only way to get the PID is to find the app's child processes and claim them in launch order;
+  when closing a pane that hasn't claimed one yet, wait for `Term.Done()` (up to 300 ms), or its shell may be claimed by the next split pane.
+- While a just-started shell hasn't claimed its PID, `TermPane.Job()` is `"?"` (treated as "a command may be running"). Tests must wait for `Job() == ""` before switching workspaces or closing the terminal.
+  In an empty workspace, an open bottom panel starts a shell in `~`, and switching workspaces then asks "Close terminals?": UI tests of the empty workspace call `termState(t, false)` before `newUI` (the first frame decides whether to start a shell).
+- The terminal's `Text()` strips trailing spaces from each line: when waiting for a prompt don't wait for `"$ "`; wait for something without trailing space, like `"\nname $"`.
+- A pane attached to termd (`ResizeByConn`) calls `Term.Resize` only when it receives `resized`: resizing just sends the new size to termd (`Conn.ResizePixels`), and the screen is laid out at the size termd reports back.
+  If the local side calls `Resize` first, the next mirror frame is still laid out at termd's old size and lines come out garbled. `attachPane` sets `conn.OnResized = term.Resize`; don't call it anywhere else.
+- Mirror frames don't carry OSC 7: a `terminal.Mirror` frame contains only the screen and scrollback, termd sends the directory reported by the shell separately (`OnDir`), and the window's `Term.Dir()` is empty for background panes.
+  To get the directory use `shellDir()` (`Term.Dir()` first, then `rdir` sent by termd); for a shell that never reported one, termd reads the cwd by PID.
+- Don't `ClearScreen` locally in a background pane: ⌘K is handed to termd to clear (`conn.Clear`, which `OnClear` also routes to); a local clear gets drawn back by the next mirror frame. In full-screen programs termd replies `N` (don't clear).
+- An instance with `WORKBENCH_STATE` set has its own termd: the socket follows the state directory (`termd.SockPath(StateDir)`), so it never attaches to the sessions of the Grove you use every day.
+  When done, `kill -TERM` only your own termd (`pgrep -f '<your own .app>/Contents/MacOS/Grove termd'`); don't kill any other.
+  The socket is 0600 and the protocol is unauthenticated: any process that can connect to the socket can send input to the shells, so never put it in a directory others can read.
+- Restoring the previous output must happen before the shell's first output (`app/termhist.go`): the sequence from `Terminal.History()` ends with the cursor on the line below it, and `startLocal` `Feed`s it right after creating the terminal.
+  Too late (the shell has read its rc files and printed the prompt) and it lands on top of the prompt or between two lines. Split panes attached to termd don't restore this output, because mirror frames carry their own scrollback; if the connection fails and falls back to local, it is still restored.
+- Exited sessions in termd are managed from both ends: on the termd side, a session whose shell exited and that no window is attached to is removed after `Server.Linger` (reattaching cancels that; the `session.linger` generation won't match);
+  on the window side, closing the window or switching workspaces `Kill`s exited panes directly (panes taken over by another window, `lost`, are only disconnected), and `sessionTerms` records only sessions that haven't exited.
+  When changing one side, check the other: rely only on termd and the next window may first connect to a session about to be removed; rely only on the window and sessions left behind by a crashed window are never cleaned up.
 
-## 窗口、标签和生命周期
+## Windows, tabs and lifecycle
 
-- `mygo.Dialog.Open` 会阻塞，放 goroutine 里，结果经 `update` 回主线程。它一次要么只能选文件、要么只能选目录，所以"打开文件夹…"和"打开工作区文件…"是两项。
-- `Ask` 一次只能显示一个确认框：同时需要确认多件事时，应合并为一次询问（`OpenArgs` 里几个不在列表里的仓库），别连着调 `Ask`，后一个会覆盖前一个。
-- 后台 goroutine 要用的文档字段（`Abs`、`Rel`、`Root`、`Change`……）在 `go func` 之前拷到局部变量：重命名（`Doc.Moved`）在主线程改它们，
-  在 goroutine 中直接读取 `d.Abs` 会触发 `-race` 的数据竞争报告。
-- 注册表 `Commands` 里的 `Run` 引用了会用到 `Commands` 的函数时会出初始化循环，这类在 `init()` 里填。
-- 换工作区会整个重写 `*a`（`switchTo` 里 `*a = *n`）：
-  - goroutine、`time.AfterFunc`、终端回调（`OnTitle` / `OnExit`……）里读 `a.Update` / `a.Win` 会与重写操作竞争，导致 `-race` 报错。
-    在主线程上先取出来再带进去：`up := a.Update` / `up, win := a.Update, a.Win`，然后 `go func() { …; up(func() { … }) }()`。
-    `cmd/workbench` 的计时器用 `win.Update`。菜单的 Click、按键回调本来就在主线程上，不用。
-  - `App` 上新加的跟着窗口走的字段要在 `switchTo` 里带过去，没带的会被清掉。现在带的是 `Windows`、`Slot`、`LastBar`、`ownStore`、`Win`、`Update` 和各个回调；
-    漏了 `Windows`，换完工作区注册表就无法再正确管理该窗口（菜单、存盘都错）。
-- 存盘一律经 `a.store()`（注册表的 `Store`），别直接 `workspace.SaveState`，否则会覆盖其他窗口的会话。
-- 界面状态不要放在包级变量中：几个窗口都在主线程上画，包级变量会被轮流改（比如一个全屏、一个不全屏时每帧都记一笔日志）。放到 `App` 上（`a.LastBar`）；
-  只有跟着进程走的（设置、语言、主题）才是全局的。
-- 绘制标签条的循环中可能发生 `Drop`、右键菜单的"关闭"之类改切片的事：遍历 `slices.Clone(a.Docs)` / `slices.Clone(a.TermTabs(r))`，
-  别直接 `range` 原切片（边遍历边改会错位、Key 重复）。
-- 编辑器组分屏时 `a.Docs` 只是当前有焦点的组的标签，别的组的在 `Group.docs` 里，换组时 `swapTo` 对调。改"当前标签"的代码照旧用 `a.Docs` / `a.DocSel`；
-  要所有标签（会话、关窗口前问没保存的、找已经开着的文件、Git 状态变了改 Diff 标签）一律用 `a.AllDocs()`，按 `GroupOf` / `locate` 找在哪组。
-  测试里看各组用 `a.Groups()` + `a.GroupDocs(g)`。
-- 分屏时键盘在哪组：`groupCard` 的 `FocusWithin` 由假变真那一帧调 `FocusGroup`，不要每帧根据 `FocusWithin` 设置当前组（程序刚换了组、键盘还没过去的那一帧会被换回来）。
-  程序换组走 `toGroup`（置 `a.FocusDoc`，下一帧那组卡片先 `Focus()`、编辑器再拿）；换组前把原来的编辑器 `Rest.Woke = true`，
-  否则停止闪烁的编辑器会每帧取回焦点，导致无法聚焦其他组。
-- `FocusDoc` 是全局的"下一帧把键盘给键盘所在组的当前标签"，那个标签还在读（`Loading`）就一直等着。测试里先 ⌥点开一个文件（置 `FocusDoc`）、
-  没等它读好就程序换组 + `a.FocusTree = true`，读好的标签会把键盘抢回去，文件树只拿到一帧。测试里要先换组再给文件树键盘：
-  先等那个文件 `Buf != nil`，或照用户的做法点那组的编辑器（`mustClick(t, tt, "编辑 x")`）。
-- 松开拖着的标签是在画某一组的时候处理的，那时 `collapse` / `splitOff` 已经就地改了树（`cut` 是 `*n = *兄弟`）。`edNode` 画两半之前先把 `n.A`、`n.B`
-  拿到局部变量，否则绘制后半部分时拿到的可能是 nil。新的树下一帧才画。
-- 会话的 `Tabs` 按树的顺序存（左上到右下、组里从左到右），不是打开的顺序；`Layout` 的叶子记的是这个顺序里的下标。
-- 会话里不是文件的标签，`path` 也要写绝对路径：`State.clamp` 会删掉 `path` 不是绝对路径的标签，后面的 `active`、`layout` 下标就全错位了。
-  Diff / 历史版本标签的 `path` 写仓库根，`restoreTabs` 看到是目录就跳过、留空位，下标对得上。以后再加别的种类也照这样。
-- 只读的生成标签（搜索编辑器、替换预览）不进会话、不进 ⇧⌘T：`sessionTab` 是白名单，新 Kind 默认就不记；`RemoveDoc` 的 `closed` 是黑名单，新 Kind 要自己加。
-  后台生成的内容回主线程前先比 `d.Gen`（标签可能已经重写过或关了），关标签时 `searchSrcOf(d).stop()` 取消它在跑的搜索。
-- mygo 的菜单栏是整个应用一份（`mygo.App.SetMenu`）：几个窗口时只有前台那个 `App` 在 `SyncMenu` 里重建它（`Windows.Focus` 清 `menuSig`），别的窗口每帧都不碰。
-  菜单项的 `Click(item, win)` 交给 `a.target(win)`（点的时候在前面的工作台窗口），别在 Click 里直接用建菜单的那个 `a`。
-  Tester 里没有菜单栏（`HasMenu` 为假），这条只能靠 `TestWindowsRouting` 直接调 Click 测。
-- 退出确认应在 `OnBeforeQuit` 中处理：mygo 先发 `OnBeforeQuit`，再一个个关窗口，哪个窗口的 `OnClose` 拦了就停，但前面已经关掉的不会回来。
-  所以 ⌘Q 时要问的都在 `Windows.RequestQuit` 里：拦下、一个个问，问完自己 `Quit()`（`ending` 置真，这次放行）；问着时又来一次 ⌘Q（`quitting` 不为 nil）
-  只将正在确认的窗口置于前台。不注册 `OnWindowAllClosed`，`Windows.Closed` 关到最后一个自己退。
-- 换工作区是 `*a = *n`（`app/workspaces.go`）：指向 `n` 里字段的指针拷过来后还指着 `n`。`Repo.set`（`&a.St.Settings`，Git 栏显示工作树 / 贮藏的开关读它）
-  所以在拷完之后对每个仓库重新指一遍；以后再往 `Repo` 里放指向 `App` 字段的指针也要这样。
-- `Window.OnReadyToShow` 只来一次（窗口画完第一帧时），之后再注册的不会再来。还原队列靠它推进：main 的 `NewWindow` 钩子里紧跟着注册
-  `win.OnReadyToShow(func() { wins.Ready(a) })`。没画完第一帧就关掉的窗口等不到它，所以 `Windows.Closed` 里替它调一次 `Ready`。测试里没有真窗口，直接调 `w.Ready(a)`。
-- `RestoreGap` 的计时器要回主线程：`time.AfterFunc` 在别的 goroutine 上跑，到点只做 `mygo.RunOnMain(fn)`，`fn`（`Windows.next`）在主线程上读写注册表。
-  `Windows.Later` 是这个钩子，测试里换成记下来手动跑的桩。
-- `mygo.App.SetWindowStateStore` 必须在 Run 之前：mygo 在建第一个带 `StateKey` 的窗口时读一次窗口位置（只读这一次），之后再换只改了往哪写。
-  所以 main 在 `WhenReady` 之前就定 `stateDir`（`WORKBENCH_STATE` 或 PathUserData）并设好 `app.WindowStates`；`App.Path` 在 Run 之前就能用。
-- `mygo.App.Path` 第一次调就会建出空的目录，所以 `migrateDirs`（`cmd/workbench/migrate.go`，把旧名字 Workbench 的状态和日志目录改名成 Grove）必须在它之前。
-  可执行文件名不是 Grove（`go run`）或设了 `WORKBENCH_STATE` / `WORKBENCH_LOGS` 时不搬。迁移只在测试的临时 HOME 里试（`TestMigrateDirs` 设 `HOME`），
-  绝不对真的 `~/Library/Application Support/` 试。为什么 `cmd/workbench` 不改名见 `AGENTS.md`。
+- `mygo.Dialog.Open` blocks; run it in a goroutine and send the result back to the main thread via `update`. Each call can pick either files or folders, not both, which is why "Open Folder…" and "Open Workspace File…" are two items.
+- `Ask` can show only one confirmation at a time: when several things need confirming at once, combine them into one question (several repositories not in the list, in `OpenArgs`); don't call `Ask` back to back, or the later one replaces the earlier one.
+- Document fields a background goroutine needs (`Abs`, `Rel`, `Root`, `Change`…) are copied to local variables before `go func`: a rename (`Doc.Moved`) changes them on the main thread,
+  and reading `d.Abs` directly in the goroutine triggers a `-race` data race report.
+- A `Run` in the `Commands` registry that references a function which uses `Commands` causes an initialization cycle; fill those in `init()`.
+- Switching workspaces overwrites all of `*a` (`*a = *n` in `switchTo`):
+  - Reading `a.Update` / `a.Win` in a goroutine, `time.AfterFunc` or terminal callback (`OnTitle` / `OnExit`…) races with the overwrite and `-race` reports it.
+    Take them out on the main thread first and pass them in: `up := a.Update` / `up, win := a.Update, a.Win`, then `go func() { …; up(func() { … }) }()`.
+    Timers in `cmd/workbench` use `win.Update`. Menu Clicks and key callbacks already run on the main thread and don't need this.
+  - New per-window fields on `App` must be carried over in `switchTo`; anything not carried over is wiped. Currently carried: `Windows`, `Slot`, `LastBar`, `ownStore`, `Win`, `Update` and the callbacks;
+    if `Windows` were left out, the registry could no longer manage that window correctly after a workspace switch (menus and saving would both go wrong).
+- Always save through `a.store()` (the registry's `Store`), never `workspace.SaveState` directly, or you overwrite other windows' sessions.
+- Don't keep UI state in package-level variables: several windows draw on the main thread, so package-level variables get changed by each in turn (e.g. with one window full screen and one not, a log line every frame). Put it on `App` (`a.LastBar`);
+  only process-wide things (settings, language, theme) are global.
+- The loop that draws the tab strip may see things that modify the slice, such as `Drop` or the context menu's "Close": iterate over `slices.Clone(a.Docs)` / `slices.Clone(a.TermTabs(r))`,
+  not `range` over the original slice (modifying while iterating shifts items and duplicates Keys).
+- With split editor groups, `a.Docs` holds only the tabs of the currently focused group; other groups' tabs are in `Group.docs`, and `swapTo` exchanges them when switching groups. Code that changes "the current tab" keeps using `a.Docs` / `a.DocSel`;
+  anything that needs all tabs (sessions, asking about unsaved changes before closing a window, finding an already open file, updating Diff tabs when Git status changes) uses `a.AllDocs()`, with `GroupOf` / `locate` to find which group.
+  Tests inspect groups with `a.Groups()` + `a.GroupDocs(g)`.
+- Which group has the keyboard with split groups: call `FocusGroup` in the frame where `groupCard`'s `FocusWithin` goes from false to true; don't set the current group from `FocusWithin` every frame (in the frame right after the program switched groups, before the keyboard has moved, it would switch back).
+  Programmatic group switches go through `toGroup` (sets `a.FocusDoc`; next frame that group's card `Focus()`es first, then the editor takes it); before switching, set `Rest.Woke = true` on the old editor,
+  or a resting editor grabs focus back every frame and other groups can't be focused.
+- `FocusDoc` is a global "next frame, give the keyboard to the current tab of the group that has the keyboard", and it keeps waiting while that tab is still loading (`Loading`). If a test ⌥-clicks to open a file (setting `FocusDoc`)
+  and, before it finishes loading, switches groups programmatically + sets `a.FocusTree = true`, the loaded tab grabs the keyboard back and the file tree gets it for only one frame. In tests, switch groups before giving the file tree the keyboard:
+  first wait for that file's `Buf != nil`, or do what a user would and click that group's editor (`mustClick(t, tt, "编辑 x")`).
+- Releasing a dragged tab is handled while drawing one of the groups, by which time `collapse` / `splitOff` have already modified the tree in place (`cut` is `*n = *sibling`). `edNode` copies `n.A` and `n.B`
+  into local variables before drawing the two halves, otherwise it may get nil when drawing the second half. The new tree is drawn the next frame.
+- A session's `Tabs` are stored in tree order (top-left to bottom-right, left to right within a group), not opening order; `Layout` leaves record indices into this order.
+- Tabs in a session that aren't files must also write an absolute `path`: `State.clamp` deletes tabs whose `path` isn't absolute, which shifts every later `active` and `layout` index.
+  Diff / historical version tabs write the repository root as `path`; `restoreTabs` sees a directory, skips it and leaves an empty slot so the indices still line up. Any new kind added later should do the same.
+- Read-only generated tabs (search editor, replace preview) aren't saved in sessions and aren't in ⇧⌘T: `sessionTab` is an allowlist, so new Kinds aren't recorded by default; `closed` in `RemoveDoc` is a denylist, so new Kinds must be added to it explicitly.
+  Content generated in the background checks `d.Gen` before going back to the main thread (the tab may have been rewritten or closed), and closing a tab cancels its running search with `searchSrcOf(d).stop()`.
+- mygo has one menu bar for the whole app (`mygo.App.SetMenu`): with several windows, only the frontmost `App` rebuilds it in `SyncMenu` (`Windows.Focus` clears `menuSig`), and the other windows never touch it.
+  A menu item's `Click(item, win)` goes to `a.target(win)` (the workbench window in front at click time); don't use the `a` that built the menu directly inside Click.
+  The Tester has no menu bar (`HasMenu` is false), so this can only be tested by `TestWindowsRouting` calling Click directly.
+- Quit confirmation belongs in `OnBeforeQuit`: mygo sends `OnBeforeQuit` first, then closes windows one by one, stopping at whichever window's `OnClose` blocks it, but windows already closed don't come back.
+  So everything that needs asking on ⌘Q lives in `Windows.RequestQuit`: block the quit, ask one by one, then `Quit()` itself when done (`ending` set to true lets this one through); another ⌘Q while asking (`quitting` is not nil)
+  only brings the window being confirmed to the front. There is no `OnWindowAllClosed`; `Windows.Closed` quits by itself when the last window closes.
+- Switching workspaces is `*a = *n` (`app/workspaces.go`): pointers to fields of `n` still point into `n` after being copied. `Repo.set` (`&a.St.Settings`, read by the Git sidebar's switches for showing worktrees / stashes)
+  is therefore re-pointed for every repository after the copy; any future pointer in `Repo` to an `App` field needs the same treatment.
+- `Window.OnReadyToShow` fires only once (when the window finishes its first frame); handlers registered after that never fire. The restore queue advances on it: in main's `NewWindow` hook, register
+  `win.OnReadyToShow(func() { wins.Ready(a) })` right away. A window closed before finishing its first frame never gets it, so `Windows.Closed` calls `Ready` on its behalf. Tests have no real windows and call `w.Ready(a)` directly.
+- The `RestoreGap` timer must go back to the main thread: `time.AfterFunc` runs on another goroutine, so when it fires it only does `mygo.RunOnMain(fn)`, and `fn` (`Windows.next`) reads and writes the registry on the main thread.
+  `Windows.Later` is this hook; tests replace it with a stub that records the call to run it manually.
+- `mygo.App.SetWindowStateStore` must be called before Run: mygo reads the window position once when it creates the first window with a `StateKey` (that's the only read); setting it later only changes where it writes.
+  So main decides `stateDir` (`WORKBENCH_STATE` or PathUserData) and sets `app.WindowStates` before `WhenReady`; `App.Path` is usable before Run.
+- `mygo.App.Path` creates an empty directory the first time it's called, so `migrateDirs` (`cmd/workbench/migrate.go`, which renames the old Workbench state and log directories to Grove) must run before it.
+  Nothing is moved when the executable name isn't Grove (`go run`) or when `WORKBENCH_STATE` / `WORKBENCH_LOGS` is set. Migration is tried only in a test's temporary HOME (`TestMigrateDirs` sets `HOME`),
+  never against the real `~/Library/Application Support/`. For why `cmd/workbench` isn't renamed, see `AGENTS.md`.
 
 ## Git
 
-- `git.Run` 出错时也可能带着输出返回，判断错误应检查 err，不要根据输出是否为空判断。
-- 路径比较要解开符号链接：`git worktree list`、`git rev-parse --show-toplevel`、`AddRepoDir` 给的是真实路径（`t.TempDir()` 的 `/var/…` 在它们那里是 `/private/var/…`），
-  工作区里记的、拼出来的可能不是。判断"已打开"、套在仓库里面、分支在哪检出、子模块是不是已经加进来，一律用 `git.SamePath` / `git.Under`，别用 `==` 或 `strings.HasPrefix`。
-- `git log --follow` 加 `--grep` / `--author` 会丢掉改名之前的提交：文件历史里搜索时读整段（`git.MaxFollowSearch`）在 Go 里筛。
-- 提交图要 `git log --date-order`：默认的时间顺序在提交时间乱了（变基、改过时钟）时会把父提交排到子提交前面，`internal/graph` 只往前算，连线就断了。
-  `--date-order` 保证父在所有子后面，其他提交仍按时间排序；在 5 个仓库的工作区上读 200 条多 0.02–0.05 s。
-  有搜索词、看文件历史时读到的只是一部分提交，不算图（`History.Graph` 空着）。
-- `graph.Lanes.Next` 汇入时会回头改上一次返回的 `Row.Edges`（同一块底层数组）：`History.Graph` 直接 append 返回的 Row，不要在传入下一提交前复制或排序 Edges，
-  否则会丢失上一行的弯曲连线。分页时继续向同一个对象传入提交： `Lanes`（`TestPaging` 检查分页结果与一次性处理是否一致）。
-- `graph.Lanes.Reserve` 只在第一次 `Next` 之前有用（`active` 不空时什么都不做）；分页时不要每页再 Reserve。`History.lanes` 在 `reset` 时清成零值后马上 Reserve，
-  HEAD 的哈希要在后台自己 `rev-parse`，别用 `Extra.Head`（状态和历史并发重读，可能是旧的）。
-- 点已经展开的提交不会收起（`OnHistSelected` 只展开）：测试里要收起得点别的行。
-- 监听要放过 `.git/worktrees/<名>`：每个链接工作树的 `HEAD`、`index`、`locked` 都位于该目录下。不看的话外部 `worktree add / remove`、在工作树里切分支，
-  主仓库无法收到变更提示（`TestWatchWorktreeAdded`）。再深一层（`logs/` 等）照样不看。
-- `git worktree prune --dry-run -v` 把会清的写在 stderr 上：`git.Run` 只拿 stdout，是空的，`PruneList` 用 `RunOp`（合并输出）。
-  `worktree list` 一律加 `--porcelain -z`（路径里可以有空格、换行），解析时不认识的键跳过（以后的 git 会加）。
-- 读取工作树时不要无条件执行命令：普通仓库先看 `<公共目录>/worktrees` 在不在（`Extra.CommonDir`），不在就没有工作树；改动数和领先 / 落后只在"工作树"块展开时算
-  （一个有 45 个链接工作树的仓库是 90 条 git 命令，约 1 s）。
-- 冲突解决成和 HEAD 一样时，`git add` 之后没有已暂存的：测试别假设 Staged == 1（用"他们的"那边才有）。合并停在一半、冲突都标完时，
-  `Repo.MergeReady()` 让提交框照样能提交（git 允许这类合并提交），拣选 / 变基不行。
-- 会停下来的 git 写命令（合并、变基、拣选、还原、`rebase --continue` / `--skip`）返回非零退出码不一定表示失败：做完这一步又停在下一个冲突上时退出码是 1。
-  - 横幅的继续 / 跳过走 `app.runStep`（自己的 `Op.done`），输出里有 `CONFLICT (` 就当"又停在下一处冲突"。别用 `RunOpThen` 的 then，非零时它不跑。
-  - 发起这类操作走 `stopOp`（`app/gitdaily.go`）：输出里有 `CONFLICT (`、或仓库还在进行中的操作里（空提交的拣选），就交给冲突横幅、只提示一句，别用默认的失败弹窗。
-  - "HEAD 里已经有了"（`inHead`）只照右栏读进来的历史走父提交，读不到的算不在。
-  - git 2.54 的拣选 / 还原序列不留 `sequencer/done`，只有 `sequencer/todo`（第一行是停着的这个），所以横幅只写"后面还排着 N 个"。
-  - `git merge --skip` 不存在；`cherry-pick --continue` 解决成空的会失败（"is now empty"），`rebase --continue` 空的会直接丢掉这个提交。
-- `git rebase -i` 停在 edit 时返回 0：交互式变基跑完 `o.done` 拿到 `err == nil` 不代表变基已结束，需先检查 `git.ReadOngoing(gitDir) == git.Rebasing`（冲突时非零，也照样先看它）。
-  - todo 里 `exec` 行的命令过 `sh`，路径用 `shellQuote` 包（单引号，里面的单引号写成"结束引号、`\'`、再开引号"）。
-  - `GIT_SEQUENCE_EDITOR` 只经 `Op.env` / `git.RunOpEnv` 给这一条命令（加在默认环境后面，同名的后加入的值覆盖默认值），别设进进程的环境。
-  - todo 和信息文件停着时不能删（后面的 exec 还要读）。变基结束（`followRebase` 看到 `Ongoing` 离开 `Rebasing`，再 `ReadOngoing` 核对一次）才删。
-- `--numstat -z` 的改名 / 复制不在同一段里：普通的一条是 `加\t删\t路径\0`，改名时路径那格是空的，后面再跟 `旧路径\0新路径\0` 两段；二进制文件的加删是 `-` / `-`。
-  `git.addNumstat` 按新路径对回 `diff-tree` 列出来的文件，对不上的跳过（numstat 失败只是没数字，文件照样列）。别按 `\t` 拆整个输出，也别假设一条一段。
-- `stash -u` 的未跟踪文件在贮藏的第三个父提交里：贮藏提交本身（工作区）和 `^1`（贮藏时的 HEAD）比是改了的文件，未跟踪的不在里面。
-  有 `^3` 时再拿它和空树比（`diff-tree --root`），这些文件的 `Change.Commit` 是 `^3` 的哈希（开 Diff 时旧的一边是空的）。
-  父提交用 `log -1 --format=%P` 读，别拼 `stash@{n}^3`（没有 `-u` 的贮藏没有第三个父提交，会报错）。
-- `git restore` 对子模块什么也不做：子模块那一项（gitlink）的丢弃是 `git submodule update -- <路径>`（检出父仓库记录的提交），
-  只有检出的提交变了（`Change.Sub` 带 `C`）才有得丢；里面有改动 / 未跟踪的文件是子模块自己的事，提示用户到子模块里处理。`DiscardAll` 跳过子模块。
-  子模块记的提交不在父仓库里，`cat-file` / `show <commit>:<path>` 读不出来：看是不是子模块用 `ls-tree -z <commit> -- <path>` 的模式 `160000`。
-- 行级暂存是正着打补丁：取消暂存 / 丢弃不用 `git apply -R`，而是在新的一边上写"改回去"的补丁正着打（`LinesEdits` 的配对规则见 [architecture/staging.md](architecture/staging.md)）。
-  Diff 视图在以换行结尾的文件后面多一行空的，选到它不算一行改动。
-- `git ls-files -s` 的已跟踪文件和未跟踪文件的输出格式不同：带 `--others` 时已跟踪的是 `mode sha stage\t路径`，未跟踪的只有路径（git 不记它是什么）。
-  mode `120000` 是符号链接，指向目录的链接也列成文件。整棵读时别为了认链接逐个 `Lstat`（5 万个文件），仅对数量较少的 `Links` + `Others` 调用 `Readlink`（`files.ReadLinks`）。
-- `git ls-files --others --ignored --exclude-standard --directory` 对里面只有被忽略文件的未跟踪目录列 `sub/`（目录本身没被忽略）：
-  `files.Tree.Done` 把带 `/` 的都当整个被忽略的目录，展开时 `ReadLazy` 一层层读磁盘。
-- `git check-ignore` 退出码 1 是"一个都没被忽略"，不是出错（`git.CheckIgnore`）；`--no-index` 让已跟踪的路径也照规则判。它认父目录和 `dir/` 规则，
-  所以问空目录路径就够了，不用先拼 `/`。问不了（不是仓库、被取消）时空目录一个都不要，宁可少显示。
-- 未跟踪目录那行不进 `OpenDiffs`（`app/gitchosen.go`）：`Change.Dir` 的行只是折叠的目录，开出来是一句说明；多选里有它时跳过，里面的文件要展开了选。
-- `Status.DirFiles` 是后台补上的（`app/untracked.go`）：读完状态后同一个 goroutine 里 `git.ListUntrackedDirs`，最多等 50 ms，等不到先贴状态、列完再补。
-  没列到的目录 `DirFiles` 里没有这个键（画"读取中…"），别把"没有键"当成"目录是空的"。同一个目录先用上一次列的（`keepDirs`）。
-- "一个名字 + 一两个框"的 Git 对话框加进 `app.RefDialog`（`app/gitrefs.go` + `ui/gitrefs.go`）：新加一种就加一个 `RefDlgKind`，在 `refDialog` 里给标题 / 说明 / 按钮 /
-  命令预览 / `run`，重名及 git 不允许的字符由以下函数检查： `refNameErr`，别另起一个 `Open` 字段。远程分支名拆远程和分支用 `splitRemote`（按已有的远程认，别 `strings.Cut` 第一个 `/`），
-  推 / 删标签用 `TagRemote`。
-- askpass（写命令要凭据时弹框）：
-  - 写命令的 `GIT_ASKPASS` 脚本 exec 的是 `os.Executable()`，测试里就是测试程序。会跑写命令（`RunOp` / 克隆）的测试包要在 `TestMain` 里分出 askpass 模式，
-    照 `app/askpass_test.go` 加三行；不分的话 git 一要凭据就把整套测试再跑一遍，还会卡住。
-  - 脚本和套接字放 `os.TempDir()`，路径要引号：git 用 `sh -c` 起 askpass，路径带空格就断；macOS 的 unix 套接字路径不能超过 104 字节。
-    `~/Library/Application Support` 两样都占，别挪进状态目录；脚本里 exec 的路径用 `shellQuote`。
-  - 凭据变量只加在写命令的 `cmd.Env` 上，别 `os.Setenv`：终端（termd、进程内的 shell）继承应用的环境，带上了终端里的 git 也会来弹框。
-- 面向用户编写的错误说明应包装为 `humanErr`：`Fail` 会拿 `git.Explain` 认错误原文，"取消后留下了锁文件"这种自己写的话里有 `index.lock`，不包就被"解释"成另一句。
+- `git.Run` can return output together with an error. Check `err` to decide whether it failed; don't judge by whether the output is empty.
+- Resolve symlinks when comparing paths: `git worktree list`, `git rev-parse --show-toplevel` and `AddRepoDir` return real paths (the `/var/…` of `t.TempDir()` comes back as `/private/var/…`),
+  while paths stored in the workspace or built by hand may not be. To decide "already open", nesting inside a repo, where a branch is checked out, or whether a submodule has been added, always use `git.SamePath` / `git.Under`, never `==` or `strings.HasPrefix`.
+- `git log --follow` combined with `--grep` / `--author` drops the commits before a rename: when searching a file's history, read the whole range (`git.MaxFollowSearch`) and filter in Go.
+- The commit graph needs `git log --date-order`: the default chronological order puts a parent before its child when commit times are out of order (rebases, a skewed clock), and since `internal/graph` only computes forward, the lines break.
+  `--date-order` guarantees every parent comes after all its children while other commits stay sorted by time; on a 5-repo workspace, reading 200 commits costs an extra 0.02–0.05 s.
+  With a search term, or when viewing a file's history, only some commits are read, so no graph is computed (`History.Graph` stays empty).
+- When lanes merge, `graph.Lanes.Next` goes back and modifies the `Row.Edges` it returned last time (same backing array): `History.Graph` appends the returned Row directly. Don't copy or sort Edges before passing in the next commit,
+  or the previous row loses its curved lines. When paging, keep feeding commits into the same `Lanes` object (`TestPaging` checks that paged results match processing everything at once).
+- `graph.Lanes.Reserve` only has an effect before the first `Next` (it does nothing once `active` is non-empty); don't Reserve again on every page when paging. `History.lanes` is reset to its zero value in `reset` and immediately Reserved;
+  the HEAD hash must be read by the background job's own `rev-parse`, not taken from `Extra.Head` (status and history are re-read concurrently, so it may be stale).
+- Clicking a commit that is already expanded does not collapse it (`OnHistSelected` only expands): to collapse in a test, click a different row.
+- The watcher must let `.git/worktrees/<name>` through: each linked worktree's `HEAD`, `index` and `locked` live in that directory. Without it, an external `worktree add / remove` or a branch switch inside a worktree
+  never reaches the main repository as a change notification (`TestWatchWorktreeAdded`). Anything one level deeper (`logs/` and so on) is still ignored.
+- `git worktree prune --dry-run -v` writes what it would prune to stderr: `git.Run` only takes stdout, which is empty, so `PruneList` uses `RunOp` (combined output).
+  Always pass `--porcelain -z` to `worktree list` (paths can contain spaces and newlines), and skip unknown keys when parsing (future git versions will add more).
+- Don't run commands unconditionally when reading worktrees: for a regular repository, first check whether `<common dir>/worktrees` exists (`Extra.CommonDir`); if it doesn't, there are no worktrees. Change counts and ahead / behind are only computed while the Worktrees block is expanded
+  (a repository with 45 linked worktrees means 90 git commands, about 1 s).
+- When a conflict is resolved to exactly what HEAD has, nothing is staged after `git add`: tests must not assume Staged == 1 (only taking "theirs" gives you that). When a merge is stopped halfway and every conflict has been marked resolved,
+  `Repo.MergeReady()` keeps the commit box able to commit (git allows such merge commits); cherry-pick and rebase cannot.
+- Git write commands that can stop (merge, rebase, cherry-pick, revert, `rebase --continue` / `--skip`) don't necessarily fail when they exit non-zero: finishing one step and stopping at the next conflict exits with 1.
+  - The banner's continue / skip goes through `app.runStep` (with its own `Op.done`); `CONFLICT (` in the output means "stopped at the next conflict". Don't use `RunOpThen`'s then — it doesn't run on non-zero exit.
+  - Starting such an operation goes through `stopOp` (`app/gitdaily.go`): if the output contains `CONFLICT (`, or the repository is still in an ongoing operation (cherry-picking an empty commit), hand it to the conflict banner with a one-line notice instead of the default failure dialog.
+  - "Already in HEAD" (`inHead`) only walks parents through the history the right panel has loaded; anything not loaded counts as not in HEAD.
+  - In git 2.54, cherry-pick / revert sequences leave no `sequencer/done`, only `sequencer/todo` (whose first line is the stopped commit), so the banner only says how many more are queued.
+  - `git merge --skip` does not exist; `cherry-pick --continue` fails when the resolution is empty ("is now empty"), and `rebase --continue` silently drops an empty commit.
+- `git rebase -i` returns 0 when it stops at an edit: `err == nil` in `o.done` after an interactive rebase does not mean the rebase is over. Check `git.ReadOngoing(gitDir) == git.Rebasing` first (on conflicts it exits non-zero; check this first anyway).
+  - Commands on `exec` lines in the todo go through `sh`, so wrap paths with `shellQuote` (single quotes; an embedded single quote is written as "close quote, `\'`, reopen quote").
+  - `GIT_SEQUENCE_EDITOR` is passed to that one command only, through `Op.env` / `git.RunOpEnv` (appended after the default environment; a later value with the same name overrides the default). Never set it in the process environment.
+  - The todo and message files can't be deleted while the rebase is stopped (later exec lines still read them). Delete them only when the rebase ends (`followRebase` sees `Ongoing` leave `Rebasing`, then confirms once more with `ReadOngoing`).
+- Renames / copies in `--numstat -z` are not in one segment: a normal entry is `added\tdeleted\tpath\0`; for a rename the path field is empty and is followed by two more segments, `oldpath\0newpath\0`. Binary files show `-` / `-` for added / deleted.
+  `git.addNumstat` matches entries back to the files listed by `diff-tree` by new path and skips anything that doesn't match (if numstat fails, files just lack numbers and are still listed). Don't split the whole output on `\t`, and don't assume one entry per segment.
+- Untracked files from `stash -u` live in the stash's third parent: comparing the stash commit itself (the working tree) with `^1` (HEAD at stash time) gives the changed files, but untracked ones aren't there.
+  When `^3` exists, compare it with the empty tree (`diff-tree --root`); those files' `Change.Commit` is the hash of `^3` (the old side is empty when opening the Diff).
+  Read the parents with `log -1 --format=%P`; don't build `stash@{n}^3` (a stash made without `-u` has no third parent and that errors).
+- `git restore` does nothing to submodules: discarding a submodule entry (gitlink) is `git submodule update -- <path>` (check out the commit the parent repository records),
+  and there is only something to discard when the checked-out commit changed (`Change.Sub` contains `C`). Changes or untracked files inside belong to the submodule itself; tell the user to handle them inside the submodule. `DiscardAll` skips submodules.
+  The commit a submodule records is not in the parent repository, so `cat-file` / `show <commit>:<path>` can't read it: to tell whether something is a submodule, check for mode `160000` in `ls-tree -z <commit> -- <path>`.
+- Line-level staging always applies patches forward: unstaging / discarding doesn't use `git apply -R`; instead it writes a "change it back" patch against the new side and applies that forward (the pairing rules of `LinesEdits` are in [architecture/staging.md](architecture/staging.md)).
+  For a file ending in a newline, the Diff view shows one extra empty line at the end; selecting it doesn't count as a changed line.
+- `git ls-files -s` prints tracked and untracked files differently: with `--others`, tracked files are `mode sha stage\tpath` and untracked files are just the path (git records nothing about them).
+  Mode `120000` is a symlink; a link to a directory is also listed as a file. When reading the whole tree, don't `Lstat` each entry to detect links (50,000 files); call `Readlink` only on the much smaller `Links` + `Others` (`files.ReadLinks`).
+- `git ls-files --others --ignored --exclude-standard --directory` lists an untracked directory containing only ignored files as `sub/` (the directory itself isn't ignored):
+  `files.Tree.Done` treats everything ending in `/` as a wholly ignored directory, and expanding it reads the disk one level at a time with `ReadLazy`.
+- Exit code 1 from `git check-ignore` means "none of them is ignored", not an error (`git.CheckIgnore`); `--no-index` makes tracked paths follow the rules too. It understands parent directories and `dir/` rules,
+  so asking about the bare empty-directory path is enough; no need to append `/`. When it can't answer (not a repository, canceled), show none of the empty directories — better to show too few.
+- Untracked directory rows don't go into `OpenDiffs` (`app/gitchosen.go`): a `Change.Dir` row is only a collapsed directory, and opening it shows a single explanatory line. Skip it in a multi-selection; to pick the files inside, expand it and select them.
+- `Status.DirFiles` is filled in later in the background (`app/untracked.go`): after reading status, the same goroutine runs `git.ListUntrackedDirs` and waits at most 50 ms; if that's not enough, it posts the status first and fills in the listing when done.
+  A directory not yet listed has no key in `DirFiles` (draw "Loading…"); don't treat "no key" as "the directory is empty". The same directory reuses the previous listing first (`keepDirs`).
+- Git dialogs of the "one name + one or two fields" kind go into `app.RefDialog` (`app/gitrefs.go` + `ui/gitrefs.go`): for a new kind, add a `RefDlgKind` and give its title / description / button /
+  command preview / `run` in `refDialog`. Duplicate names and characters git doesn't allow are checked by `refNameErr`; don't add another `Open` field. To split a remote branch name into remote and branch, use `splitRemote` (it matches existing remotes; don't `strings.Cut` at the first `/`).
+  Push / delete tags with `TagRemote`.
+- askpass (the dialog shown when a write command needs credentials):
+  - The `GIT_ASKPASS` script for write commands execs `os.Executable()`, which in tests is the test binary. Test packages that run write commands (`RunOp` / clone) must branch into askpass mode in `TestMain`,
+    with the three lines from `app/askpass_test.go`; otherwise, as soon as git asks for credentials, the whole test suite runs again and hangs.
+  - The script and socket live in `os.TempDir()`, and their paths must be quoted: git starts askpass with `sh -c`, so a path with a space breaks it; macOS unix socket paths can't exceed 104 bytes.
+    `~/Library/Application Support` violates both, so don't move them into the state directory; quote the exec path in the script with `shellQuote`.
+  - Add the credential variables only to the write command's `cmd.Env`, never with `os.Setenv`: terminals (termd, in-process shells) inherit the app's environment, and git in the terminal would start popping the dialog too.
+- Wrap user-facing error explanations you write yourself in `humanErr`: `Fail` runs `git.Explain` over the raw error text, and a message of your own such as "A lock file was left behind after canceling" contains `index.lock`, so unwrapped it would be "explained" as something else.
 
-## 文件树和文件系统
+## File tree and file system
 
-- 临时目录在 `/var` 下，`lsof` 读到的目录是解开链接的（`/private/var/folders/…`）：和仓库根比较两边都 `EvalSymlinks`。
-- 复制进来的目录（从访达拖进来）自己递归复制（`copyIn` / `copyDir` / `copyNode`：`Lstat`，链接用 `Readlink` + `Symlink` 原样写，相对的还是相对的），别换回 `os.CopyFS`：
-  它遇到符号链接会报错，而且文件只给 0o666 加上源文件的可执行位，别的权限位不留。单个文件的复制（`copyIn`）原样保留权限位。
-- 文件树的增量刷新只在主线程改树（`app/treediff.go`）：
-  - 后台 `treeDiff.run` 只读 `startTreeDiff` 那时的树根，改动回主线程 `applyTreeDiff` 再 `Tree.Apply`；那时 `Gen` 变了（整棵读过或正在读）就丢掉，以整棵的为准。
-  - 后台不碰主线程的东西：快照里的 `Links` 是 `maps.Clone` 的一份（`Apply` 在主线程上改 `t.Links`），`Diff` 里别调 `filePaths()`（它在主线程上写每个目录的路径缓存）。
-  - `Tree.Paths` 只能整个换一份新切片，⌘P / 搜索手里拿着旧的。
-  - 删掉目录里最后一个文件时 `Tree.Apply` 会把目录一起收掉。要留下空了的目录，先 `AddEmpty` 记进 `Extra` 再 `Apply`。
-  - 测试数 `git ls-files` 的次数换 `lsFiles` 变量。测试里把文件换成链接先 `os.Remove`：直接 `os.WriteFile` 到链接上写的是它指向的那个文件。
-- 被忽略的目录行排在普通目录后面、文件前面，编写测试的期望顺序时需遵循这一规则。
-- 找空目录（`files.FindEmpty`）：`find -empty` 会钻进子模块和嵌套仓库，只 `-name .git -prune` 不够，嵌套仓库里的空目录要按仓库路径筛掉（`dropNested`），
-  否则会出现在外层仓库的文件树中。只列叶子空目录（有空子目录的父目录不空）；只有 `.DS_Store` 的目录不算空。超过 `files.MaxEmptyScan`（2 万个文件）的仓库不找。
-- 文件树头部的按钮只在指针在侧栏里、或侧栏有键盘焦点时建。Tester 的指针默认不在侧栏，测试要点"新建文件…""添加仓库…"这几个之前先 `tt.Move` 到侧栏里
-  （或 `a.FocusTree = true`）再 `Frame()` 两次（`Hovered` 看上一帧的指针）。
-- 筛选：
-  - 对保留原始大小写的路径评分。`fuzzy` 自己比的时候转小写，词首（小写后的大写）要看原样，别先 `ToLower` 再匹配（`TreeSide` 就不加分了）。
-  - 仓库根下的文件 `name` 是 0：文件树用 `MatchPath` / `ScorePath`（把 0 当成整条都是名字）；`Match` 把 0 当没有名字，是给命令面板的。
-  - 不要保存全部匹配结果：5 万个文件敲一个 `t` 几乎全匹配上，每个都造 `Row`、记命中的字、排一遍要几 MB、几十毫秒。`Tree.Match` 用 yield 只交出路径和分，
-    调用方用 500 个的堆（`topHits`）留最好的，显示的那些再 `HitRow` 算命中的字。打分用不分配的 `ScorePath`。
-- 大纲：Go 用 `go/parser.ParseFile`，有语法错误时它也返回解析出来的那部分 AST（不是 nil），照样列，别因为 `err != nil` 就丢掉。
-  大纲只在侧栏是大纲模式、或命令面板是 `@` 时才算（`Doc.Outline` 缓冲区版本没变就用上次的），别在每帧对所有标签算。
+- Temp directories live under `/var`, but `lsof` reports the resolved directory (`/private/var/folders/…`): `EvalSymlinks` both sides when comparing with the repository root.
+- Copied-in directories (dragged from Finder) are copied recursively by our own code (`copyIn` / `copyDir` / `copyNode`: `Lstat`, links rewritten as-is with `Readlink` + `Symlink`, relative links stay relative). Don't switch back to `os.CopyFS`:
+  it errors on symlinks, and it gives files 0o666 plus only the source's executable bits, dropping every other permission bit. Single-file copies (`copyIn`) keep permission bits as they are.
+- Incremental file tree refreshes only modify the tree on the main thread (`app/treediff.go`):
+  - The background `treeDiff.run` only reads the tree root captured at `startTreeDiff`; changes go back to the main thread in `applyTreeDiff` and then `Tree.Apply`. If `Gen` has changed by then (the whole tree was re-read or is being re-read), they are dropped in favor of the full read.
+  - The background job touches nothing owned by the main thread: the snapshot's `Links` is a `maps.Clone` copy (`Apply` modifies `t.Links` on the main thread), and `Diff` must not call `filePaths()` (it writes each directory's path cache on the main thread).
+  - `Tree.Paths` may only be replaced wholesale with a new slice; ⌘P / search may be holding the old one.
+  - Deleting the last file in a directory makes `Tree.Apply` remove the directory too. To keep the now-empty directory, record it in `Extra` with `AddEmpty` before `Apply`.
+  - To count `git ls-files` calls in tests, swap the `lsFiles` variable. When a test replaces a file with a link, `os.Remove` it first: `os.WriteFile` onto a link writes to the file it points to.
+- Ignored directory rows sort after regular directories and before files; follow this when writing expected orders in tests.
+- Finding empty directories (`files.FindEmpty`): `find -empty` descends into submodules and nested repositories, and `-name .git -prune` alone isn't enough; empty directories inside nested repositories must be filtered out by repository path (`dropNested`),
+  or they show up in the outer repository's file tree. Only leaf empty directories are listed (a parent with an empty subdirectory isn't empty); a directory containing only `.DS_Store` doesn't count as empty. Repositories above `files.MaxEmptyScan` (20,000 files) aren't scanned.
+- The file tree header buttons are only built while the pointer is in the sidebar or the sidebar has keyboard focus. The Tester's pointer isn't in the sidebar by default, so before clicking "New File…", "Add Repository…" and the like, a test must `tt.Move` into the sidebar
+  (or set `a.FocusTree = true`) and then `Frame()` twice (`Hovered` looks at the previous frame's pointer).
+- Filtering:
+  - Score against paths with their original case. `fuzzy` lowercases when comparing, but word starts (uppercase letters before lowercasing) need the original; don't `ToLower` before matching (`TreeSide` would lose its bonus).
+  - Files at the repository root have `name` 0: the file tree uses `MatchPath` / `ScorePath` (which treat 0 as "the whole string is the name"); `Match` treats 0 as "no name" and is meant for the command palette.
+  - Don't keep every match: with 50,000 files, typing `t` matches nearly all of them, and building a `Row` for each, recording matched characters and sorting costs several MB and tens of milliseconds. `Tree.Match` yields only path and score;
+    the caller keeps the best in a 500-entry heap (`topHits`) and computes matched characters with `HitRow` only for the rows displayed. Scoring uses the non-allocating `ScorePath`.
+- Outline: Go uses `go/parser.ParseFile`, which on syntax errors still returns the part of the AST it parsed (not nil); list it anyway rather than discarding it because `err != nil`.
+  The outline is only computed when the sidebar is in outline mode or the command palette is in `@` mode (`Doc.Outline` reuses the last result while the buffer version is unchanged); don't compute it for every tab on every frame.
 
-## 编码和搜索
+## Encoding and search
 
-- `search.Match` 的 `Len` 只到这一行的行尾，`Span` 才是整个匹配：跨行的正则（`a\nb`）`Len` 比 `Span` 短。选中、标出来用 `Len`，替换、核对还在不在原位用 `Span`；
-  别拿 `Col + Len` 去切内容。
-- GB18030 的解码器能接受多种双字节组合：Shift-JIS、EUC-KR 的文件按 GB18030 也"解得通"（没有替换字符，只是乱码），所以 `pickCJK` 不能只看解码是否成功，还需按字符比例选择。
-  阈值在 `internal/docs/encoding.go`，按语料调定：样本取前 64 KB；Shift-JIS 看全角假名占比，EUC-KR 看谚文和常用音节占比，Big5 看第二字节落在 40–7E 的比例，
-  无 BOM 的 UTF-16 看一边 NUL 多、一边几乎没有。反过来，Big5 的码落进 GB18030 的用户区会解成替换字符，Big5 文件按 GB18030 是 `Broken`。
-  - Shift-JIS 只按全角假名算（`isKana` 只认 U+3040–U+30FF）：半角片假名（A1–DF 单字节）在 GB18030 里是双字节的首字节，按它解出来的也不是假名。
-  - 修改阈值前先运行 `TestDetectCJK` / `TestDetectCorpus` / `TestDetectUTF16NoBOM`。汉字多的日文和很短的 Big5 认成 GB18030 是已知的，别为它们再加规则把中文认错。
-  - 认编码时跳过挑不上的：`pickFrom(data, true)` 在 GB18030 解得通以后，`cannotWin` 只看字节（`big5Low`；`kanaMost` / `hangulMost` 是解得通时 `share` 的上限）
-    就知道挑不上的不解（10 KB 的中文从 99 µs 降到 34 µs）。改阈值、`score` 或 `cjk` 的顺序先跑 `TestPickSkip` 和 `TestKanaHangulMost`。
-- GB18030 并非所有字节都能无损往返编码：单独的 0x80 解成 €，€ 编回去是 A2 E3。所以 GB18030 能不能编辑要在后台 `Encode` 回去逐字节比一遍（`decode` 的 `check`），
-  不一样的是 `Doc.Lossy`、只读。测试里造"存不回原样"的文件就用 0x80。`Encode` 返回 nil 是这个编码表示不了某个字，`write` 报错、不写。
-- 旧编码能否编辑由 `Lossy` / `Broken` 决定，不取决于编码名称（`Writable`）：GB18030 / Big5 / Shift-JIS / EUC-KR / EUC-JP / Windows-1252 / ISO-8859-1 编得回原样就能编辑，
-  没 BOM 的 UTF-16 还是只读。测"只读条"要用编不回的样本（结尾单独一个 0x80），别拿普通 Big5 当只读的。
-- `Settings` 里有 map（`Formatters`），测试里比两份设置用 `reflect.DeepEqual`，别用 `==`。
-- 搜索在解码后的文字上做，坐标就是缓冲区坐标：
-  - `search.readFile` 先 `utf8.Valid`（UTF-8 不多分配），不过才 `docs.Sniff`（和打开文件同一套认编码），解出来的字符串用 `unsafe` 借成只读的 `[]byte`、搜完就丢；
-    `Match.Enc` 记编码，认不出的照原字节搜、预览换成 U+FFFD。
-  - 替换：开着的文档在 `Buf.String()` 上 `Plan` → `Buf.Edit`（干净的按 `d.Enc` 编回写盘）；没开的 `docs.Decode` 可编辑才换、`Encode` 写回（nil 报"编不回 %s"、不写）。
-  - 手动换过编码的标签和搜索认的不一样时 `Plan` 核对不过，算 stale。细节见 [architecture/editor.md](architecture/editor.md) 的“搜索和替换”。
-- 结果跟着改动更新只换"变了的文件"（`app/searchfollow.go`）：别为了跟着磁盘就整份重搜，也别动 `ver` 没变的文件。"全部替换？"问着时靠 `ver` 判断结果作废没有，
-  无意义地更新版本会让用户点击的"替换"变成"结果变了，没换"。新加会改结果的路径（替换、撤销替换、跟着更新）都走 `splice`，保持 (仓库顺序, 路径) 的顺序。
-- regexp2（`search/advanced.go`）：
-  - 位置走字符串接口：`FindRunesMatch` 给 rune 下标，`FindStringMatch` 才给字节位置（`bytesString` 不拷贝地借 `[]byte`，用完之前别改它）。
-  - `MatchTimeout` 管的是一次匹配调用，不是整个文件：超时当这个文件跳过（`Result.TimedOut`）。
-  - 组号要 `OptionMaintainCaptureOrder()` 才和 RE2 一样按出现顺序；`$1` 的展开用 `expandTemplate`（`TestExpandTemplate` 和 `regexp.Expand` 对上）。
-  - 只在 RE2 编不了而且 `advancedSyntax` 认出那几种写法时才换 regexp2，别让普通正则也走回溯引擎（慢，还会超时）。
-- 改文字的外部命令走 `formatDoc`（`app/format.go`）：后台跑，回主线程时 `Buf` 和 `Version()` 都没变才套，用 `docs.LineEdits` 一步套上。
-  无输出时按失败处理，避免清空文件，超时连进程组一起杀（`Setpgid` + `Kill(-pid)`）。
+- `search.Match`'s `Len` only reaches the end of the line; `Span` is the whole match: for a multi-line regex (`a\nb`), `Len` is shorter than `Span`. Use `Len` for selecting and highlighting, and `Span` for replacing and checking the match is still in place;
+  don't slice content with `Col + Len`.
+- The GB18030 decoder accepts many double-byte combinations: Shift-JIS and EUC-KR files also "decode" as GB18030 (no replacement characters, just mojibake), so `pickCJK` can't rely on decoding success alone; it must also choose by character proportions.
+  The thresholds are in `internal/docs/encoding.go`, tuned on a corpus: samples are the first 64 KB; Shift-JIS looks at the share of full-width kana, EUC-KR at the share of Hangul and common syllables, Big5 at the share of second bytes falling in 40–7E,
+  and BOM-less UTF-16 at one side having many NULs while the other has almost none. Conversely, Big5 codes that land in GB18030's user-defined area decode to replacement characters, so a Big5 file decoded as GB18030 is `Broken`.
+  - Shift-JIS is counted by full-width kana only (`isKana` only accepts U+3040–U+30FF): half-width katakana (single bytes A1–DF) are lead bytes of double-byte sequences in GB18030, and decoding them that way doesn't yield kana either.
+  - Run `TestDetectCJK` / `TestDetectCorpus` / `TestDetectUTF16NoBOM` before changing thresholds. Kanji-heavy Japanese and very short Big5 being detected as GB18030 is known; don't add rules for them that would misdetect Chinese.
+  - Detection skips candidates that can't win: in `pickFrom(data, true)`, once GB18030 decodes, `cannotWin` looks only at bytes (`big5Low`; `kanaMost` / `hangulMost` are upper bounds on `share` when decoding succeeds)
+    to know which candidates can't win and skips decoding them (10 KB of Chinese went from 99 µs to 34 µs). Run `TestPickSkip` and `TestKanaHangulMost` before changing thresholds, `score`, or the order of `cjk`.
+- Not every GB18030 byte sequence round-trips: a lone 0x80 decodes to €, and € encodes back as A2 E3. So whether a GB18030 file is editable is decided in the background by `Encode`-ing it back and comparing byte by byte (`decode`'s `check`);
+  files that differ are `Doc.Lossy` and read-only. In tests, use 0x80 to build a file that "can't be saved back as-is". `Encode` returning nil means the encoding can't represent some character; `write` reports an error and doesn't write.
+- Whether a legacy encoding is editable is decided by `Lossy` / `Broken`, not by the encoding name (`Writable`): GB18030 / Big5 / Shift-JIS / EUC-KR / EUC-JP / Windows-1252 / ISO-8859-1 are editable if they round-trip;
+  BOM-less UTF-16 stays read-only. To test the read-only bar, use a sample that doesn't round-trip (a lone 0x80 at the end); don't treat ordinary Big5 as read-only.
+- `Settings` contains a map (`Formatters`), so compare two settings values in tests with `reflect.DeepEqual`, not `==`.
+- Search works on decoded text, so coordinates are buffer coordinates:
+  - `search.readFile` first checks `utf8.Valid` (no extra allocation for UTF-8); only if that fails does it call `docs.Sniff` (the same detection used when opening files). The decoded string is borrowed as a read-only `[]byte` via `unsafe` and dropped after searching;
+    `Match.Enc` records the encoding. Unrecognized files are searched as raw bytes, with U+FFFD in the preview.
+  - Replace: for open documents, `Plan` on `Buf.String()` → `Buf.Edit` (clean documents are encoded back with `d.Enc` and written to disk); for unopened files, replace only if `docs.Decode` says editable, then write back with `Encode` (nil reports "can't encode back to %s" and doesn't write).
+  - If a tab's encoding was changed manually and differs from what search detected, `Plan`'s check fails and the result counts as stale. Details in "Search and replace" in [architecture/editor.md](architecture/editor.md).
+- When results follow changes, only "files that changed" are replaced (`app/searchfollow.go`): don't re-run the whole search to follow the disk, and don't touch files whose `ver` hasn't changed. While "Replace all?" is being asked, `ver` decides whether the results are stale;
+  bumping versions for no reason turns the user's click on "Replace" into "the search results changed, so nothing was replaced". Any new path that changes results (replace, undo replace, following updates) goes through `splice`, preserving (repository order, path) order.
+- regexp2 (`search/advanced.go`):
+  - Get positions through the string API: `FindRunesMatch` gives rune indexes; only `FindStringMatch` gives byte positions (`bytesString` borrows the `[]byte` without copying; don't modify it until you're done).
+  - `MatchTimeout` applies to a single match call, not the whole file: a timeout skips that file (`Result.TimedOut`).
+  - Group numbers only follow order of appearance, like RE2, with `OptionMaintainCaptureOrder()`; `$1` is expanded with `expandTemplate` (`TestExpandTemplate` checks it against `regexp.Expand`).
+  - Only switch to regexp2 when RE2 can't compile the pattern and `advancedSyntax` recognizes one of the supported constructs; don't send ordinary regexes to the backtracking engine (slow, and it can time out).
+- External commands that rewrite text go through `formatDoc` (`app/format.go`): they run in the background, and the result is applied back on the main thread only if `Buf` and `Version()` are both unchanged, in one step with `docs.LineEdits`.
+  Empty output is treated as failure so the file isn't wiped; on timeout the whole process group is killed (`Setpgid` + `Kill(-pid)`).
 
-## 文案和 i18n
+## Copy and i18n
 
-- 界面文案一律 `i18n.T("中文")` / `i18n.Tf("…%s…", x)`，别拼接翻译过的片段（英文语序不一样）。
-- `TestCatalog` 只收带汉字的字面量。`"%s：%s"`、`"，"` 这种没有汉字的格式串不进 `zh-CN.json`，英文界面中就会保留全角标点。
-  要拼就用带汉字的格式（`"已暂存：%s"`），或者用 `" · "` 这种两种语言都能用的分隔。"Git"、快捷键这类本来就不进表。
-- `TestCatalog` 不许占位符带序号（`%[2]s`）：英文译文需保持与中文一致的参数顺序，据此调整语句。
-- 每个中文字符串只对应一条英文译文。"变基""还原""拣选""合并"在文案表里是操作名（英文小写的 rebase / revert / cherry-pick / merge，横幅和队列标签用），
-  按钮上要首字母大写的另起一个中文串（"开始变基""还原提交"），别改操作名的英文。
-- 禁用菜单项的原因说明使用 `ui.withWhy`（中文全角括号、英文 ` (…)`，按 `i18n.Lang()`），原因本身走 `i18n.T`。悬停提示的快捷键括号用 `app.Tip`，别自己拼。
-- mygo 自带的文案（查找条、跳到行、DiffView 折叠行、SearchField）要中文得 `import _ "github.com/egoist/mygo/locales/zh-Hans"`，
-  再 `mygo.App.SetLanguages(i18n.Locale())`（在 `cmd/workbench`，换语言时 `OnSettings` 再调）。测试里用 `Tester.SetLocale(i18n.Locale())`（`newUI` 里已设），
-  所以测试里找的 mygo 文字跟着当前语言，默认中文。
-- `wui.SearchField` 不写 `Placeholder` 时占位是本地化的"搜索"。框是干什么的照样写进 Tooltip / Label。
-- 改了语言的测试要 `t.Cleanup(func() { i18n.Set("") })`，否则后续测试会沿用英文环境。
-- 按"今天"变格式的文案，测试期望用同一个函数算：`LocalStamp`（`app/localhist.go`）当天给 `14:32`、今年别的日子给 `11-01 14:32`、往年带年份。
-  测试里写死某一天的时间戳又写死 `"14:32"`，跨过当天零点后测试就会失败。所有依赖实际时间的文案（`LocalStamp`、相对时间），期望值一律拿同一个函数拼。
+- The app defaults to English, but only in the shipped binary: the settings `lang` value `""` means "not chosen" and resolves through `i18n.Default`, which `cmd/workbench` sets to `"en"`; `"zh"` / `"en"` are explicit choices. State files written before format version 5 get `"zh"` on load so existing users stay on Chinese. Inside tests nobody calls `i18n.Default`, so `i18n.Set("")` is still Chinese (the source language) and test assertions stay in Chinese.
+- All UI copy goes through `i18n.T("中文")` / `i18n.Tf("…%s…", x)`; never concatenate translated fragments (English word order differs).
+- `TestCatalog` only collects literals containing Chinese characters. Format strings without Chinese, like `"%s：%s"` or `"，"`, don't go into `zh-CN.json`, so the English UI keeps the full-width punctuation.
+  To join pieces, use a format with Chinese in it (`"已暂存：%s"`), or a separator that works in both languages such as `" · "`. "Git", shortcuts and the like never go into the table.
+- `TestCatalog` forbids indexed placeholders (`%[2]s`): the English translation must keep the same argument order as the Chinese, and its sentence is shaped to fit.
+- Each Chinese string maps to exactly one English translation. "变基", "还原", "拣选" and "合并" are operation names in the copy table (lowercase rebase / revert / cherry-pick / merge in English, used in banners and queue labels);
+  buttons that need a capitalized label get their own Chinese string ("开始变基" → "Start Rebase", "还原提交" → "Revert Commit"). Don't change the English of the operation names.
+- Reasons for disabled menu items use `ui.withWhy` (full-width Chinese parentheses, or ` (…)` in English, by `i18n.Lang()`); the reason itself goes through `i18n.T`. Shortcut parentheses in tooltips use `app.Tip`; don't build them yourself.
+- To get mygo's built-in strings (find bar, go to line, DiffView folded lines, SearchField) in Chinese, `import _ "github.com/egoist/mygo/locales/zh-Hans"`
+  and call `mygo.App.SetLanguages(i18n.Locale())` (in `cmd/workbench`; `OnSettings` calls it again when the language changes). Tests use `Tester.SetLocale(i18n.Locale())` (already set in `newUI`),
+  so mygo text that tests look for follows the current language, which is Chinese by default in tests.
+- When `wui.SearchField` has no `Placeholder`, the placeholder is a localized "Search". Still put what the field is for in its Tooltip / Label.
+- Tests that change the language must `t.Cleanup(func() { i18n.Set("") })`, or later tests keep running in English.
+- For copy whose format depends on "today", compute test expectations with the same function: `LocalStamp` (`app/localhist.go`) gives `14:32` for today, `11-01 14:32` for other days this year, and includes the year for earlier years.
+  A test that hard-codes a timestamp on some day and also hard-codes `"14:32"` fails once the clock passes midnight. For all copy that depends on the actual time (`LocalStamp`, relative times), always build the expected value with the same function.
 
-## 内存和性能
+## Memory and performance
 
-- 应用空闲后，Go 堆不会立即缩减：一大批短命分配（搜索读上万个文件）之后应用闲着，没有新的分配触发 GC 阈值，垃圾要等 Go 每 2 分钟一次的强制 GC 才收，
-  这期间全算在 footprint 里（"全开"时多 ~23 MiB）。这类一次读取大量数据、用完即释放的后台任务，应在完整结束后调用一次 `debug.FreeOSMemory()`
-  （`SearchNow`、`loadWtInfo` 就是这样）。别在每帧或每次按键里调。
-- 启动峰值（头几秒两百多 MiB）是 mygo Metal 渲染器的 drawable，和应用的数据无关（峰值时 Go 的堆和空闲时一样），排查时不要将这部分归因于应用数据。
-  用 `footprint -p PID --sample 0.1 -f bytes` 逐类拆过：一个最大化窗口刚开时 IOSurface 3 块 drawable 共 ~87 MiB，加 graphics 的 unmapped ~55，第一帧后约 2.5 s 才还到 1 块。
-  每开一个窗口这两样都再来一份，几个窗口开得比 ~2.5 s 近，峰值就叠起来。所以 `RestoreGap` 默认 2.5 s，不要直接缩短；修改前先按此方法重新测量两个窗口的启动峰值
-  （由 `TestRestoreGapDefault` 检查默认值）。
-- 帧内存：mygo 2 秒没有新帧才放掉窗口大小的帧内存。光标闪、动画、后台一直要帧的组件都会把它留住，量内存时有焦点 / 无焦点都要量。
-- 窗口整个被别的窗口盖住时 mygo 停帧（`holdFrame`），只画第一帧，空闲内存低得不正常（63 MiB 左右）。这时测得的数据无法与其他情况直接比较，
-  量内存时用固定的窗口位置（见 `AGENTS.md` 的"单实例、真窗口和量内存"）。
+- The Go heap doesn't shrink right away once the app goes idle: after a burst of short-lived allocations (search reading tens of thousands of files), an idle app has no new allocations to trip the GC threshold, so the garbage waits for Go's forced GC every 2 minutes,
+  and meanwhile it all counts toward the footprint (~23 MiB extra in "all open"). Background jobs that read a lot at once and release it when done should call `debug.FreeOSMemory()` once after they have fully finished
+  (as `SearchNow` and `loadWtInfo` do). Don't call it every frame or on every keystroke.
+- The startup peak (two hundred-plus MiB in the first few seconds) is mygo's Metal renderer drawables and has nothing to do with app data (at the peak the Go heap is the same as when idle); don't attribute it to app data when investigating.
+  Broken down by category with `footprint -p PID --sample 0.1 -f bytes`: right after a maximized window opens there are 3 IOSurface drawables totaling ~87 MiB, plus ~55 of graphics unmapped, and it takes about 2.5 s after the first frame to drop back to 1 drawable.
+  Every window opened adds another set of both, so windows opened closer together than ~2.5 s stack their peaks. That's why `RestoreGap` defaults to 2.5 s; don't just shorten it. Before changing it, re-measure the startup peak of two windows this way
+  (`TestRestoreGapDefault` checks the default).
+- Frame memory: mygo only releases window-sized frame memory after 2 seconds without a new frame. A blinking caret, animations, or any component that keeps requesting frames in the background holds on to it, so measure memory both focused and unfocused.
+- When a window is completely covered by other windows, mygo stops producing frames (`holdFrame`) and only draws the first one, so idle memory is abnormally low (around 63 MiB). Numbers measured this way can't be compared directly with others;
+  measure with a fixed window position (see the single instance / real windows / memory measurement section of `AGENTS.md`).
 
-## Markdown 预览的渲染
+## Markdown preview rendering
 
-- WebView 只能在 Content 窗口里建，不放元素就看不见（`internal/render`）：`win.NewWebView` 建出来不挂 `ui.WebView` 元素，就是后台跑页面，正好拿来渲染。
-  页面的协议（`wbrender://`）要在建任何窗口之前 `mygo.Protocol.Handle`（main 里 `render.Register()`），晚了 WebKit 不认。
-  `Page.EvalContext` 能在后台 goroutine 调，渲染器的 goroutine 就靠它，别在 UI 线程上等它。
-- canvas 被污染后无法导出 PNG：SVG 里有 `foreignObject`（mermaid 默认的 `htmlLabels: true` 就是）画到 canvas 后 `toDataURL` 抛 SecurityError。
-  `page.html` 里 mermaid 必须 `htmlLabels: false`（含 `flowchart.htmlLabels`），改 mermaid 配置时别打开。
-- MathJax 的错误是 `TexError`（不是 `Error`，`EvalError` 里只看到 `[object Object]`），要包成 `Error` 再抛（MathJax 4 用 `tex.formatError`）。它的 SVG bbox 贴着字，四周需要留白，否则绘制结果会被裁剪。
-- MathJax 4 的 `options.enableEnrichment` / `enableSpeech` 这些开关会被菜单的默认设置盖掉：不在 `options.menuOptions.settings` 里把
-  `enrich`、`speech`、`braille` 关掉，它照样去加载 `sre/speech-worker.js`，渲染页里没有这个文件就一直等、直到超时。
-- MathJax 4 默认给行内公式断行，一个长的行内公式会拆成几个 `<svg>`，`querySelector("svg")` 只拿到第一段（宽度不对）。`svg.linebreaks.inline: false`。
-- MathJax 4 的字体不全在 `tex-svg.js` 里：粗体、花体、双线体这些按需加载 `[fonts]/mathjax-newcm-font/svg/dynamic/*.js`，默认从 CDN 取；
-  `\ce{}` 要 mhchem 的字体扩展。`loader.paths.fonts` 指向本地的 `mathjax/fonts`，用到的都要带上（`TestAssetsPresent` 查几样）。
-- mygo 的 `ui.ParseSVG` 不画 `<text>`、`<image>`、`<marker>`、`<pattern>`、`filter`，遇到了不报错、只是空着。MathJax 的 SVG 里字体没有的字是 `<text>`，
-  所以渲染页先查一遍（`vectorOK`），有这些的画成 PNG。只有路径的 SVG mygo 画得很好，`currentColor` 是画的时候的字色。
-- mermaid.js 11 不用 HTML 标签（`htmlLabels: false`）时，思维导图圆形节点（`((根))`）的字从圆心往右排，一半跑到圆外（白字在浅色底上就看不见了）：
-  渲染页的 `polish` 给那段字补上 `text-anchor="middle"`。Mermaid 的配置里也没有节点圆角，同样在 `polish` 里改 `rx` / `ry`。
-- 渲染用的脚本存成 `.gz` 塞进 embed（16 MB → 5 MB），`mygo.FileServer` 不会解，`web.go` 的 `assetHandler` 自己解开再 `http.ServeContent`（类型按去掉 `.gz` 的名字算）。
-- mygo 的段落只在内容变时才再问 `InlineMath`：行内公式第一次没好、按原文排了版，好了之后段落不会自己重排。`mdRender` 返回 `Renderer.Gen()`，
-  预览拿它当 key 的一部分，一批好了换 key。`parser.ExtDollarMath` 不在 `parser.Default` 里，要自己或上才认 `$…$`。
-- `ScrollIntoView` 在这一帧排完版后才生效，排的是这一帧建的树。点链接的 `Clicked` 在建树中间才知道，这时设的跳转如果当帧就放记号，
-  记号常常放在已经建过的块之前或根本没机会放，下一帧又被当成"已处理"清掉。预览只认帧开始时就有的 `d.Anchor` / `d.AnchorLine`（`mdEnv.anchor` / `line`）。
-- `ui.List` 里同一帧先 `ListState.ScrollTo` 再在新排出来的行里 `ScrollIntoView`，后一个白放：列表按 `ScrollTo` 的位置排行，行里的 reveal 被盖掉。
-  分段预览等 `ScrollTo` 的下一帧再放记号（`mdView.seek >= 2`）。
-- 想把某一块滚到最上面，`ScrollIntoView`（默认 `ScrollNearest`）配一个比视图还高的透明记号：比视图高的东西从它的开头露出来，也就是顶到最上面。
-  但后面得有足够的内容：文末那一节滚不到顶，最多到滚动的底。测试里要在目标后面垫一屏多的字，不然看起来像"没滚"。
-- `MeasureText(宽, …)` 量不出 min-content：mygo 排字时一个词放不下就在字母中间折，量到 1 点宽得到的是一个字的宽，不是最长的词。
-  表格算列最窄能到多少（`gmd/table.go` 的 `minContent`）按空格、连字符、每个中日韩字切开，只量最长的几截。
-- `ScrollHorizontal` 里的孩子不按视口缩：`Shrink(1)`、`WidthPercent(100)`、`Grow(1)` 都按内容（无限宽）算。要“放得下就跟视口一样宽、放不下才滚”，
-  放得下时别包滚动容器（普通的一栏里 `FillWidth().MaxWidth(…).MinWidth(…)` 就是夹在中间），放不下时才包；看上一帧的宽决定，
-  `Draw` 里发现这一帧排出来换了边就 `c.Invalidate()` 再要一帧（`Invalidate` 哪里都能调）。
-- 并排预览拖进源文件那一组后，源文件的编辑器不画了，ged 的 `TopLine` 停在最后画的那一帧；预览把行推给它（`ScrollToFrac` 等画的时候才生效）以后，
-  下一帧要是过了安静期才来，就以为编辑器滚了、把预览拉回去。跟着编辑器滚之前先问 `a.EditorShown`。
-- 分段画的 Markdown，每段是一个独立的 `parser.Document`：一段的最后一块 `b.Next == doc.Len()`，按"到文末"算行号范围会把后面所有行都揽进来，
-  要截到下一段的第一行。
+- A WebView can only be created in a Content window, and it isn't visible unless an element is placed (`internal/render`): a `win.NewWebView` with no `ui.WebView` element attached is just a page running in the background, which is exactly what rendering needs.
+  The page's protocol (`wbrender://`) must be registered with `mygo.Protocol.Handle` before any window is created (`render.Register()` in main); register it later and WebKit won't recognize it.
+  `Page.EvalContext` can be called from a background goroutine, and the renderer goroutine relies on that; don't wait on it from the UI thread.
+- A tainted canvas can't export PNG: when an SVG containing `foreignObject` (which mermaid's default `htmlLabels: true` produces) is drawn to a canvas, `toDataURL` throws a SecurityError.
+  Mermaid in `page.html` must use `htmlLabels: false` (including `flowchart.htmlLabels`); don't turn it back on when changing the mermaid config.
+- MathJax errors are `TexError` (not `Error`, so `EvalError` only shows `[object Object]`); wrap them in an `Error` before throwing (MathJax 4 uses `tex.formatError`). Its SVG bbox hugs the glyphs, so leave padding around it, or the result gets clipped.
+- MathJax 4 switches like `options.enableEnrichment` / `enableSpeech` are overridden by the menu's default settings: unless `enrich`, `speech` and `braille` are turned off in `options.menuOptions.settings`,
+  it still loads `sre/speech-worker.js`, and since the render page doesn't have that file, it waits until it times out.
+- MathJax 4 line-breaks inline formulas by default, so a long inline formula is split into several `<svg>`s and `querySelector("svg")` only gets the first piece (wrong width). Use `svg.linebreaks.inline: false`.
+- MathJax 4's fonts aren't all in `tex-svg.js`: bold, calligraphic, double-struck and so on are loaded on demand from `[fonts]/mathjax-newcm-font/svg/dynamic/*.js`, by default from a CDN;
+  `\ce{}` needs mhchem's font extension. `loader.paths.fonts` points to the local `mathjax/fonts`, and everything used must be bundled (`TestAssetsPresent` checks a few).
+- mygo's `ui.ParseSVG` doesn't draw `<text>`, `<image>`, `<marker>`, `<pattern>` or `filter`; it doesn't error on them, it just leaves them blank. In MathJax's SVG, characters missing from the font are `<text>`,
+  so the render page checks first (`vectorOK`) and renders anything containing these as PNG. mygo draws path-only SVGs very well, and `currentColor` is the text color at draw time.
+- In mermaid.js 11 without HTML labels (`htmlLabels: false`), text in mindmap circle nodes (`((root))`) is laid out from the center to the right, so half of it spills outside the circle (white text on a light background disappears):
+  the render page's `polish` adds `text-anchor="middle"` to that text. Mermaid's config has no node corner radius either, so `polish` also changes `rx` / `ry`.
+- The rendering scripts are stored as `.gz` in the embed (16 MB → 5 MB). `mygo.FileServer` doesn't decompress them, so `web.go`'s `assetHandler` decompresses them itself and calls `http.ServeContent` (the type comes from the name without `.gz`).
+- mygo paragraphs only ask `InlineMath` again when their content changes: if an inline formula isn't ready the first time, the paragraph is laid out with the source text and won't re-lay itself out once the formula is ready. `mdRender` returns `Renderer.Gen()`,
+  and the preview uses it as part of the key, so the key changes whenever a batch is ready. `parser.ExtDollarMath` isn't in `parser.Default`; OR it in yourself to recognize `$…$`.
+- `ScrollIntoView` takes effect after this frame's layout, and it lays out the tree built this frame. A link's `Clicked` is only known midway through building the tree, so if a jump set then places its marker in the same frame,
+  the marker often lands before blocks already built, or never gets placed, and the next frame clears it as "already handled". The preview only honors the `d.Anchor` / `d.AnchorLine` present at the start of a frame (`mdEnv.anchor` / `line`).
+- In a `ui.List`, calling `ListState.ScrollTo` and then `ScrollIntoView` on a newly laid-out row in the same frame wastes the second call: the list lays out rows from the `ScrollTo` position, overriding the row's reveal.
+  The segmented preview waits for the frame after `ScrollTo` before placing the marker (`mdView.seek >= 2`).
+- To scroll a block to the top, use `ScrollIntoView` (default `ScrollNearest`) with a transparent marker taller than the view: anything taller than the view is revealed from its start, which puts it at the top.
+  But there must be enough content after it: the last section can't scroll to the top, only to the bottom of the scroll range. Tests must pad more than a screenful of text after the target, or it looks like "it didn't scroll".
+- `MeasureText(width, …)` can't measure min-content: when a word doesn't fit, mygo's text layout breaks it mid-word, so measuring at 1pt width gives the width of a single character, not the longest word.
+  Computing a table column's minimum width (`minContent` in `gmd/table.go`) splits at spaces, hyphens and every CJK character, and measures only the longest few pieces.
+- Children of `ScrollHorizontal` don't shrink to the viewport: `Shrink(1)`, `WidthPercent(100)` and `Grow(1)` are all computed against the content (infinite width). For "as wide as the viewport when it fits, scroll only when it doesn't",
+  don't wrap it in a scroll container when it fits (in a normal column, `FillWidth().MaxWidth(…).MinWidth(…)` clamps it in between); wrap it only when it doesn't. Decide from the previous frame's width,
+  and if `Draw` finds this frame's layout crossed over to the other case, call `c.Invalidate()` to request another frame (`Invalidate` can be called from anywhere).
+- After a side-by-side preview is dragged into the source file's group, the source editor stops drawing and ged's `TopLine` stays at the last drawn frame; once the preview pushes a line to it (`ScrollToFrac` only takes effect when drawn),
+  if the next frame arrives after the quiet period, the preview thinks the editor scrolled and pulls itself back. Check `a.EditorShown` before following the editor's scrolling.
+- In segmented Markdown, each segment is an independent `parser.Document`: the last block of a segment has `b.Next == doc.Len()`, and computing a line range "to the end of the document" sweeps in every later line;
+  clamp it to the first line of the next segment.
 
-## 测试和 Tester
+## Testing and Tester
 
-测试分工和测量方法见 [testing.md](testing.md)。本节列出编写测试时的注意事项。
+How testing is divided up and how to measure is in [testing.md](testing.md). This section lists things to watch for when writing tests.
 
-驱动与帧处理：
+Driving and frames:
 
-- `ui.NewTester` 一建好就画第一帧，那一帧用的是 state.json 里已有的值（没有就是 `Default`：三个区域都开）。测试要从"底栏关着"之类的状态起步，
-  得在 `newUI` 之前把 state.json 写好（`terms_test.go` 的 `termState` / `setBar`），不能建好再改 `a.St`，第一帧已经把终端起了。
-- Tester 一帧一帧地走：`tt.Advance(time.Second/60)` 最多画一帧，`settle`（`Frame()`）会连着画到 20 帧。后台通过 `a.Update` 返回的结果，需要在保留的 `*wui.Context` 上
-  `c.Invalidate()` 才排下一帧（`TestMeasureBigFile` 的 `measureUI`）。
-- `OnTextKey` 的回调在两帧之间跑：里面改状态走 `a.Update`，测试里要 `wait` 跑掉队列才看得到，仅调用 `tt.Frame()` 不够。
-- `Element` 只在建它的那一帧有效，留到下一帧调 `.Bounds()` 会 panic（"element from pass N used in pass N"），还会中断整个包的测试。
-  跨帧量位置用 `wui.Handle`：`.Bind(&h)`，帧外 `h.Bounds(c)`（`c` 是建帧时的 `Context`）。
-- 同一行连着点两次之间要 `tt.Advance(time.Second)`，否则会被识别为双击。
-- `a.Ask` 之后要 `tt.Frame()` 才查得到确认框的字：`Confirm` 是下一帧才画出来的浮层。
-- 弹着的对话框挡住 Tester 的键：`AlertOpen` / 确认卡开着时 `tt.Key` 送不到下面。关掉（`a.AlertOpen = false` 或点按钮）之后先 `tt.Frame()` 一帧再送键。
-- toast 会被下一帧画掉（`a.Toast` 清空）：UI 测试里查提示用 `tt.HasText`，在 app 包的测试里才直接比 `a.Toast`。
-- `app.New` 只读状态、不开上次的标签，真窗口里 `Start` 是 `Windows.Open`（`app/windows.go`）调的。测会话来回时重开 App 后要自己 `a.Start()`，
-  否则标签列表为空，看起来就像未保存会话。
-- 设置窗口是第二个 `mygo.Window`，和主窗口共用一个 `App`；测试里用第二个 `wui.NewTester(SettingsView(a), …)`，改了设置后主窗口的 Tester 要 `Frame()` 一次才看得到。
-- `view.files`（⇧⌘E）是切换侧栏，侧栏已经是文件页时再调会把侧栏关掉。测试里要确定打开文件页用 `a.ShowSidebar(workspace.ModeFiles)` + `a.EnsureFiles(r)`。
-- `mygo.App.SetMenu` 不能在 `go test` 里调。Tester 的 `Menu()` 不包含禁用状态；检查菜单项是否禁用时，用 `ChooseMenuItem` 选择该项，确认错误中包含 "disabled"，再调用 `CloseMenu()`。
+- `ui.NewTester` draws the first frame as soon as it's created, using the values already in state.json (or `Default`, with all three areas open, if there are none). For a test to start from a state like "bottom bar closed",
+  write state.json before `newUI` (`termState` / `setBar` in `terms_test.go`); changing `a.St` after creation is too late, since the first frame has already started the terminal.
+- The Tester advances frame by frame: `tt.Advance(time.Second/60)` draws at most one frame, and `settle` (`Frame()`) draws up to 20 frames in a row. Results returned from the background through `a.Update` need `c.Invalidate()` on a retained `*wui.Context`
+  to schedule the next frame (`measureUI` in `TestMeasureBigFile`).
+- `OnTextKey` callbacks run between frames: state changes inside them go through `a.Update`, so tests must `wait` for the queue to drain before they can see them; calling `tt.Frame()` alone isn't enough.
+- An `Element` is only valid in the frame that built it; calling `.Bounds()` on it in the next frame panics ("element from pass N used in pass N") and aborts the whole package's tests.
+  To measure positions across frames use `wui.Handle`: `.Bind(&h)`, then outside the frame `h.Bounds(c)` (`c` is the `Context` the frame was built with).
+- Between two clicks on the same row, `tt.Advance(time.Second)`, or they're recognized as a double-click.
+- After `a.Ask`, call `tt.Frame()` before looking for the confirmation text: `Confirm` is an overlay drawn on the next frame.
+- An open dialog blocks the Tester's keys: while `AlertOpen` / a confirmation card is open, `tt.Key` doesn't reach what's underneath. After closing it (`a.AlertOpen = false` or clicking a button), `tt.Frame()` once before sending keys.
+- Toasts are cleared by the next frame (`a.Toast` is emptied): UI tests check notices with `tt.HasText`; only tests in the app package compare `a.Toast` directly.
+- `app.New` only reads state and doesn't reopen the last tabs; in a real window `Start` is called by `Windows.Open` (`app/windows.go`). When testing session round-trips, call `a.Start()` yourself after recreating the App,
+  or the tab list is empty and looks like an unsaved session.
+- The settings window is a second `mygo.Window` sharing one `App` with the main window; tests use a second `wui.NewTester(SettingsView(a), …)`, and after changing settings the main window's Tester needs one `Frame()` to see it.
+- `view.files` (⇧⌘E) toggles the sidebar, so calling it while the sidebar already shows Files closes the sidebar. To make sure Files is open in a test, use `a.ShowSidebar(workspace.ModeFiles)` + `a.EnsureFiles(r)`.
+- `mygo.App.SetMenu` can't be called under `go test`. The Tester's `Menu()` doesn't include the disabled state; to check whether a menu item is disabled, select it with `ChooseMenuItem`, confirm the error contains "disabled", then call `CloseMenu()`.
 
-查找元素：
+Finding elements:
 
-- Tester 的 `Label` / 文字不能重名，否则 `tt.Click` 可能定位错误：标签行用 `"标签 "+名`，编辑器用 `"编辑 "+名`。
-- `Find` 按树的顺序返回第一个匹配（标题栏 → 侧栏 → 主区 → 底栏 → 右栏 → 状态栏 → 对话框），同一文字出现在两处时用唯一的 Label 定位。
-- `tt.Click` / `tt.RightClick(文字)` 点的是找到的那个元素的中心。Markdown 里一段只有一个链接时，`Find("链接字")` 配到的是铺满一栏的整段，
-  中心落在链接右边的空白上，点不到链接（右键菜单是选区的、不是链接的）。测试里把链接写在一句话中间（`去看[另一篇](other.md)吧`）。
-- Tester 的时钟不走：`c.Now()` 只在 `tt.Advance(d)` 时变，`tt.Frame()` 不动它。按时间去抖的（预览打字停 150 ms 再重排）测试里要 `Advance` 过那段时间。
-- `Find` 是整段文字完全相等才算，`HasText` 是包含。找"2 条贮藏"这类拼出来的、或范围胶囊上"demo/docs"这类短字用 `Find`；
-  结果行的 Label 带着路径（"结果文件 demo/docs/b.md"），`HasText` 会配到它。
-- 给 `Text` 加了 `.Label` 之后，`Find` / `Texts` 看到的是 Label，不是显示的字。要按显示的字找就别给文字设 Label。
-- 有 Label 的行（树行、历史行）`Find` 拿到的是整行的矩形（树行从 x=4 起），不是名字那段字。量位置用只出现一次的字（短哈希）定 X，`Find(标题).Y` 是行顶；
-  量名字、图标就用 `inkRuns` 扫像素。`Find` 的矩形是 DIP，`Image()` 的像素要乘 `SetScale` 的倍数。`TreeSpans` 是上一帧的位置，改了滚动 / 行以后多 `Frame()` 几次再看吸顶栈。
-- `wui.Toggle`（胶囊开关）在无障碍树里是切换按钮（`roleToggleButton` 31，按下 = 开），不是 Switch（6）：`accessTree` 里按角色找开关要用 31。
-- `TestAccessLabels` 用 reflect 读 Tester 没导出的字段，所以 mygo 锁版本。升级 mygo 时会先由 `TestAccessProbe` 报错，按报错更新字段名。
+- Tester `Label`s / text must not be duplicated, or `tt.Click` may hit the wrong one: tab rows use `"标签 "+name` ("Tab %s"), editors use `"编辑 "+name` ("Edit %s").
+- `Find` returns the first match in tree order (title bar → sidebar → main area → bottom bar → right panel → status bar → dialogs); when the same text appears in two places, locate it by a unique Label.
+- `tt.Click` / `tt.RightClick(text)` click the center of the element found. When a Markdown paragraph contains only a link, `Find("link text")` matches the whole paragraph spanning the column,
+  whose center falls on the blank space right of the link, so the click misses (and the context menu is the selection's, not the link's). In tests, put the link in the middle of a sentence (`去看[另一篇](other.md)吧`).
+- The Tester's clock doesn't run: `c.Now()` only changes on `tt.Advance(d)`; `tt.Frame()` doesn't move it. Tests of time-based debouncing (the preview re-lays out 150 ms after typing stops) must `Advance` past that interval.
+- `Find` requires the whole text to be exactly equal; `HasText` is a substring match. Use `Find` for composed text like "2 stashes" or short text like "demo/docs" on the scope chip;
+  result rows carry the path in their Label ("Result file demo/docs/b.md"), and `HasText` would match those.
+- Once a `Text` has a `.Label`, `Find` / `Texts` see the Label, not the displayed text. To find by displayed text, don't give the text a Label.
+- For rows with a Label (tree rows, history rows), `Find` returns the whole row's rectangle (tree rows start at x=4), not the span of the name. To measure positions, pin X with text that appears only once (a short hash); `Find(title).Y` is the row's top;
+  to measure names and icons, scan pixels with `inkRuns`. `Find` rectangles are in DIPs; `Image()` pixels must be multiplied by the `SetScale` factor. `TreeSpans` holds the previous frame's positions, so after changing scroll / rows, `Frame()` a few more times before checking the sticky stack.
+- `wui.Toggle` (the pill switch) is a toggle button in the accessibility tree (`roleToggleButton` 31, pressed = on), not a Switch (6): when searching `accessTree` for switches by role, use 31.
+- `TestAccessLabels` reads unexported Tester fields via reflect, which is why mygo is pinned. When upgrading mygo, `TestAccessProbe` fails first; update the field names according to its error.
 
-像素测量：
+Pixel measurement:
 
-- 软背景是渐变，隔几个 pt 的两个像素本来就差 1、2。按颜色比较（参考线、悬停底色、文字墨迹）都用 `inkDist` 加容差，别用 `==`。
-- 彩色底块不算墨迹：底块和底色只差 30–80，`inkRuns`（门槛 90）只量到上面的字母 / 图标。量块用 `inkRunsOver(…, 20)`，只扫名字前面那一截（阈值过低时，缩进参考线也会被识别为色块）。
-  要量文件树的彩色徽章先 `a.St.Settings.TreeIconsPlain = true` + `SettingsChanged()` + `Frame()` 两次。
-- 量像素的测试（`TestCardGeometry`）要 `Backdrop: "flat"`、深色（纯色底、没有阴影）才干净，柔和的色斑会染缝。Tester 默认不通透，根是窗口底色，默认的柔和底在所有 UI 测试里都画着。
-- Tester `SetVibrancy(true)` 时材质那块是透明像素（和 `WORKBENCH_CAPTURE` 一样）。截图测试用 `writeMaterialShot` 铺一块合成的毛玻璃，只是近似，真窗口透出来的样子要手测。
-- 原生菜单（右键、按钮的 `Menu`）不在 `tt.Image()` / `WORKBENCH_CAPTURE` 里，测试用 `tt.Menu()`、`tt.ChooseMenuItem(…)`、`tt.CloseMenu()`。
-  `WORKBENCH_CAPTURE` 的图里也没有红绿灯。
-- 系统右键菜单（`ContextMenu`）在窗口靠下的地方会折起来（issue #6）：mygo 的 darwin 后端用 `popUpMenuPositioningItem:nil atLocation:inView:` 弹（v0.7.4 到 v0.8.3 都是，`internal/darwin/menu.go` 第一个参数还是 0），
-  左上角钉在点的地方，下面（到屏幕底 / Dock）放不下时 AppKit 不往上翻，而是把菜单截短、底下出滚动箭头。Grove 碰不到这个调用（位置也改不了），
-  所以文件树的右键菜单（`treeMenu`、`rowMenu`、仓库行、钉在顶上的行、压缩目录的每一段）画在窗口里（先是 `PopoverMenu`，issue #48 起是 Grove 自己画的
-  `ui/gmenu.go`），下面放不下就往上开，窗口本身都放不下才滚。样子跟着主题，磨砂是自己加的（下一条）。后来（issue #58）大多数右键菜单和按钮的菜单也换成了它；还是 mygo 画的（`SetMenuPresentation(PopoverMenus)`）只剩编辑器的右键菜单、设置窗口的“更多”、标题栏的面包屑，名单见 [architecture/files.md](architecture/files.md) 的菜单一节。
-- 画在窗口里的面板要磨砂用 `Element.Material` + `plugins/glass`（v0.9.0，和 mygo 同一个模块，不加依赖）：`glass.Blur{Radius}` 只糊不上色，
-  `Material` 顶替 `Background`，所以底色要么另铺一层半透明的子元素，要么（现在的做法，`ui/frost.go` 的 `frostMaterial`）自己写个 `Material`：
-  `PaintMaterial` 里先调 `glass.Blur.PaintMaterial` 再 `p.FillRadii` 盖底色。铺子元素的办法在有 `Gap` / `Padding` 的面板（对话框、命令面板）里会被挤、占一格间距；`glass.Glass{}` 是 macOS 26 那种带亮边的玻璃。
-  糊的是这一帧里画在它底下的元素，不是窗口后面的桌面（那是窗口的 `Vibrancy`）。“减少透明度”开着时 `glass.Blur` 自己会画成主题的 `Background`，
-  和菜单的底色不是一个颜色，所以 Grove 自己看 `c.Preferences()` 退回 `Background(gmenuBg)`。无头的 Tester 画得出来（glass 有 CPU 的一份），
-  和 Metal 离屏渲染的对过，圆角、颜色一致。mygo 的 `PopoverMenu` / `ContextMenu` 没有改面板样子的入口（只有 `PopoverMenuButtonOptions.Panel`），
-  它们的菜单磨砂不了。
-- mygo v0.9.0 的系统菜单还是 `popUpMenuPositioningItem:nil`（`internal/darwin/menu.go`）；`PopoverMenu` 还是不能按住右键拖到项上松开、
-  子菜单悬停立刻开、点外面那一下落到底下（读的源码，没在真窗口里重试），所以文件树的菜单还是 Grove 自己画。
-  画出来的菜单 Tester 的 `Menu()` / `ChooseMenuItem` 看不见：测试统一用 `popmenu_test.go` 的 `shownMenu` / `chooseMenu` / `closeMenu`
-  （两种都认，画出来的从无障碍树里找 RoleMenu / RoleMenuItem，所以 `gmenu.go` 的面板和项要设 `Role`、`Label`、灰项 `Disabled`），`mustRightClick` 已经换成它们了。
-- `PopoverMenu`（v0.7.4；main `6121009b` 的 `SetMenuPresentation(PopoverMenus)` 也是它，这几条照旧）在 macOS 上右键按下就开（`menuPress`），开的时候没有元素被"按着"，所以按住右键移动时项的悬停高亮跟着走；
-  但松开右键不会选中指针下的项（项只认左键的 `Clicked`），子菜单悬停立刻开、没有安全三角，灰掉的项没有提示，点外面关掉的那一下照样落到下面的元素上。
-  这些要自己画菜单才做得到（issue #46），所以文件树换成了 Grove 自己画的（issue #48，`app/popmenu.go` + `ui/gmenu.go`）。
-  Tester 只有左键的 `Press` / `Release`，右键只有 `RightClickAt`（按下松开一起），按住右键拖测不了：菜单的状态机放在 `app.PopMenu` 里直接喂事件测。
-- 自己画菜单时的几处（issue #48）：右键按下由行的 `HandleInput` 接，接了以后按着的移动和松开都送到这一行（不管指针在哪），所以按住拖松开不用别的；
-  一个元素只有一个 `HandleInput`，原来挂着的（`treePress`、列表的 `treeCommands`）要包进去，不是右键的照旧转给它。`HandleInput` 让出去的按下
-  不会再给外层元素的 `HandleInput`（`rt.handler` 只取最里面那个），所以列表的空白处菜单只在没挂 `HandleInput` 的地方开。
-  吞掉点外面那一下靠 Overlay 里铺满窗口的接收层（`Absolute` + 窗口大小 + `HandleInput` 接下按下）；它 `Focus()` 每帧拿着焦点接键盘，
-  `Element.Focused()` 在窗口失去焦点时报假（mygo 的 `windowFocus`），拿它当"失去焦点就关"。回调里的坐标是相对元素的，换成窗口坐标用建界面时记下的
-  `Bounds()`（上一帧的），回调里不能再碰元素。
-  Overlay 关掉时 mygo 把键盘还给它出现那一帧有键盘的元素（`openOverlay` / `restoreFocus`），但记的是 Overlay 的 `fn` 跑完以后的焦点：
-  出现那一帧里面的元素就 `Focus()` 了，记下的就是它自己，关掉以后键盘没了着落。接收层要隔一帧再 `Focus()`。
-- mygo main（`6842ad5e` 起）的 `Tester.Click` / `RightClick` 先校验：标签所在元素（往上数第一个接输入的）要和点下去接输入的是同一个，
-  不是就报 `"xxx" is not the input target`。列表的行名（`ListOptions.Label`，打字跳行、读屏用）记在 List 的那一格上，接点击的却是格子里面的行
-  （文件树行的 `menuPress`、Git 栏段头、命令面板的结果行、历史行）；历史右栏标题行的名字"历史"在整行上，正中是搜索框。真窗口里点那一格就是点那一行，
-  不是回归。测试里点这种行用 `clickrow_test.go` 的 `clickRow` / `rightClickRow` / `mustClickRow` / `mustRightClickRow`（按名字找到那一格、点正中），
-  别的照旧用 `Click`，保留它的校验。
-- 同一版起所有按键都进 `HandleInput`（`d3288030`）：Grove 的几个回调（`treeCommands` 只认 `InputCommand`、菜单接收层放过 ⌘ / ⌃、看图只认不带修饰的 = - 0、
-  录键卡片本来就要全接）都按种类和键筛过，不多接也不吞键。
-  接收层的回调返回 false 也不会把按下让给它底下的元素（`hitChain` 只往这一层的祖先走，到不了 Overlay 外面），所以"开着时右键别处开新菜单"
-  得自己按登记的位置找（`PopMenu.AddTarget` / `TargetAt`）；文件树以外的地方右键只关菜单。
-  ⇧F10 / 菜单键：mygo 只给挂了 `ContextMenu` / `PopoverMenu` 的元素开菜单（`menuKey`），去掉 `PopoverMenu` 以后它们就没用了，
-  要在有焦点的元素的 `HandleInput` 里自己接（`InputKeyDown` 先送给它，接了 mygo 就不再找菜单）。
-- 列表行的按下（issue #46）：`ListState.DragSelecting()` 只在按着拖远了以后才报真，不能拿来判断"还按着"；列表在按下时就选中没选中的行，
-  按下和松开对应用分不开。要按下选中、松开打开，就让行自己用 `HandleInput` 接 `InputPointerDown`（接了以后移动和松开都归它），
-  而且松开之前每帧都要接着挂 `HandleInput`（不挂，状态上的回调就没了，松开送不到）。回调里不能用建界面时的 `wui.Element`（会 panic
-  "element from pass … used in pass …"），要位置用上一帧记下的矩形。挂了 `HandleInput` 的元素，即使回调把按下让出去，mygo 数双击也按它数
-  （`countPress` 取 handler 和 target 里靠里的那个），⇧点之后马上单击同一行会被数成双击；测试里两次点之间 `Advance` 一下。
-- 无头 Tester 每帧都软件画整窗，一帧的底约 1.8 ms，量出来的帧时间比真窗口的高。后台高亮追色的帧一帧 0.1 ms，Tester 连着画，1800 帧不到 1 s 就走完了，
-  后台还没算完。所以量时间别数帧：`TestMeasureBigFile` 量的是墙上时间（1800 帧和 30 s 都过了才停），"几帧完成"只对照 60 Hz 的真窗口看。
+- The soft background is a gradient, so two pixels a few pt apart naturally differ by 1 or 2. All color comparisons (guide lines, hover fills, text ink) use `inkDist` with a tolerance, never `==`.
+- Colored fills don't count as ink: a fill differs from the background by only 30–80, so `inkRuns` (threshold 90) only picks up the letters / icons on top. To measure fills, use `inkRunsOver(…, 20)` and scan only the stretch before the name (with too low a threshold, indent guides also register as fills).
+  To measure the file tree's colored badges, first set `a.St.Settings.TreeIconsPlain = true` + `SettingsChanged()` + `Frame()` twice.
+- Pixel-measuring tests (`TestCardGeometry`) need `Backdrop: "flat"` and dark mode (solid background, no shadows) to be clean; the soft color blobs bleed into gaps. The Tester isn't translucent by default, so the root is the window background color, and the default soft backdrop is drawn in every UI test.
+- With Tester `SetVibrancy(true)`, the material area is transparent pixels (same as `WORKBENCH_CAPTURE`). Screenshot tests use `writeMaterialShot` to lay down a synthetic frosted glass, which is only an approximation; how a real window looks through it must be tested by hand.
+- Native menus (context menus, a button's `Menu`) aren't in `tt.Image()` / `WORKBENCH_CAPTURE`; tests use `tt.Menu()`, `tt.ChooseMenuItem(…)`, `tt.CloseMenu()`.
+  `WORKBENCH_CAPTURE` images don't include the traffic lights either.
+- The system context menu (`ContextMenu`) gets truncated near the bottom of the window (issue #6): mygo's darwin backend pops it with `popUpMenuPositioningItem:nil atLocation:inView:` (true from v0.7.4 through v0.8.3; the first argument in `internal/darwin/menu.go` is still 0),
+  pinning the top-left corner at the click point. When there isn't room below (down to the screen bottom / Dock), AppKit doesn't flip it upward; it truncates the menu and shows scroll arrows at the bottom. Grove can't reach that call (nor change the position),
+  so the file tree's context menus (`treeMenu`, `rowMenu`, repository rows, rows pinned at the top, each segment of a compacted directory) are drawn inside the window (first as `PopoverMenu`, and since issue #48 by Grove's own
+  `ui/gmenu.go`), opening upward when there's no room below and scrolling only when even the window can't fit them. Their look follows the theme, and the frosting is our own (next item). Later (issue #58) most context menus and button menus switched to it too; the only ones still drawn by mygo (`SetMenuPresentation(PopoverMenus)`) are the editor's context menu, the settings window's "More", and the title bar breadcrumbs. The list is in the menus section of [architecture/files.md](architecture/files.md).
+- Panels drawn inside the window get frosting from `Element.Material` + `plugins/glass` (v0.9.0, same module as mygo, no extra dependency): `glass.Blur{Radius}` only blurs and adds no tint,
+  and `Material` replaces `Background`, so the tint must either be a separate semi-transparent child layer or (the current approach, `frostMaterial` in `ui/frost.go`) a custom `Material`:
+  in `PaintMaterial`, call `glass.Blur.PaintMaterial` first, then `p.FillRadii` to lay the tint over it. The child-layer approach gets squeezed in panels with `Gap` / `Padding` (dialogs, the command palette), taking up a gap's worth of space; `glass.Glass{}` is the macOS 26 style glass with a bright edge.
+  It blurs the elements drawn beneath it in this frame, not the desktop behind the window (that's the window's `Vibrancy`). With "Reduce transparency" on, `glass.Blur` draws itself as the theme's `Background`,
+  which isn't the menu's background color, so Grove checks `c.Preferences()` itself and falls back to `Background(gmenuBg)`. The headless Tester can draw it (glass has a CPU implementation),
+  and it has been compared against Metal offscreen rendering: corner radii and colors match. mygo's `PopoverMenu` / `ContextMenu` have no hook for changing the panel's look (only `PopoverMenuButtonOptions.Panel`),
+  so their menus can't be frosted.
+- mygo v0.9.0's system menus still use `popUpMenuPositioningItem:nil` (`internal/darwin/menu.go`); `PopoverMenu` still can't do press-right-drag-onto-item-and-release,
+  still opens submenus instantly on hover, and the click outside still falls through to what's underneath (from reading the source, not retested in a real window), so the file tree menu is still drawn by Grove.
+  The Tester's `Menu()` / `ChooseMenuItem` can't see drawn menus: tests uniformly use `shownMenu` / `chooseMenu` / `closeMenu` from `popmenu_test.go`
+  (they handle both kinds; drawn menus are found in the accessibility tree as RoleMenu / RoleMenuItem, so `gmenu.go`'s panel and items must set `Role`, `Label`, and `Disabled` on grayed items). `mustRightClick` already uses them.
+- `PopoverMenu` (v0.7.4; main `6121009b`'s `SetMenuPresentation(PopoverMenus)` is also it, so these points still hold) opens on right-button press on macOS (`menuPress`), and since no element is "pressed" when it opens, item hover highlights follow the pointer while the right button is held;
+  but releasing the right button doesn't select the item under the pointer (items only respond to left-button `Clicked`), submenus open instantly on hover with no safe triangle, grayed items have no tooltip, and the click that closes it by clicking outside still lands on the element underneath.
+  Fixing these requires drawing our own menus (issue #46), which is why the file tree switched to Grove's own (issue #48, `app/popmenu.go` + `ui/gmenu.go`).
+  The Tester only has left-button `Press` / `Release`, and for the right button only `RightClickAt` (press and release together), so right-drag can't be tested: the menu's state machine lives in `app.PopMenu` and is tested by feeding it events directly.
+- Notes on drawing our own menus (issue #48): the right-button press is taken by the row's `HandleInput`; once taken, the moves and release while held are all delivered to that row (wherever the pointer is), so press-drag-release needs nothing else.
+  An element has only one `HandleInput`, so the ones already attached (`treePress`, the list's `treeCommands`) must be wrapped inside it, forwarding everything that isn't a right-button event as before. A press that a `HandleInput` declines
+  is not passed on to an outer element's `HandleInput` (`rt.handler` only takes the innermost one), so the list's blank-area menu only opens where no `HandleInput` is attached.
+  Swallowing the click outside relies on a receiver layer in the Overlay covering the whole window (`Absolute` + window size + `HandleInput` taking the press); it calls `Focus()` every frame to keep keyboard focus,
+  and `Element.Focused()` reports false when the window loses focus (mygo's `windowFocus`), which serves as "close on losing focus". Callback coordinates are element-relative; to convert them to window coordinates, use the `Bounds()` recorded while building the UI
+  (from the previous frame); callbacks must not touch elements.
+  When an Overlay closes, mygo returns the keyboard to the element that had it in the frame the Overlay appeared (`openOverlay` / `restoreFocus`), but it records the focus after the Overlay's `fn` has run:
+  if an element inside calls `Focus()` in that first frame, what gets recorded is that element itself, and after closing the keyboard has nowhere to go. The receiver layer must wait one frame before calling `Focus()`.
+- mygo main (from `6842ad5e`) validates in `Tester.Click` / `RightClick`: the element holding the label (the first input-accepting ancestor) must be the same one that receives input at the click point;
+  if not, it reports `"xxx" is not the input target`. A list row's name (`ListOptions.Label`, used for type-to-jump and screen readers) is recorded on the List's cell, but clicks are received by the row inside the cell
+  (file tree rows' `menuPress`, Git panel section headers, command palette result rows, history rows); the history right panel's title row has its name "History" on the whole row, with the search box in the middle. In a real window, clicking that cell is clicking the row,
+  so it's not a regression. In tests, click such rows with `clickRow` / `rightClickRow` / `mustClickRow` / `mustRightClickRow` from `clickrow_test.go` (they find the cell by name and click its center);
+  use `Click` for everything else, keeping its validation.
+- From the same version, all key presses go to `HandleInput` (`d3288030`): Grove's callbacks (`treeCommands` only accepts `InputCommand`, the menu receiver layer lets ⌘ / ⌃ through, the image viewer only accepts unmodified = - 0,
+  and the shortcut-recording card is meant to take everything) all filter by kind and key, so they don't take extra events or swallow keys.
+  A receiver-layer callback returning false doesn't pass the press on to the element beneath it either (`hitChain` only walks this layer's ancestors and never leaves the Overlay), so "right-click elsewhere while open opens a new menu"
+  has to find the target itself from registered positions (`PopMenu.AddTarget` / `TargetAt`); right-clicking outside the file tree only closes the menu.
+  ⇧F10 / the menu key: mygo only opens menus for elements with a `ContextMenu` / `PopoverMenu` attached (`menuKey`), so once `PopoverMenu` is removed those keys do nothing;
+  handle them yourself in the focused element's `HandleInput` (`InputKeyDown` goes to it first, and if it takes the key mygo stops looking for a menu).
+- List row presses (issue #46): `ListState.DragSelecting()` only reports true after the pointer has been dragged some distance while held, so it can't be used to mean "still pressed". The list selects an unselected row on press,
+  so the app can't tell press and release apart. To select on press and open on release, have the row take `InputPointerDown` itself through `HandleInput` (after that, moves and the release belong to it),
+  and keep attaching `HandleInput` every frame until the release (if it isn't attached, the callback on the state is gone and the release can't be delivered). Callbacks can't use the `wui.Element` from building the UI (it panics with
+  "element from pass … used in pass …"); for positions, use the rectangle recorded in the previous frame. For an element with `HandleInput` attached, mygo counts double-clicks against it even if the callback declines the press
+  (`countPress` takes whichever of handler and target is innermost), so a plain click on the same row right after a ⇧-click is counted as a double-click; in tests, `Advance` between the two clicks.
+- The headless Tester software-renders the whole window every frame, with a base cost of about 1.8 ms per frame, so measured frame times are higher than in a real window. A background highlighting catch-up frame takes 0.1 ms, and since the Tester draws frames back to back, 1800 frames finish in under 1 s
+  while the background work hasn't finished yet. So don't count frames when measuring time: `TestMeasureBigFile` measures wall-clock time (it stops only after both 1800 frames and 30 s have passed); "done in N frames" is only meaningful against a real 60 Hz window.
 
-终端、搜索、监听：
+Terminal, search, watching:
 
-- 终端启动后立即调用 `tt.Type` 会在提示符出来前被 shell 回显成一行"预输入"：先等提示符（`testutil.WaitTermReady`）再敲。
-- 测 ⌘点击终端里的链接：`tt.HoldModifiers(wui.Cmd)` + `tt.Move` 竖着扫，`Terminal.HoveredLink()` 给出链接和相对视图的矩形，再 `tt.ClickAtWith(wui.Cmd, x, y)`；
-  网址看 `tt.OpenedURLs()`（只记录，不实际打开）。
-- 测试里的 termd 套接字在 `t.TempDir()`：`termd.Server` 用 `Listen` / `Serve` 在测试进程里跑，`t.Cleanup(srv.Stop)`。macOS 的 unix 套接字路径上限 104 字节，
-  `t.TempDir()` 很长，用 `SockPath(t.TempDir())`（太长时换到 `$TMPDIR` 下的短路径），`t.Cleanup` 里连 `.lock` 一起删。
-  界面测试把 `app.TermdStart` 换掉（不要实际启动子进程），只有 `TestSpawnDetached` 起真的子进程，最后关掉。
-- 输入之后等搜索要等内容，别只等 `Done`：打字后有 150 ms 的去抖，那段时间 `Done && !Running` 还是上一次搜完的样子，`wait` 立刻就过了。
-  等结果里的处数和 `Preview` 里有这个词（`searchbits_test.go` 的 `searched`）。
-- 测"不该报"之前先等一个探针报了（`internal/watch` 测试的 `probe`）：FSEvents 按顺序给，建仓库、提交、切分支的事件在负载重时会晚到几百毫秒，
-  只静等一段时间会让它们落进"不该报"的窗口里。先改一个会报的文件、等它报了（之前的都到了）再静等。
-- "没有多做一次"这类断言要防别的监听插进来：在工作树里跑的 `git status` 会顺手重写 `.git/worktrees/<名字>/index`，主仓库的监听晚到一个 Git 变化就整块重算一次。
-  断言"只重算了那一条 / 计数没变"之前先等稳（仓库都闲着、没有整块在算）再记基准；碰上了换个新输入重试几次，断言至少一次走到了那条路（`app/wtwatch_test.go`）。
+- Calling `tt.Type` right after the terminal starts makes the shell echo it as a line of "typeahead" before the prompt appears: wait for the prompt first (`testutil.WaitTermReady`), then type.
+- Testing ⌘-click on links in the terminal: `tt.HoldModifiers(wui.Cmd)` + `tt.Move` sweeping vertically; `Terminal.HoveredLink()` gives the link and its rectangle relative to the view; then `tt.ClickAtWith(wui.Cmd, x, y)`.
+  Check URLs with `tt.OpenedURLs()` (recorded only, not actually opened).
+- In tests the termd socket lives in `t.TempDir()`: `termd.Server` runs in the test process with `Listen` / `Serve`, with `t.Cleanup(srv.Stop)`. macOS unix socket paths are limited to 104 bytes,
+  and `t.TempDir()` is long, so use `SockPath(t.TempDir())` (which switches to a short path under `$TMPDIR` when too long), and delete the `.lock` too in `t.Cleanup`.
+  UI tests replace `app.TermdStart` (don't actually start a child process); only `TestSpawnDetached` starts a real child process, and it shuts it down at the end.
+- After typing, wait for search content, not just `Done`: typing is debounced by 150 ms, during which `Done && !Running` still reflects the previous search, so `wait` passes immediately.
+  Wait until the result count and `Preview` contain the term (`searched` in `searchbits_test.go`).
+- Before testing "should not fire", wait for a probe to fire first (`probe` in the `internal/watch` tests): FSEvents delivers in order, but events from creating a repository, committing or switching branches can arrive hundreds of milliseconds late under load,
+  and simply waiting a while lets them fall into the "should not fire" window. Change a file that will fire, wait until it does (everything before it has arrived), then wait quietly.
+- Assertions like "didn't do an extra pass" must guard against other watchers butting in: a `git status` run inside a worktree incidentally rewrites `.git/worktrees/<name>/index`, and a late Git change on the main repository's watcher triggers a full recomputation.
+  Before asserting "only that one was recomputed / the count didn't change", wait until things settle (all repositories idle, no full recomputation in progress) before recording the baseline; if you hit interference, retry a few times with fresh input and assert that the path was taken at least once (`app/wtwatch_test.go`).
 
-避免影响开发机：
+Don't disturb the development machine:
 
-- 测试里不调 `copyText` 或任何剪贴板动作，这些操作会修改测试机器的系统剪贴板。网页用 `a.OpenURL`、访达 / 打开目录用 `a.ShowPath`，换成只记不开的函数
-  （`newUI` 默认把两个都设成什么都不做）。
-- 测试和截图里跑 `git log` / `git diff` 要加 `--no-pager`：终端里的 git 会开 less，画面停在 `(END)`。
-- 测试里本地路径的子模块要 `protocol.file.allow=always`（git 2.38 起默认不让从本机路径克隆子模块）。`testutil.SubmoduleRepo` 自己带 `-c`；
-  走应用 `RunOp` 的初始化在测试里先 `t.Setenv("GIT_CONFIG_COUNT", "1")` 和 `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0`。应用里不加这个配置。
-- 测试中不运行实际的检查 / 格式化工具：go vet、tsc、cargo 会写 GOCACHE / `target/`、慢，机器上也不一定装。命令一律用 shell 一行（`printf '…'; exit 1`）
-  或 `t.TempDir()` 里写的假脚本（截图要像真的命令名时，写叫 go / tsc 的 `#!/bin/sh` 脚本），`Settings.Shell` 设成 `/bin/sh`，测超时的时候把 `LintTimeout` 调短。
+- Tests never call `copyText` or any clipboard action; those change the test machine's system clipboard. Web pages go through `a.OpenURL` and Finder / opening folders through `a.ShowPath`; replace them with functions that only record
+  (`newUI` sets both to no-ops by default).
+- `git log` / `git diff` run in tests and screenshots need `--no-pager`: git in the terminal opens less, and the screen sticks at `(END)`.
+- Submodules from local paths in tests need `protocol.file.allow=always` (since git 2.38, cloning submodules from local paths is disallowed by default). `testutil.SubmoduleRepo` passes its own `-c`;
+  initialization that goes through the app's `RunOp` must first `t.Setenv("GIT_CONFIG_COUNT", "1")` plus `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0` in tests. The app itself doesn't add this config.
+- Tests don't run real lint / format tools: go vet, tsc and cargo write GOCACHE / `target/`, are slow, and may not be installed. Always use a one-line shell command (`printf '…'; exit 1`)
+  or a fake script written into `t.TempDir()` (when a screenshot needs a realistic command name, write `#!/bin/sh` scripts named go / tsc), set `Settings.Shell` to `/bin/sh`, and shorten `LintTimeout` when testing timeouts.
 
-真窗口和原生拖放：
+Real windows and native drag and drop:
 
-- Tester 进不了原生拖放：`DropData` 只在 AppKit 的拖动会话里有，测试里直接调 `App.DropOnDoc` / `DropOnTerm`。界面那层在构建出来的 .app 里试：
-  一个小的 Swift `NSDraggingSource` 窗口当拖动源（文字 / file URL / file URL + 文件名文字，后一种模仿访达），CGEvent 按下 → 拖 → 松开。这类脚本不在仓库里。
-  别用 AppleScript 控制访达：会超时（-1712），还可能弹授权框。
-- 有未保存的标签时，TERM 无法直接退出应用：应用在问"保存吗"，进程还在，下一次真实窗口测试可能把参数交给该实例。自己起的实例先确认 `WORKBENCH_STATE` 是临时目录，再 `kill -9` 它自己的 pid；
-  不要按进程名终止，以免影响日常使用的 Grove。
-- ad hoc 签名的新构建读可移除的卷会卡住：macOS 对每个新签名的应用，第一次读可移除的卷（外接盘之类）都要过一次授权，无人确认授权时会阻塞在 `open()` 中（`sample` 看得到），
-  窗口也不出来。量内存、跑临时构建时工作区对着内置盘上的一份克隆，别对着外接卷上的仓库。
+- The Tester can't do native drag and drop: `DropData` only exists inside an AppKit dragging session, so tests call `App.DropOnDoc` / `DropOnTerm` directly. Try the UI layer in a built .app:
+  a small Swift `NSDraggingSource` window as the drag source (text / file URL / file URL + file-name text, the last mimicking Finder), with CGEvent press → drag → release. These scripts aren't in the repository.
+  Don't drive Finder with AppleScript: it times out (-1712) and may pop up authorization dialogs.
+- With unsaved tabs, TERM doesn't make the app quit: the app is asking whether to save, the process stays alive, and the next real-window test may hand its arguments to that instance. For an instance you started, first confirm `WORKBENCH_STATE` is a temp directory, then `kill -9` its own pid;
+  never kill by process name, or you may hit the Grove in daily use.
+- A freshly ad hoc–signed build hangs when reading a removable volume: macOS requires an authorization the first time each newly signed app reads a removable volume (an external drive and the like), and with nobody to approve it, the app blocks in `open()` (visible with `sample`)
+  and the window never appears. When measuring memory or running throwaway builds, point the workspace at a clone on the internal disk, not at repositories on an external volume.
 
-杂项：
+Miscellaneous:
 
-- `TestScreenshot` 的输出目录要先建。
-- 注释里别写两个连着的单引号：gofmt 会把 `''` 改成弯引号（`'\''` 变成 `'\”`）。
-- 新建测试文件前先看有没有同名的：用 shell 重定向（`cat > …_test.go`）会直接覆盖已有测试。写新文件用编辑工具的"新建"（已有的会报错），或先 `ls`。
-- zsh 里 `echo ====` 会报错（`=` 开头是文件名展开），要加引号。
+- Create `TestScreenshot`'s output directory first.
+- Don't write two consecutive single quotes in comments: gofmt turns `''` into a curly quote (`'\''` becomes `'\”`).
+- Before creating a test file, check whether one with the same name exists: shell redirection (`cat > …_test.go`) silently overwrites an existing test. Write new files with the editor tool's "create" (which errors if the file exists), or `ls` first.
+- In zsh, `echo ====` errors (a leading `=` triggers filename expansion); quote it.

@@ -1,285 +1,424 @@
-# Diff 和暂存
-
-[← 架构总览](../architecture.md) · [Git](git.md)
-
-块级、行级的暂存 / 取消暂存 / 丢弃，补丁怎么拼；Diff 标签（默认是 Grove 自己画的 `internal/ged`）和它上面的就地操作、就地编辑；
-编辑器改动条上的就地卡。文件标签里的 ged 单栏编辑器见 [editor.md](editor.md#编辑器部件internalged)。
-
-## Diff 的两条代码路径
-
-- **默认：ged**。Diff 标签、比较标签、替换预览都用 Grove 自己画的 `internal/ged`（`useGed`，`ui/gedview.go`），并排、统一、就地编辑都是它画的。
-  文件标签的编辑器默认也是 ged（`useGedEditor`，`ui/gedfile.go`，见 [editor.md](editor.md#编辑器部件internalged)）。
-- **退回 mygo**：`WORKBENCH_GED=off`（`gedOn`）让 Diff 退回 mygo 的 `editor.DiffView`；`WORKBENCH_GED_EDITOR=off`（`gedEditorOn`）让文件标签退回 mygo 的 `editor.View`。
-  测 mygo 那条路的测试用 `mygoDiff(t)` / `gedEditor(t, false)` 钉住。
-- 两条路共用：`docs.Doc.DiffSt`（mygo 的 `editor.DiffState`：两边的缓冲区、`SelectedLines`、`Layout`、`Editable`）、块上的按钮 `hunkActions`、
-  选行后的 `linesBar`、`app/hunks.go` / `app/lines.go` 的暂存逻辑。`Doc.UsingGed()`（建过 `Doc.Ged`）为真时，上 / 下一处改动和行级暂存的配对按 ged 的 `Hunks` 走。
-
-## 暂存、取消暂存和丢弃
-
-### 块级（`app/hunks.go`）
-
-Diff 标签里每块改动右上角有暂存 / 取消暂存 / 丢弃按钮（ged 里也在右键菜单里）。
-
-- 能点什么由 `HunkOps` 定：未暂存的改了的文件（`Code == 'M'`）能暂存、丢弃；已暂存的改了 / 改名的（`M` / `R`）能取消暂存。
-  未跟踪、有冲突、提交里的，以及新加 / 删掉 / 改了类型的整个文件没有块按钮（在 Git 栏按整个文件做）；比较标签、替换预览也没有。
-- `diffContent`（`ui/tabs.go`）据此设 `DiffState.HunkActions`；就地编辑时不放（见下面“就地编辑”）。
-- 补丁（`hunkPatch`）按这个 Diff 标签读到的两边原样内容（`Doc.Raw[0]` / `Raw[1]`）算：先用 `git.ReplaceLines` 把那一块套到一边上得到另一份全文，
-  再 `git.HunkPatch` 比出只有这一块的补丁：
-  - 暂存（`StageHunk`）：旧的一边套上这一块，`git apply --cached -`。
-  - 取消暂存（`UnstageHunk`）：新的一边去掉这一块，`git apply --cached -R -`。
-  - 丢弃（`DiscardHunk`）：同样去掉这一块，在工作区上 `git apply -R -`；先 `a.AskDanger`。
-- 行号对不上（diff 刚重读过）或补丁为空时报“这一块已经和磁盘上的对不上了”。git apply 要上下文对得上才打，磁盘上的文件读完 diff 后又改过时它会失败，不会乱改。
-
-### 行级（`app/lines.go`）
-
-选几行再暂存是行级：点行号选行（⇧ 点扩大到那一行），只暂存 / 取消暂存 / 丢弃选中的那几行。能做的和块上的一样（`LinesOps`），
-命令是 `diff.stageLines` / `diff.unstageLines` / `diff.discardLines`，Diff 底下的 `linesBar` 也有按钮。
-
-- `LinesEdits` 把选中的行换成一串 `git.LineEdit`：一块改动里旧的第 i 行和新的第 i 行配成一对（i 小于两边行数少的那个）。
-  - 暂存（改旧的一边）：选中新的一行，配了对的换掉对面那行，没配对的插在这一块旧的末尾；选中旧的一行，删掉它。
-  - 取消暂存、丢弃（改新的一边）：选中新的一行，配了对的换回对面那行，没配对的删掉；选中旧的一行，配了对的插回它对面那行前面，没配对的插在这一块新的末尾。
-  - 选中的行里没改的上下文什么也不做；都是没改的行时 toast “选中的行里没有改动”。
-- `git.LinesPatch` 生成只含这些行的补丁，**总是正着打**（不用 `-R`），不用处理反向补丁的上下文问题，也不用再算一份“去掉选中的行”的全文：
-  - 暂存：套在旧的一边（索引）上，`git apply --cached`。
-  - 取消暂存：套在新的一边（已暂存 Diff 的新的一边就是索引）上，`git apply --cached`，工作区不动。
-  - 丢弃：套在新的一边（工作区）上，`git apply`；先问。
-- 配对用的块是 `diffHunks`：`UsingGed` 时按 ged 的 `Hunks`，不然是 mygo 的 `DiffState.Hunks()`（两边对齐得不一样时，补丁配的行要和看到的一样）。
-- 做完取消选择（`ClearSelectedLines`），Esc 也取消。
-
-### 补丁怎么拼（`git/hunk.go`）
-
-- `HunkPatch(path, from, to)`：`from` 和 `to` 只差连续的一段，去掉相同的头尾，中间就是那一块，交给 `LinesPatch`。
-- `LinesPatch(path, old, edits)`：git diff 格式，每处改动一块，上下各带 `HunkContext`（3）行；隔得近（中间没改的不超过 2×`HunkContext` 行）的并成一块。
-  `edits` 要按 `Start` 排好、互不重叠，超出范围时返回 ""。没换行的最后一行后面插了东西时，把它也算进改动、补上换行；文件名有引号、反斜杠、控制字符时像 git 一样转义（`patchName`）。
-- 行号：Diff 视图按 `"\n"` 分行（CRLF 当一行），`git.Lines` 按 git 的算法分行（每行带自己的 `"\n"`）；以换行结尾的文件视图比 git 多一行空的，那一行不算。
-
-## Diff 标签
-
-### 上 / 下一处改动、上 / 下一个文件
-
-- 上 / 下一处改动（J / K，`diff.nextHunk` / `diff.prevHunk`；标签条按钮、底栏的“第 i / n 处改动”）是 `app/diffnav.go` 的 `HunkPos` / `GoToHunk`：
-  `UsingGed` 时问 `Diff.Current` / `Diff.GoToHunk`，不然问 mygo 的 `CurrentHunk` / `GoToHunk`。
-- ⌥J / ⌥K 跳下一个 / 上一个文件（`diff.nextFile` / `diff.prevFile` → `StepFile`，`app/hunks.go`）：未提交的改动按 Git 栏的顺序走所有仓库，
-  提交里的走那次提交的文件；打开的是预览标签。
-
-### 就地编辑（`app/diffedit.go`）
-
-比工作区那一边的 Diff（未暂存、未跟踪，文字 Diff，文件还在：`CanEditDiff`）标签条上有铅笔开关（命令 `diff.editInPlace`，`ToggleDiffEdit`）。
-
-- 开了就在后面开那个文件的标签（固定），Diff 标签也固定下来，焦点留在 Diff 上；`Doc.EditDoc` 指着那个文件标签。
-- `BindDiffEdit` 每帧把 `DiffState.New` 接到文件标签的缓冲区、`Editable` 设真（文件还没读完、不能编辑时先只看）。打的字、撤销、保存都是文件标签的：
-  `Save` 在 Diff 上存的是它（⌘S 照用，`app/tabs.go`），标签上的圆点、标签条上的保存、状态栏的“就地编辑 · 没保存”看 `DiffDirty`。
-- 编辑时不出块级暂存 / 丢弃、不能选行（磁盘上的和缓冲区里的对不上）；键绑定换成 `DiffEditBindings`（去掉不带修饰键的 J / K，那是要打的字）。
-- 再点铅笔、文件标签关了、或者这个 Diff 不再是比工作区的（暂存了），就 `Doc.StopEdit`：新的一边换成一份拷贝再重读磁盘，只看的 Diff 不跟着文件标签里没保存的字变；文件标签留着，没存的改动还在。
-- 标签条上“在编辑器中打开”的图标是文件（和 Git 栏行上的一样），铅笔只表示就地编辑。
-- ged 那边的打字、撤销见下面“ged 的就地编辑”。
-
-### `diffLook`：每帧的样子（两条路共用）
-
-`diffLook`（`ui/tabs.go`）每帧给 Diff 标签、比较标签和替换预览设样子：
-
-- 并排 / 统一：一边是空的（`oneSided`：新文件、删掉的文件）时不管 `unified` 都是统一的一栏，标签条上的并排 / 统一按钮灰着。ged 跟着 `DiffState.Layout`（`SetUnified`）。
-- 软换行：`DiffState.Wrap` 跟 `WrapOf`（⌥Z 的 `canWrap` 也认文字的 Diff），ged 的 `Style.Wrap` 也取它。
-- 刚读出来、切了局部 / 全文（`Doc.ToHunk`）时把光标所在那块改动滚进视图；给 ged 的是 `Doc.GedFocus`：正数是要落到的新的一边的行（+1），-1 是刚跳到的那处（还没有就第一处）。
-- 底栏 `compareLabel` 对已暂存 / 未暂存写“已暂存的改动”“未暂存的改动”，`HEAD ↔ 索引` 之类放在悬停提示里。
-- 下面几项（`Indicators`、`RenderSeparator`）只对 mygo 的 Diff 起作用，见最后“mygo 的 Diff”。
-
-## ged 的 Diff（`internal/ged`）
-
-`internal/ged` 是 Grove 自己的编辑器部件，只用 mygo 公开的接口（`ui.ShapeRichText` 排字、`Painter` 画、`Element.HandleInput` 收输入），
-不碰 mygo 的 `ui/editor` 视图，也不认 Grove 的主题和 `internal/ui`。界面那边的接线在 `ui/gedview.go`（`gedDiff`、`gedStyle`、`gedMenu`、`gedKeys`、`gedFindBar`）。
-
-### 模型（`ged/diff.go`，不碰界面）
-
-- `Align` 把两边的行对齐成 `Row`（`Same` / `Changed` / `Deleted` / `Added`）：先去掉头尾一样的，中间用 Myers；超过 `diffMax`（1000）步就不再配，整段当删加。
-  一处删 d 行加 a 行时前 min(d, a) 行配成 `Changed`，多的对面留空。
-- `Folded` 把离改动 `Context`（3，`ged/view.go`）行外的没改的段折成一行 `Fold`。折叠条上数字后面写 `Style.FoldScope` 给的、下面那处改动所在的函数：
-  `changeAfter` 找那处改动在旧的一边的行，界面那边 `scopeAt`（`ui/diffsep.go`）查 `DiffOutline`，和 mygo 那个 Diff 的 `sepScope` 共用。
-- `Words` 按词比出改了的行里改了哪几段字节；几乎全不一样时（一样的不到两成）整行算改了，去掉缩进和行尾空白（`whole`）。
-- `Hunks` 是一处处改动：对齐后连着的非 `Same` 行，两边的行范围和 `editor.DiffHunk` 一样从 0 起、半开。
-- `Unified` 把行排成一栏：每处改动先列旧的一边的行成 `Deleted`，再列新的一边的成 `Added`。
-
-### 视图（`ged/view.go`）
-
-- 一个元素，自己管滚动：`ScrollY` 两边一起走，横着两边各滚各的；`Draw` 里只排、只画看得见的行，整个 `paint` 裁在视图里（最后一行露一半时不画到底栏上）。
-- 鼠标滚轮的一格照 mygo 自己的滚动容器在 150 ms 里缓出地滑过去（`ged/glide.go`：建视图时按起点和曲线算这一帧的 `ScrollY`，连着几格接在一起、反方向立刻掉头，
-  别的挪了 `ScrollY` 就不滑了）；触控板照旧跟手，“减少动态效果”时一格一下跳。
-- 一行排好的 `TextLayout` 按（哪边，第几行）留着，换字体 / 颜色时作废。语法高亮用语言的 `Tokenizer`，每行开头的分词状态按需往下算。
-- 改了的字的底按 `TextLayout.SelectionRects` 量位置、涂满行高；对面留空的行画 45° 斜线（`StrokePolyline`，`Painter.Line` 只画横竖）。
-- 右边 14 pt 的概览条（`rulerW`）标改动，按住拖动滚。
-- 状态 `ged.Diff` 存在 `Doc.Ged`，`Set` 按两边缓冲区和版本（`gedText`）认内容变没变；`SetFull` 跟着 `St.FullDiff`（全文时不折）。
-- 颜色由 `gedStyle` 按 Grove 的主题给：底是和 mygo 那个 Diff 一样的 `diffAddedLine` / `diffDeletedLine`、`diffTint`；VS Code 风格（默认）下换成 VS Code 2026 的 Diff 颜色，
-  `PlainNumbers` 让改了的行号不变色，括号按层上色（见 [外观](look.md)）。
-- 最后一行下面能滚出来三行（`Diff.tail`）。
-
-### 改动上的按钮、上 / 下一处
-
-- 指针下的那块（没有时是跳到的那块）右上角的按钮由 `Style.HunkBar` 画（Grove 的 `hunkActions`，和 mygo 那个 Diff 共用；只在 `DiffState.HunkActions` 时给）。
-  它是绝对定位的子元素，滚动时贴在块顶；位置在 `View` 里按这一帧的滚动现算，`Bounds()` 只取大小（上一帧的位置跳了一处改动后就不对了）。查找条开着时往下让。
-- J / K 由 `Style.Keys`（`gedKeys`）按命令注册表的键（`diff.nextHunk` / `diff.prevHunk`）接走；Esc 先关查找条。
-- `applyWant` 在 `View` 里把要去的行（`want`）、恢复的顶（`wantTop`）、软换行开关时留住的行（`wrapAt`）换成 `ScrollY`。
-
-### 选字和选行
-
-- 选字是（哪边，行，字节）的一对位置，`HandleInput` 管拖选、双击选词（`tokens`）、三击选行、⇧ 点击；`InputCommand` 的 copy / selectAll 走 `Style.Copy`（`app.CopyText`）。
-- 元素 `Focusable`，按下时拿焦点；方向键、翻页、空格、Home / End 滚动，Esc 取消选择。
-- 按在行号、+ − 上（`inGutter`，正文左边）是选行：`Style.Lines` / `SetLines` 读写的就是 `DiffState.SelectedLines`（和 mygo 的 Diff 共用一份），
-  所以 `linesBar`、`StageLines` / `UnstageLines` / `DiscardLines` 不用改。只在 `DiffState.LineSelection` 时给。
-- 拖动扩大（`picking`，到上下边自动滚），⇧ 点从起点（`anchor`；不是在这里选的从原来的头）扩到那一行；选中的行涂 `LineSel` 再加左边一道 `LineMark`。
-- 选中的字（一行之内、不全是空白、`occurMax` 200 字节以内）每帧记成 `occ`（`occurText`，`ged/find.go`），画每一行时 `occurrences` 找出一样的几处、涂 `Code.Occurrence`（分大小写，选的那处自己不涂）。
-
-### 统一视图
-
-- `SetUnified`（跟 `DiffState.Layout == DiffUnified`）：`refold` 把行再过一遍 `Unified`。
-- 两边的格子合成一整行宽（`paneX` 都是 0），左边两列行号（`numR` 旧、`numR2` 新）；一行的字是哪边的由 `rowSide` 定（删掉的行是旧的，别的按新的）。
-- 行里改了的字按 `pairs`（`Set` 时从 `Changed` 行记下的旧 ↔ 新行号）找对面那一行再比；一处改动在行里的范围是 `hunkRow` / `hunkEnd`。
-- 选行、选字照旧是（哪边，第几行），按下时那边按这一行的 `rowSide`，没改的行两边都算选中。
-
-### 并排中间那道线
-
-`Diff.split`（左边占的比例，0 是一半，夹在 15%–85%，`splitMin`）由 `splitInput` 管：按住拖改、双击还原、指针在线上换成左右拖的样子；
-`geom` 按它分两边，折行宽跟着变。不记进 state.json（VS Code 也不记）。
-
-### ged 的就地编辑（`ged/edit.go`）
-
-- `DiffState.Editable` 时 `gedStyle` 把 `Style.Buf` 设成 `DiffState.New`（就是文件标签的缓冲区，`BindDiffEdit` 接的），`Style.Paste` 读剪贴板（`app.ReadClipboard`），
-  `Style.Bindings` 是 `app.DiffEditBindings()`，`Style.Indent` 是 `a.DocIndent(d)`。
-- 光标就是新的一边选中的字的 b 头（`caret`；a == b 时是一个点），点、拖、⇧ 点、双击照旧，打字替换选中的字。没选字时光标那一行垫 `Code.ActiveLine`，行号用 `ActiveLineNumber`。
-- `editKey` 接方向键、⌫ / ⌦、回车（照抄缩进）、Tab、Home / End、翻页。不接的键（没按 ⌘ / ⌃、不是 Esc）`input` 直接返回 false、不问 `Style.Keys`，
-  好让随后的 `InputText` 到它这里（所以有光标时 J / K 是字，不跳改动）。
-- `editInput` 接字、组字（`InputCompose`，组着的字只在 `layout` 里插进那一行、不缓存）、编辑菜单的 cut / paste / delete / undo / redo。
-- 改用 `replace`。`Buf.Edit` 一次一步撤销，mygo 合并打字的没导出，所以 ged 自己记每一组合了几次（`undoGroups`：`typeGroup` 1 s 内同类的连着打 / 连着删合一组；
-  缓冲区版本对不上——别处改过——就清掉）；`undo` 按组连调几次 `Buf.Undo` / `Redo`，光标放到 `changedEnd`。
-- 改完马上 `reload` → `update`：旧的一边没变时留着折叠展开、旧的一边的排版、选择，只扔新的一边的排版和分词状态。
-- 光标不闪（静止时不多画帧，见 [mygo-pitfalls 编辑器一节](../mygo-pitfalls.md#编辑器)）；`paintCaret` 记下 `caretBox`，`View` 里 `el.TextCaret` 交给输入法；
-  `revealCaret` 在 `View` 和 `Draw` 里把光标滚进视图（在折叠里就展开）。
-
-### 编辑键（`ged/keys.go`）
-
-- `command` 按 `Style.Bindings`（改过的键）再 `editor.DefaultBindings` 认出单键对应的 `editor.Command`，`runEdit` 自己做：挪行、复制行、删行、缩进、注释、接行、对调、⌘L、⌘D（ged 只有一个光标：
-  没选字时选中光标处的词，选了字时选中下一处一样的）、配对括号……
-- ged 不做的命令（多光标、补全……）交给 `Style.Fallback`（只有单栏编辑器给），没给时返回 false，键交回 `Style.Keys` / 窗口。
-  和弦（⌘K ⌘L 这种）和折叠只在单栏编辑器里认，Diff 里不认。
-- 改几行的命令都走 `rewriteLines`：一次 `replace` 换掉那几行（一步撤销），选择两头按那一行在哪处多 / 少了字挪。
-- 缩进一级（`indentUnit`）按 `Style.Indent`：自动时看文件里 Tab 多还是空格多、空格最少几个，再没有按语言。
-- 打字走 `typeChar`：跳过右括号、补另一半（`autoPairs` 是语言的 `AutoClose`，`NotIn` 按 `tokenAt` 的词种跳过字符串、注释里的引号）、括起选中的字、右括号对齐到配对那一行（`alignCloser`）。
-- 配对括号 `matchBracket` / `scanBracket` 只认单字的括号、最多看 `bracketScan`（5000）行，每帧在有光标时算一次（`brk`），画成 `Code.MatchingBracket` 的框。
-- 空白按 `Style.Whitespace`（设置的「显示空白」）由 `paintSpaces` 画。
-
-### 软换行（`ged/wrap.go`）
-
-- `Style.Wrap`（`a.WrapOf(d)`，⌥Z）开着时 `layout` 按那一格正文的宽（`setWrapWidth`，右边那格让出概览条）排，`lineLayout.n` 是折成几行。
-- 一个 `Row` 占几个“屏幕行”（`lh` 高）按两边折得多的那边算（统一视图按它那一边）。`tops` 是前缀和：没排过的行按格数估（宽字两格），排出来和估的不一样就标 `topsDirty` 下一次重算，
-  所以看得见的那段是准的、上面没看过的按估的。
-- `top(i)` / `rowIndex(v)` 在不换行时就是 i / v，滚动、点、画、概览条、上 / 下一处都改问它们；折出来的第 k 行画在 `top(i)+k`（`rowY`），`posAt` 按折出来的行问 `IndexAt`，
-  ↑ ↓ 先在一行折出来的几行里走（`vertical`）。
-- 开关时滚动位置留在顶上那一行（`wrapAt`）。
-
-### 查找和替换（`ged/find.go`）
-
-- `Diff.Find` 是查找条的状态（开没开、输入框的字），条本身由 `Style.FindBar`（`gedFindBar`）画、`View` 摆在右上角（贴着的“暂存这一块”往下让）。
-- `SetFind` 每帧拿输入框的字来比，变了才重找（`search`：只折 ASCII 的大小写，按对齐的顺序记新的一边每一行、旧的一边改了的行，最多 `findMax`（20000）处），当前那处挑视口往下的第一处。
-- `FindStep` 前后跳、绕回，`revealMatch` 展开折叠、把底栏的那处改动跟过去，`revealFind` 在 `View` 里滚过去。
-- `edit.find` / `edit.findNext`（`findIn`）在当前标签画着 ged 时（`findGed`：Diff 的 `UsingGed`，或单栏编辑器的 `UsingEd`）开查找条、跳下一处，不然照旧给 mygo 的编辑器。
-- 替换：`Find.Replace` / `With` 是查找条下面那一行（只在能编辑时有）；`edit.replace`（⌥⌘F，`replaceIn`）开 `OpenReplace`；`ReplaceOne` 只换新的一边的当前那处（在旧的一边时先跳），`ReplaceAll` 一次 `rewriteLines`。
-
-### 右键菜单（`ged/menu.go`）
-
-- `Style.Menu` 先拿到右键（⌃点）的按下、按着拖、松开；按下前 `menuAt` 记好 `Spot`（哪边、哪行、哪处改动、跳到文件时去新的一边哪行），按在选中的字外面时选择挪过去（就地编辑是放光标）。
-- 界面那边 `Style.Menu` 是 `menuPointer`（`ui/gmenu.go`，`menuPress` 收事件的那一半）。它不登记 `AddTarget`：菜单开着时在 Diff 别处右键只关掉，因为接收层盖着、ged 记不了新按在哪。
-- 菜单是 `gedMenu`（`ui/gedview.go`）：撤销 / 重做（就地编辑）、剪切 / 复制 / 粘贴、折叠条的展开、这一块的暂存 / 取消暂存 / 丢弃、选中的行的、复制这一行（旧的一边是“复制旧版本的这一行”）、查找、上 / 下一处、在编辑器中打开这一行、统一 / 全文 / 忽略行首行尾空白 / 软换行 / 就地编辑、全选、路径（`pathItems`）。
-  对着的是右键按下的那一处，不一定是当前标签，所以动作都按 d 做（软换行用 `ToggleWrapOf(d)`）。
-- 剪切、复制、粘贴、全选经 `Diff.Run` 走和编辑菜单一样的 `InputCommand`。
-- ⇧F10 / 菜单键由 `KeySpot` 按光标 / 当前那处改动定位置，`MenuKeyAt` 的 Build 先 `SetSpot`。
-
-### 折叠条分步展开
-
-- `Diff.open` 按那段没改的行在旧的一边的第一行记 `Reveal`（`Top` 接着上面的改动往下露几行、`Bottom` 接着下面的往上露、`All` 整段）。
-- `foldRows` 折的时候让出这些行，顺便按 `Fold` 行的 `Old` 记 `foldInfo`（这段的键、上 / 下挨不挨着改动）。
-- `ExpandMore(i, dir)` 一次露 `FoldStep`（20）行，剩的不比它多就整段；点条中间整段展开。
-- 箭头（`foldArrows`）画在行号那格里，`foldZone` 认点在哪个上，悬停的那个垫一层底（`hoverZ`）。
-- 右键记 `Spot.Fold`，菜单按 `FoldDirs` 给“往下 / 往上展开 20 行”。
-
-### 缩进参考线和粘性滚动
-
-- 缩进参考线（`ged/guides.go`，`Style.Guides`）：`prepGuides` 每帧按 `indentUnit` 定一级几格、就地编辑时找光标那一块（光标那一行最里面那道线、上下缩进比它深的连续行）；
-  `paintGuides` 在每个格子的正文第 0 格起每级画一道 1 pt 的线（`Code.IndentGuide`，那一块的是 `ActiveIndentGuide`）；空行看上下 `guideScan`（200）行内最近的有字的行（取浅的再深一级，不超过深的）。
-- 粘性滚动（`ged/sticky.go`，`Style.Sticky`，设置里关了就不给）：最多吸 `stickyMax`（5）行、不超过视图高的三分之一。`prepSticky` 每帧问调用方每一边（统一视图只问新的一边）顶上吸 k 行时下面那一行是第几行
-  （`rowLine`，对面留空的往下找）；界面那边 `gedStyle` 用 `Doc.DiffOutlineOf(side)`（两边各解析一份，换了缓冲区或版本才重来）的 `outline.Tree.Sticky` 给。
-  `paintSticky` 在那一栏顶上盖编辑器的底、行号、排好的那一行（只画第一行）和 3 px 渐淡的阴影（`StickyShadow`），`stickyInput` 悬停垫一层、按下滚到那一行刚好露在还吸着的几行下面。
-
-### 忽略行首行尾空白
-
-- `workspace.State.DiffTrim`（命令 `diff.ignoreTrim` / `ToggleDiffTrim`，存进 state.json）每帧经 `SetIgnoreTrim` 给 ged，`AlignTrim` 拿去掉首尾空白的行去配。
-- 只改了空白的行是 `Same` 但两边的字不一样，画的时候各画各的；查找按 `sameText` 决定旧的一边借不借新的一边的结果。
-- 改动、补丁都按看到的 `Hunks` 走，补丁的上下文取自要套的那一份，所以藏起来的空白改动不碍事。
-- mygo 那个 Diff 不认这个开关（命令在没用 ged 时灰着）。
-
-### 跳到行
-
-`edit.goToLine`（⌃G）在 `gedFind` 时开命令面板的 ":"（`goToLine`）。`lineItems` 对 ged 的 Diff 按 `Ged.LineCount` 写共几行，`JumpHere` 交给 `Diff.GoToLine`
-（新的一边，空的时旧的一边；`rowOfLine` 展开折叠，`want` 滚过去）。
-
-### 测试
-
-`internal/ui`（`gedview_test.go`）：
-
-- `TestGedDiff`：在临时仓库里开 Diff，看折叠、点折叠条展开、滚轮、切全文。
-- `TestGedHunks`：上 / 下一处，暂存这一块只暂存那一块。
-- `TestGedSelect`：拖选、⌘C、双击、Esc、J、翻页。
-- `TestGedLines`：拖着选行、Esc、点一行 ⇧ 点一行、暂存选中的行只暂存那两行。
-- `TestGedUnified`：切到统一后一栏、上 / 下一处、点删掉的行的行号选旧的一边、暂存选中的行，再切回并排。
-- `TestGedEdit`：就地编辑的光标、打字、一步撤销、回车缩进、J 打进去、组字、剪切粘贴、⌘S 存盘。
-- `TestGedFoldScope`：折叠条写的函数。
-- `TestGedWrap`：软换行后长行变高、短行不变、点第二截放光标、↑ ↓ 在折出来的行里走、关了还原。
-- `TestGedFind`：⌘F 开条、数处数、回车跳到折叠里那处会展开、Esc 关。
-- `TestGedMenu`：右键开 ged 的菜单、记的位置、只看时没有剪切粘贴、复制这一行（两边）、菜单里暂存这一块只暂存那一块、⇧F10 开菜单再选查找。
-- `TestGedFoldExpand`：开头那段只有往上的箭头、点箭头露 20 行、中间那段两个箭头、右键折叠条的菜单、剩的不多时不画箭头、点条中间整段展开。
-- `TestGedTrim`：菜单里勾上忽略空白后只剩真改了的那处、暂存这一块只暂存那一行。
-- `TestGedGoToLine`：⌃G 开 ":"、跳到折着的第 150 行会展开并滚进视图。
-- `TestGedOccurrences`：选中一个词后两边别处一样的词都涂、选的那处自己不算。
-- `TestGedSplit`：拖中间那道线到 30% 处、右边正文跟着左挪、不选字，双击还原，再就地编辑放光标（截图 ged-caretline.png 看光标那一行）。
-- `TestGedEditKeys`：用真键看 ⌥↓、⌘/、⇧⌘K、⌘]、打 ( 补 )、撤销，再 ⌥⌘F 替换一处、全部替换（截图 ged-keys.png 看括号框和空白、ged-replace.png 看替换条）。
-
-`internal/ged`：
-
-- `TestUnified`（排成一栏的顺序和折叠）、`TestAlignTrim`、`TestFoldReveal` / `TestExpandMore`（折的时候让出露的行、剩的不多整段展开）、`TestOccurrences`（全是空白、跨行的不涂）。
-- `TestChangedEnd` / `TestWordMoves`（撤销后的光标、按词移动）、`TestChangeAfter`（折叠条找的那处改动）。
-- `TestEditCommands` / `TestAutoClose` / `TestEditCommandUndo` / `TestCommandLookup` / `TestMatchBracket` / `TestReplace`。
-
-暂存本身：`git` 包 `TestHunkPatchApplies` / `TestHunkPatchOneOfTwo` / `TestHunkPatchFormat` / `TestLinesPatch`；`app` 包 `TestLinesEdits`、`TestDiffEditInPlace` / `TestDiffEditBindings`、
-`TestPeekHunkAt` / `TestPeekRevert` / `TestPeekStage`；`ui` 包 `TestHunkOps`、`TestDiffEditUI`。
-
-## 文件标签的 ged 编辑器
-
-文件标签默认也用 ged（`ged.NewEditor` 的单栏模式，`ui/gedfile.go`）：用不用它、和 mygo 的 `editor.State` 怎么对齐、补全和悬停、改动竖条、键和右键菜单、折叠、小地图见 [编辑器部件（internal/ged）](editor.md#编辑器部件internalged)。这里只说它和暂存有关的一处：有改动的行点行号（`Style.GutterClick` → `a.TogglePeek`）开的就地卡和 mygo 编辑器共用 `peekCardAt`（`edPeekCard` 按 `CharBox` 算卡顶），见下面“编辑器改动条和就地卡”。
-
-## mygo 的 Diff（`WORKBENCH_GED=off`）
-
-`useGed` 为假时 Diff 走 `restingDiff`（`ui/caret.go`，包着 `editor.DiffView`）。下面这些只在这条路上起作用：
-
-- `Indicators` 是 `DiffBars`（行首红 / 绿竖条）：mygo 只在有竖条时把改了的词涂成红 / 绿，别的是灰的。
-- 改了的行的底色 Grove 自己画（`ui/difftint.go`）：mygo 混进背景的比例固定、太淡，`restingDiff` 让它不涂底（`clearDiffBackground`：`NoBackground`，`Theme.Background` 透明），
-  外面包一层编辑器底色的 `Column`，`Draw(diffUnder)` 每帧按 `DiffState.Hunks` / `LineTop` / `ScrollY` 现算位置（`diffTints`，`TestDiffTints` 盯着）涂 VS Code 默认主题的 `#9bb95533` / `#ff000033`，
-  选中的行也在这里画。竖条、行号和改了的词还是 mygo 画在上面，颜色是 `diffTint` 换的 `Theme.Added` / `Deleted`。
-- 折起来的未修改行由 `RenderSeparator = diffSep`（`ui/diffsep.go`）画成整行一条淡底，左边“N 行未修改”；点了走 `expandSep`（开头 / 结尾的往改动那边展开 `Step` 行（mygo 默认 100），中间的、不到 `Step` 行的或按住 ⇧ 全部展开）。
-- 折叠条后面的字是 `sepScope`：下面那段改动第一行（间隔开头 + 上下文 + 藏着的行数 + 上下文）所在的符号那一行。`Doc.DiffOutline` 是旧的一边的大纲（按缓冲区和版本缓存），
-  `outline.Tree.Scope` 找包着那一行的最里层符号。mygo 只给折叠条的行数和在不在头尾，间隔从哪行开始是没导出的 `DiffSeparator.a`，`sepStart` 用 reflect 读，读不到就不写（`TestSepStart` 盯着）。
-- 块上的按钮是 `DiffState.RenderHunkActions`（同一个 `hunkActions`），选行是 mygo 自己的 `LineSelection`。
-- 改动在滚动条槽里的标记是 mygo 自己画的；空出来那边的斜纹和 mygo 自带的折叠条样式在 mygo 里，Grove 不改。
-
-## 编辑器改动条和就地卡（`app/peek.go`、`ui/peek.go`）
-
-编辑器行号旁的改动条可以点开看那块的原文：点改动条（或改动块里的行号）、或命令 `diff.peekHunk`，在这一块下面弹一张卡。
-
-- 状态和动作在 `app/peek.go`：`Peek`（开着的那张卡：哪个标签、第几块）、`DocHunks`、`HunkAt`、`TogglePeek`、`SyncPeek`、`PeekStep`（卡上的 ↑ ↓）；卡画在 `ui/peek.go`（`peekCardAt`）。
-- 接点击：mygo 编辑器上 `peekSetup` 设 `St.OnGutterClick`（有改动块时接管整条装订线，块外的行号照旧选中那一行）；ged 编辑器上是 `Style.GutterClick`，卡由 `edPeekCard` 摆。
-- 卡上能做的：
-  - 还原（`PeekRevert`：`DiffState.Revert`，直接改缓冲区，⌘Z 能撤，不问）。
-  - 暂存（`PeekStage`）：要先保存；补丁按 HEAD 里的原样字节和磁盘上的算，同样走 `ReplaceLines` + `HunkPatch`，`git apply --cached`。暂存区里这个文件已有挨着的改动时 git 可能不接，报出来。
-  - 在 Diff 中打开（`PeekOpenDiff`：未暂存的优先；设 `Doc.HunkLine`，`diffLook` 用 `HunkFromLine` 滚到新文件里同一行所在的那块，Diff 比的是暂存区，块的序号不一定一样）。
-- 块是编辑器的 `DiffState{Old: d.Base, New: d.Buf}` 算的（和 HEAD 比，历史版本和父提交比），和改动条同一种算法。`DiffState` 按标签留着（最近 `peekCacheMax` 4 个），
-  缓冲区改了 mygo 只重比改动附近的行，不每次整篇 diff（装订线接管点击每帧都要问有没有块）。
-- 编辑器里的块随缓冲区重算，`SyncPeek` 跟着挪：块没了就关；选区变了，光标停在某块开头（上 / 下一处改动、卡上的 ↑ ↓）卡跟过去，不然关掉。
-- 卡是叠在代码上的（盖住块下面几行），mygo 编辑器和 ged 编辑器都是。想像 VS Code 那样插在两行之间、把下面的代码推下去，mygo 那边要普通编辑器（`editor.State`）能在行间留一块高度给调用方画；
-  现在只有 mygo 的 Diff 查看器有（`DiffState.Annotations` + `RenderAnnotation`，内部是 `blockAnnotation`），`State` 没有对应的口子。
+# Diff and staging
+
+[← Architecture overview](../architecture.md) · [Git](git.md)
+
+Staging / unstaging / discarding hunks and lines, and how the patches are built; the Diff tab (by default Grove's own
+`internal/ged`) and the in-place operations and in-place editing on it; the peek card on the editor's change bar. For the
+single-pane ged editor in file tabs, see [editor.md](editor.md#editor-component-internalged).
+
+## The two Diff code paths
+
+- **Default: ged**. Diff tabs, compare tabs and the replace preview all use Grove's own `internal/ged` (`useGed`,
+  `ui/gedview.go`); side by side, unified and editing in place are all drawn by it. The file-tab editor is also ged by
+  default (`useGedEditor`, `ui/gedfile.go`; see [editor.md](editor.md#editor-component-internalged)).
+- **Falling back to mygo**: `WORKBENCH_GED=off` (`gedOn`) makes Diffs fall back to mygo's `editor.DiffView`;
+  `WORKBENCH_GED_EDITOR=off` (`gedEditorOn`) makes file tabs fall back to mygo's `editor.View`. Tests of the mygo path pin
+  it with `mygoDiff(t)` / `gedEditor(t, false)`.
+- Shared by both paths: `docs.Doc.DiffSt` (mygo's `editor.DiffState`: both sides' buffers, `SelectedLines`, `Layout`,
+  `Editable`), the hunk buttons `hunkActions`, the `linesBar` shown after selecting lines, and the staging logic in
+  `app/hunks.go` / `app/lines.go`. When `Doc.UsingGed()` is true (a `Doc.Ged` has been built), previous / next change and
+  the pairing for line staging follow ged's `Hunks`.
+
+## Staging, unstaging and discarding
+
+### Hunks (`app/hunks.go`)
+
+In a Diff tab, each hunk has stage / unstage / discard buttons at its top right (in ged they are also in the context menu).
+
+- What can be clicked is decided by `HunkOps`: an unstaged modified file (`Code == 'M'`) can be staged and discarded; a
+  staged modified / renamed file (`M` / `R`) can be unstaged. Untracked files, conflicted files, files in a commit, and
+  whole files that were added / deleted / changed type have no hunk buttons (they're handled per file in the Git panel);
+  neither do compare tabs or the replace preview.
+- `diffContent` (`ui/tabs.go`) sets `DiffState.HunkActions` accordingly; it doesn't while editing in place (see "Editing in place" below).
+- The patch (`hunkPatch`) is computed from the raw contents of both sides as read by this Diff tab (`Doc.Raw[0]` /
+  `Raw[1]`): first `git.ReplaceLines` applies that hunk to one side to get the other full text, then `git.HunkPatch`
+  diffs them into a patch containing only that hunk:
+  - Stage (`StageHunk`): apply the hunk to the old side, `git apply --cached -`.
+  - Unstage (`UnstageHunk`): remove the hunk from the new side, `git apply --cached -R -`.
+  - Discard (`DiscardHunk`): likewise remove the hunk, with `git apply -R -` on the working tree; `a.AskDanger` asks first.
+- If the line numbers don't match (the diff was just reread) or the patch is empty, it reports "This hunk no longer
+  matches the file on disk". git apply only applies when the context matches, so if the file on disk changed after the
+  diff was read, it fails instead of making a mess.
+
+### Lines (`app/lines.go`)
+
+Selecting a few lines and staging them is line staging: click line numbers to select lines (⇧-click extends to that
+line), then stage / unstage / discard only the selected lines. What's allowed is the same as for hunks (`LinesOps`); the
+commands are `diff.stageLines` / `diff.unstageLines` / `diff.discardLines`, and the `linesBar` under the Diff has buttons too.
+
+- `LinesEdits` turns the selected lines into a list of `git.LineEdit`: within a hunk, old line i and new line i form a
+  pair (for i less than the smaller of the two sides' line counts).
+  - Stage (changes the old side): for a selected new line, a paired one replaces its counterpart, an unpaired one is
+    inserted at the end of the hunk's old lines; a selected old line is deleted.
+  - Unstage, discard (change the new side): for a selected new line, a paired one is changed back to its counterpart, an
+    unpaired one is deleted; for a selected old line, a paired one is inserted back before its counterpart, an unpaired
+    one is inserted at the end of the hunk's new lines.
+  - Unchanged context lines in the selection do nothing; if every selected line is unchanged, a toast says "No changes on the selected lines".
+- `git.LinesPatch` generates a patch containing only those lines and **always applies forward** (never `-R`), so there's
+  no need to deal with the context problems of reverse patches, nor to compute a second "without the selected lines" full text:
+  - Stage: applied on top of the old side (the index), `git apply --cached`.
+  - Unstage: applied on top of the new side (the new side of a staged Diff is the index), `git apply --cached`; the working tree is untouched.
+  - Discard: applied on top of the new side (the working tree), `git apply`; asks first.
+- The hunks used for pairing are `diffHunks`: ged's `Hunks` when `UsingGed`, otherwise mygo's `DiffState.Hunks()` (the
+  two align the sides differently, and the lines the patch pairs must match what you see).
+- Afterwards the selection is cleared (`ClearSelectedLines`); Esc clears it too.
+
+### Building the patch (`git/hunk.go`)
+
+- `HunkPatch(path, from, to)`: `from` and `to` differ in only one contiguous run; strip the identical head and tail, and
+  what's left in the middle is the hunk, which is handed to `LinesPatch`.
+- `LinesPatch(path, old, edits)`: git diff format, one hunk per change, each with `HunkContext` (3) lines of context
+  above and below; changes close together (no more than 2×`HunkContext` unchanged lines between them) are merged into one hunk.
+  `edits` must be sorted by `Start` and non-overlapping; anything out of range returns "". When something is inserted
+  after a last line with no trailing newline, that line is counted as changed too and gets its newline; file names with
+  quotes, backslashes or control characters are escaped the way git does it (`patchName`).
+- Line numbers: the Diff view splits lines on `"\n"` (CRLF counts as one line), while `git.Lines` splits them the way git
+  does (each line keeps its own `"\n"`); for a file ending in a newline the view has one extra empty line compared with git, which isn't counted.
+
+## Diff tabs
+
+### Previous / next change, previous / next file
+
+- Previous / next change (J / K, `diff.nextHunk` / `diff.prevHunk`; the tab-bar buttons, the "change i / n" in the
+  bottom bar) are `HunkPos` / `GoToHunk` in `app/diffnav.go`: with `UsingGed` they ask `Diff.Current` / `Diff.GoToHunk`,
+  otherwise mygo's `CurrentHunk` / `GoToHunk`.
+- ⌥J / ⌥K jump to the next / previous file (`diff.nextFile` / `diff.prevFile` → `StepFile`, `app/hunks.go`): uncommitted
+  changes walk all repositories in Git panel order, while a commit's files walk the files of that commit; they open as preview tabs.
+
+### Editing in place (`app/diffedit.go`)
+
+A Diff against the working-tree side (unstaged, untracked, a text Diff whose file still exists: `CanEditDiff`) has a
+pencil toggle on its tab bar (command `diff.editInPlace`, `ToggleDiffEdit`).
+
+- Turning it on opens a tab for that file behind it (pinned) and pins the Diff tab too, with focus staying on the Diff;
+  `Doc.EditDoc` points at that file tab.
+- `BindDiffEdit` connects `DiffState.New` to the file tab's buffer every frame and sets `Editable` to true (while the
+  file hasn't finished loading or can't be edited, it is view-only for now). Typing, undo and save all belong to the file
+  tab: `Save` on the Diff saves that tab (⌘S works as usual, `app/tabs.go`), and the dot on the tab, the save button on the
+  tab bar and the status bar's "Editing in place · unsaved" follow `DiffDirty`.
+- While editing there are no hunk-level stage / discard buttons and no line selection (the file on disk and the buffer
+  don't match); key bindings switch to `DiffEditBindings` (dropping unmodified J / K, which you need for typing).
+- Clicking the pencil again, closing the file tab, or the Diff no longer being against the working tree (it got staged)
+  calls `Doc.StopEdit`: the new side becomes a copy and the file is reread from disk, so the view-only Diff no longer
+  follows unsaved text in the file tab; the file tab stays open, with its unsaved changes intact.
+- The "Open in Editor" icon on the tab bar is a file (the same as on Git panel rows); the pencil only means editing in place.
+- For typing and undo on the ged side, see "Editing in place in ged" below.
+
+### `diffLook`: per-frame look (shared by both paths)
+
+`diffLook` (`ui/tabs.go`) sets the look of Diff tabs, compare tabs and the replace preview every frame:
+
+- Side by side / unified: when one side is empty (`oneSided`: a new file, a deleted file), it is a single unified column
+  regardless of `unified`, and the side-by-side / unified button on the tab bar is grayed out. ged follows `DiffState.Layout` (`SetUnified`).
+- Soft wrap: `DiffState.Wrap` follows `WrapOf` (⌥Z's `canWrap` also accepts text Diffs), and ged's `Style.Wrap` takes it too.
+- When freshly read, or after switching between around-changes and full-file (`Doc.ToHunk`), the hunk at the cursor is
+  scrolled into view; for ged this is `Doc.GedFocus`: a positive number is the new-side line to land on (+1), and -1 means
+  the change just jumped to (or the first one if there isn't one yet).
+- The bottom bar's `compareLabel` reads "Staged changes" / "Unstaged changes" for staged / unstaged, with things like `HEAD ↔ index` in the tooltip.
+- The remaining settings (`Indicators`, `RenderSeparator`) only affect the mygo Diff; see "The mygo Diff" at the end.
+
+## The ged Diff (`internal/ged`)
+
+`internal/ged` is Grove's own editor widget. It only uses mygo's public interfaces (`ui.ShapeRichText` for text shaping,
+`Painter` for drawing, `Element.HandleInput` for input), doesn't touch mygo's `ui/editor` views, and knows nothing about
+Grove's theme or `internal/ui`. The UI-side wiring is in `ui/gedview.go` (`gedDiff`, `gedStyle`, `gedMenu`, `gedKeys`, `gedFindBar`).
+
+### Model (`ged/diff.go`, no UI)
+
+- `Align` aligns the lines of the two sides into `Row`s (`Same` / `Changed` / `Deleted` / `Added`): it strips the
+  identical head and tail, then runs Myers on the middle; past `diffMax` (1000) steps it stops matching and treats the
+  whole run as deletions plus additions. Where d lines are deleted and a lines added, the first min(d, a) lines pair up as
+  `Changed`, and the extra lines face blanks.
+- `Folded` folds runs of unchanged lines more than `Context` (3, `ged/view.go`) lines away from a change into a single
+  `Fold` row. After the number, the fold bar shows the function containing the change below it, as given by
+  `Style.FoldScope`: `changeAfter` finds that change's line on the old side, and on the UI side `scopeAt`
+  (`ui/diffsep.go`) looks it up in `DiffOutline`, shared with the mygo Diff's `sepScope`.
+- `Words` diffs changed lines word by word to find which byte ranges changed; when almost everything differs (less than
+  20% the same), the whole line counts as changed, minus indentation and trailing whitespace (`whole`).
+- `Hunks` are the individual changes: consecutive non-`Same` rows after alignment, with both sides' line ranges
+  zero-based and half-open, the same as `editor.DiffHunk`.
+- `Unified` lays the rows out in one column: each change lists its old-side lines as `Deleted`, then its new-side lines as `Added`.
+
+### View (`ged/view.go`)
+
+- A single element that manages its own scrolling: `ScrollY` moves both sides together, while horizontally each side
+  scrolls on its own; `Draw` only lays out and paints visible lines, and the whole `paint` is clipped to the view (a
+  half-visible last line doesn't paint over the bottom bar).
+- One mouse-wheel notch glides over 150 ms with ease-out, like mygo's own scroll containers (`ged/glide.go`: building the
+  view computes this frame's `ScrollY` from the start point and curve; consecutive notches chain together, reversing
+  direction turns around immediately, and gliding stops if something else moves `ScrollY`); the trackpad still tracks
+  your fingers directly, and with "Reduce motion" each notch jumps in one step.
+- Each laid-out line's `TextLayout` is kept per (side, line number) and invalidated when the font / colors change. Syntax
+  highlighting uses the language's `Tokenizer`, with the tokenizer state at the start of each line computed downward on demand.
+- The background of changed text is positioned with `TextLayout.SelectionRects` and fills the line height; lines facing a
+  blank get 45° hatching (`StrokePolyline`, since `Painter.Line` only draws horizontal and vertical lines).
+- A 14 pt overview ruler on the right (`rulerW`) marks the changes; press and drag on it to scroll.
+- The state, `ged.Diff`, lives in `Doc.Ged`; `Set` uses both sides' buffers and versions (`gedText`) to tell whether the
+  content changed; `SetFull` follows `St.FullDiff` (no folding in full-file mode).
+- Colors are supplied by `gedStyle` from Grove's theme: the backgrounds are the same `diffAddedLine` / `diffDeletedLine`
+  and `diffTint` as the mygo Diff; in the VS Code style (the default) they switch to VS Code 2026's Diff colors,
+  `PlainNumbers` keeps the line numbers of changed lines uncolored, and brackets are colored by nesting level (see [Appearance](look.md)).
+- You can scroll three lines past the last line (`Diff.tail`).
+
+### Hunk buttons, previous / next change
+
+- The buttons at the top right of the hunk under the pointer (or the hunk jumped to, if none) are drawn by
+  `Style.HunkBar` (Grove's `hunkActions`, shared with the mygo Diff; only provided when `DiffState.HunkActions`). It is an
+  absolutely positioned child that sticks to the top of the hunk while scrolling; its position is computed in `View` from
+  this frame's scroll, and `Bounds()` is only used for its size (last frame's position is wrong after jumping to another
+  change). It moves down out of the way when the find bar is open.
+- J / K are taken by `Style.Keys` (`gedKeys`) using the keys from the command registry (`diff.nextHunk` / `diff.prevHunk`); Esc closes the find bar first.
+- `applyWant` in `View` turns the target line (`want`), the restored top (`wantTop`) and the line held across a soft-wrap toggle (`wrapAt`) into `ScrollY`.
+
+### Selecting text and lines
+
+- A text selection is a pair of (side, line, byte) positions; `HandleInput` handles drag selection, double-click to select
+  a word (`tokens`), triple-click to select a line and ⇧-click; `InputCommand`'s copy / selectAll go through `Style.Copy` (`app.CopyText`).
+- The element is `Focusable` and takes focus on press; arrow keys, Page Up / Down, Space and Home / End scroll, Esc clears the selection.
+- Pressing on the line numbers or + − (`inGutter`, left of the text) selects lines: what `Style.Lines` / `SetLines` read
+  and write is `DiffState.SelectedLines` itself (one copy shared with the mygo Diff), so `linesBar` and `StageLines` /
+  `UnstageLines` / `DiscardLines` need no changes. Only provided when `DiffState.LineSelection`.
+- Dragging extends the selection (`picking`, auto-scrolling at the top and bottom edges); ⇧-click extends from the start
+  point (`anchor`; if the selection wasn't made here, from its original head) to that line. Selected lines are filled with
+  `LineSel` plus a `LineMark` bar on the left.
+- Selected text (within one line, not all whitespace, at most `occurMax` 200 bytes) is recorded each frame as `occ`
+  (`occurText`, `ged/find.go`); when painting each line, `occurrences` finds the identical spots and fills them with
+  `Code.Occurrence` (case-sensitive; the selected spot itself isn't filled).
+
+### Unified view
+
+- `SetUnified` (following `DiffState.Layout == DiffUnified`): `refold` runs the rows through `Unified` again.
+- The two sides' cells merge into one full-width row (`paneX` is 0 for both), with two columns of line numbers on the
+  left (`numR` old, `numR2` new); which side a row's text comes from is decided by `rowSide` (deleted lines are old, everything else is new).
+- Changed text within a row finds its counterpart line through `pairs` (old ↔ new line numbers recorded from `Changed`
+  rows in `Set`) and diffs against it; a change's extent in rows is `hunkRow` / `hunkEnd`.
+- Line and text selection are still (side, line number); on press, the side comes from that row's `rowSide`, and unchanged lines count as selected on both sides.
+
+### The side-by-side divider
+
+`Diff.split` (the fraction taken by the left side; 0 means half, clamped to 15%–85%, `splitMin`) is managed by
+`splitInput`: press and drag to change it, double-click to reset, and the pointer turns into a left-right resize cursor
+over the line; `geom` splits the two sides by it, and the wrap width follows. It isn't saved to state.json (VS Code doesn't save it either).
+
+### Editing in place in ged (`ged/edit.go`)
+
+- When `DiffState.Editable`, `gedStyle` sets `Style.Buf` to `DiffState.New` (which is the file tab's buffer, connected
+  by `BindDiffEdit`), `Style.Paste` reads the clipboard (`app.ReadClipboard`), `Style.Bindings` is
+  `app.DiffEditBindings()`, and `Style.Indent` is `a.DocIndent(d)`.
+- The caret is the b end of the new side's text selection (`caret`; a point when a == b); click, drag, ⇧-click and
+  double-click work as before, and typing replaces the selected text. With no text selected, the caret line gets
+  `Code.ActiveLine` behind it and its line number uses `ActiveLineNumber`.
+- `editKey` handles the arrow keys, ⌫ / ⌦, Return (copying the indentation), Tab, Home / End and Page Up / Down. Keys it
+  doesn't handle (no ⌘ / ⌃, not Esc) make `input` return false right away without asking `Style.Keys`, so that the
+  following `InputText` reaches it (which is why J / K are text, not change navigation, while there's a caret).
+- `editInput` handles text, composition (`InputCompose`; composed text is only inserted into that line in `layout`, not
+  cached) and the Edit menu's cut / paste / delete / undo / redo.
+- Changes go through `replace`. `Buf.Edit` is one undo step per call and mygo's typing coalescing isn't exported, so ged
+  records how many edits each group combined itself (`undoGroups`: `typeGroup` merges same-kind consecutive typing /
+  deleting within 1 s into one group; if the buffer version doesn't match — something else changed it — the groups are
+  cleared); `undo` calls `Buf.Undo` / `Redo` that many times per group and puts the caret at `changedEnd`.
+- After a change it immediately runs `reload` → `update`: if the old side didn't change, it keeps the fold expansions, the
+  old side's layouts and the selection, discarding only the new side's layouts and tokenizer states.
+- The caret doesn't blink (no extra frames while idle; see [the editor section of mygo-pitfalls](../mygo-pitfalls.md#editor));
+  `paintCaret` records `caretBox`, and `View` hands it to the input method via `el.TextCaret`; `revealCaret` scrolls the
+  caret into view in `View` and `Draw` (expanding a fold if it's inside one).
+
+### Editing keys (`ged/keys.go`)
+
+- `command` maps a single key to an `editor.Command` via `Style.Bindings` (remapped keys) and then
+  `editor.DefaultBindings`, and `runEdit` carries it out itself: move line, copy line, delete line, indent, comment, join
+  lines, transpose, ⌘L, ⌘D (ged has only one caret: with no text selected it selects the word at the caret, with text
+  selected it selects the next identical occurrence), matching bracket…
+- Commands ged doesn't do (multiple carets, completion…) are handed to `Style.Fallback` (only the single-pane editor
+  provides one); without it, it returns false and the key goes back to `Style.Keys` / the window. Chords (like ⌘K ⌘L) and
+  folding are only recognized in the single-pane editor, not in Diffs.
+- Commands that change several lines all go through `rewriteLines`: a single `replace` swaps out those lines (one undo
+  step), and both ends of the selection shift by how many characters their line gained or lost.
+- One indent level (`indentUnit`) follows `Style.Indent`: when automatic, it checks whether the file has more tabs or
+  spaces and the smallest number of spaces, then falls back to the language.
+- Typing goes through `typeChar`: skipping over a closing bracket, inserting the other half (`autoPairs` is the language's
+  `AutoClose`; `NotIn` uses the token kind from `tokenAt` to skip quotes inside strings and comments), wrapping selected
+  text, and aligning a closing bracket to its matching line (`alignCloser`).
+- Matching brackets (`matchBracket` / `scanBracket`) only recognize single-character brackets and look at most
+  `bracketScan` (5000) lines; it is computed once per frame when there's a caret (`brk`) and drawn as a `Code.MatchingBracket` box.
+- Whitespace is drawn by `paintSpaces` according to `Style.Whitespace` (the "Show Whitespace" setting).
+
+### Soft wrap (`ged/wrap.go`)
+
+- When `Style.Wrap` (`a.WrapOf(d)`, ⌥Z) is on, `layout` lays out to the width of that cell's text (`setWrapWidth`; the
+  right cell leaves room for the overview ruler), and `lineLayout.n` is how many lines it wraps into.
+- How many "screen lines" (`lh` tall) a `Row` takes is the larger of the two sides' wrap counts (in the unified view, its
+  one side). `tops` is a prefix sum: lines not yet laid out are estimated by cell count (wide characters count as two),
+  and when the laid-out result differs from the estimate, `topsDirty` marks it for recomputation next time — so the visible
+  stretch is exact and the unseen part above is estimated.
+- Without wrapping, `top(i)` / `rowIndex(v)` are just i / v; scrolling, clicking, painting, the overview ruler and
+  previous / next change all ask them instead. The kth wrapped line is painted at `top(i)+k` (`rowY`), `posAt` asks
+  `IndexAt` by wrapped line, and ↑ ↓ first move among a line's wrapped lines (`vertical`).
+- Toggling it keeps the scroll position on the top line (`wrapAt`).
+
+### Find and replace (`ged/find.go`)
+
+- `Diff.Find` is the find bar's state (open or not, the input text); the bar itself is drawn by `Style.FindBar`
+  (`gedFindBar`) and placed at the top right by `View` (the adjacent "Stage Hunk" moves down out of the way).
+- `SetFind` compares against the input text every frame and only searches again when it changed (`search`: ASCII-only
+  case folding, recording in aligned order every line of the new side and the changed lines of the old side, at most
+  `findMax` (20000) matches); the current match is the first one from the viewport down.
+- `FindStep` jumps forward and backward with wrap-around, `revealMatch` expands folds and moves the bottom bar's current
+  change along, and `revealFind` scrolls there in `View`.
+- `edit.find` / `edit.findNext` (`findIn`), when the current tab is drawn by ged (`findGed`: a Diff's `UsingGed`, or the
+  single-pane editor's `UsingEd`), open the find bar / jump to the next match; otherwise they go to the mygo editor as before.
+- Replace: `Find.Replace` / `With` is the row below the find bar (only present when editable); `edit.replace` (⌥⌘F,
+  `replaceIn`) opens `OpenReplace`; `ReplaceOne` replaces only the current match on the new side (jumping first if the
+  current one is on the old side), and `ReplaceAll` is a single `rewriteLines`.
+
+### Context menu (`ged/menu.go`)
+
+- `Style.Menu` gets the right-click (⌃-click) press, drag and release first; before the press, `menuAt` records the
+  `Spot` (which side, which line, which change, and which new-side line to go to when jumping to the file); pressing
+  outside the selected text moves the selection there (when editing in place, it places the caret).
+- On the UI side, `Style.Menu` is `menuPointer` (`ui/gmenu.go`, the event-receiving half of `menuPress`). It doesn't
+  register `AddTarget`: while the menu is open, right-clicking elsewhere in the Diff only closes it, because the receiving
+  layer covers it and ged can't record where the new press landed.
+- The menu is `gedMenu` (`ui/gedview.go`): undo / redo (editing in place), cut / copy / paste, expanding the fold bar,
+  staging / unstaging / discarding this hunk, the same for the selected lines, Copy Line ("Copy Original Line" on the old
+  side), find, previous / next change, Open Line in Editor, unified / full-file / ignore leading/trailing whitespace / soft
+  wrap / edit in place, select all, and paths (`pathItems`). It targets the spot where the right-click happened, which
+  isn't necessarily the current tab, so every action works on d (soft wrap uses `ToggleWrapOf(d)`).
+- Cut, copy, paste and select all go through `Diff.Run` to the same `InputCommand` as the Edit menu.
+- ⇧F10 / the menu key use `KeySpot` to position from the caret / current change, and `MenuKeyAt`'s Build calls `SetSpot` first.
+
+### Expanding fold bars step by step
+
+- `Diff.open` records a `Reveal` keyed by the old-side first line of the unchanged run (`Top`: how many lines to reveal
+  downward from the change above, `Bottom`: how many upward from the change below, `All`: the whole run).
+- `foldRows` leaves those lines out when folding, and also records `foldInfo` keyed by the `Fold` row's `Old` (the run's
+  key, and whether it borders a change above / below).
+- `ExpandMore(i, dir)` reveals `FoldStep` (20) lines at a time; if no more than that remain, the whole run. Clicking the middle of the bar expands the whole run.
+- The arrows (`foldArrows`) are drawn in the line-number cell; `foldZone` tells which one was clicked, and the hovered one gets a background (`hoverZ`).
+- Right-click records `Spot.Fold`, and the menu offers "Expand 20 Lines Down / Up" according to `FoldDirs`.
+
+### Indent guides and sticky scroll
+
+- Indent guides (`ged/guides.go`, `Style.Guides`): `prepGuides` determines each frame how many cells one level is from
+  `indentUnit`, and when editing in place finds the caret's block (the innermost guide on the caret line, plus the
+  consecutive lines above and below that are indented deeper); `paintGuides` draws a 1 pt line per level starting at cell
+  0 of each cell's text (`Code.IndentGuide`; `ActiveIndentGuide` for that block). Blank lines look at the nearest non-blank
+  lines within `guideScan` (200) lines above and below (taking the shallower one plus one level, but no deeper than the deeper one).
+- Sticky scroll (`ged/sticky.go`, `Style.Sticky`; not provided when turned off in Settings): at most `stickyMax` (5)
+  lines stick, and no more than a third of the view's height. `prepSticky` asks the caller every frame, for each side (in
+  the unified view only the new side), which line sits below when k lines are stuck at the top (`rowLine`, searching
+  downward past blanks facing the other side); on the UI side, `gedStyle` answers with `outline.Tree.Sticky` from
+  `Doc.DiffOutlineOf(side)` (parsed separately for each side, redone only when the buffer or version changes).
+  `paintSticky` covers the top of that column with the editor background, line numbers, the laid-out line (first wrapped
+  line only) and a 3 px fading shadow (`StickyShadow`); `stickyInput` adds a hover background, and a press scrolls to that
+  line so it just appears below the lines still stuck.
+
+### Ignore leading/trailing whitespace
+
+- `workspace.State.DiffTrim` (command `diff.ignoreTrim` / `ToggleDiffTrim`, saved in state.json) is passed to ged every
+  frame via `SetIgnoreTrim`, and `AlignTrim` matches lines with leading and trailing whitespace removed.
+- A line that only changed whitespace is `Same`, but the two sides' text differs, so each side is painted with its own
+  text; find uses `sameText` to decide whether the old side borrows the new side's results.
+- Changes and patches follow the visible `Hunks`, and a patch's context is taken from the copy it applies to, so hidden whitespace changes don't get in the way.
+- The mygo Diff ignores this toggle (the command is grayed out when ged isn't in use).
+
+### Go to line
+
+`edit.goToLine` (⌃G), under `gedFind`, opens the Command Palette's ":" (`goToLine`). For a ged Diff, `lineItems` shows
+the total line count from `Ged.LineCount`, and `JumpHere` hands off to `Diff.GoToLine` (the new side, or the old side
+when the new side is empty; `rowOfLine` expands folds and `want` scrolls there).
+
+### Tests
+
+`internal/ui` (`gedview_test.go`):
+
+- `TestGedDiff`: opens a Diff in a temp repo; checks folding, expanding by clicking a fold bar, the scroll wheel, and switching to full-file.
+- `TestGedHunks`: previous / next change; Stage Hunk stages only that hunk.
+- `TestGedSelect`: drag selection, ⌘C, double-click, Esc, J, paging.
+- `TestGedLines`: drag to select lines, Esc, click one line and ⇧-click another, staging the selected lines stages only those two.
+- `TestGedUnified`: switching to unified gives one column, previous / next change, clicking a deleted line's number
+  selects the old side, staging the selected lines, then switching back to side by side.
+- `TestGedEdit`: editing in place — the caret, typing, one-step undo, Return indentation, J being typed, composition, cut and paste, ⌘S saving to disk.
+- `TestGedFoldScope`: the function shown on the fold bar.
+- `TestGedWrap`: with soft wrap, long lines get taller and short ones don't, clicking the second segment places the caret, ↑ ↓ move within wrapped lines, turning it off restores.
+- `TestGedFind`: ⌘F opens the bar, the match count, Return jumping to a match inside a fold expands it, Esc closes.
+- `TestGedMenu`: right-click opens ged's menu, the recorded spot, no cut / paste when view-only, Copy Line (both sides),
+  Stage Hunk from the menu stages only that hunk, ⇧F10 opens the menu and then picks Find.
+- `TestGedFoldExpand`: the leading run has only an up arrow, clicking an arrow reveals 20 lines, a middle run has two
+  arrows, the fold bar's context menu, no arrows when few lines remain, clicking the middle of the bar expands the whole run.
+- `TestGedTrim`: after checking ignore whitespace in the menu, only the real change remains, and Stage Hunk stages only that line.
+- `TestGedGoToLine`: ⌃G opens ":", and jumping to folded line 150 expands it and scrolls it into view.
+- `TestGedOccurrences`: after selecting a word, identical words elsewhere on both sides are highlighted, but not the selected spot itself.
+- `TestGedSplit`: drags the divider to 30%, the right side's text moves left with it without selecting text, double-click
+  resets, then edits in place and places the caret (screenshot ged-caretline.png shows the caret line).
+- `TestGedEditKeys`: real keys for ⌥↓, ⌘/, ⇧⌘K, ⌘], typing ( to get ), undo, then ⌥⌘F to replace one and Replace All
+  (screenshot ged-keys.png shows the bracket box and whitespace, ged-replace.png shows the replace bar).
+
+`internal/ged`:
+
+- `TestUnified` (single-column order and folding), `TestAlignTrim`, `TestFoldReveal` / `TestExpandMore` (folding leaves
+  out revealed lines, expanding the whole run when few remain), `TestOccurrences` (all-whitespace and multi-line selections aren't highlighted).
+- `TestChangedEnd` / `TestWordMoves` (the caret after undo, moving by word), `TestChangeAfter` (the change a fold bar finds).
+- `TestEditCommands` / `TestAutoClose` / `TestEditCommandUndo` / `TestCommandLookup` / `TestMatchBracket` / `TestReplace`.
+
+Staging itself: in the `git` package `TestHunkPatchApplies` / `TestHunkPatchOneOfTwo` / `TestHunkPatchFormat` /
+`TestLinesPatch`; in the `app` package `TestLinesEdits`, `TestDiffEditInPlace` / `TestDiffEditBindings`,
+`TestPeekHunkAt` / `TestPeekRevert` / `TestPeekStage`; in the `ui` package `TestHunkOps`, `TestDiffEditUI`.
+
+## The ged editor in file tabs
+
+File tabs use ged by default too (the single-pane mode of `ged.NewEditor`, `ui/gedfile.go`): whether it's used, how it
+lines up with mygo's `editor.State`, completion and hover, the change bars, keys and the context menu, folding and the
+minimap are covered in [Editor widget (internal/ged)](editor.md#editor-component-internalged). Only one staging-related
+detail belongs here: the peek card opened by clicking the line number of a changed line (`Style.GutterClick` →
+`a.TogglePeek`) shares `peekCardAt` with the mygo editor (`edPeekCard` computes the card's top from `CharBox`); see
+"Editor change bar and peek card" below.
+
+## The mygo Diff (`WORKBENCH_GED=off`)
+
+When `useGed` is false, Diffs go through `restingDiff` (`ui/caret.go`, wrapping `editor.DiffView`). The following only apply on this path:
+
+- `Indicators` is `DiffBars` (red / green bars at the start of lines): mygo only colors changed words red / green when the bars are on; otherwise they're gray.
+- Grove paints the background of changed lines itself (`ui/difftint.go`): mygo mixes them into the background at a fixed,
+  too-faint ratio, so `restingDiff` tells it not to paint the background (`clearDiffBackground`: `NoBackground`,
+  `Theme.Background` transparent) and wraps it in a `Column` with the editor background; `Draw(diffUnder)` computes the
+  positions every frame from `DiffState.Hunks` / `LineTop` / `ScrollY` (`diffTints`, watched by `TestDiffTints`) and paints
+  VS Code's default-theme `#9bb95533` / `#ff000033`; selected lines are painted here too. The bars, line numbers and
+  changed words are still painted on top by mygo, in the `Theme.Added` / `Deleted` colors substituted by `diffTint`.
+- Folded unchanged lines are drawn by `RenderSeparator = diffSep` (`ui/diffsep.go`) as a full-width faint band with "N
+  unchanged lines" on the left; clicking it goes to `expandSep` (a leading / trailing run expands `Step` lines toward the
+  change (mygo's default is 100); a middle run, a run shorter than `Step`, or holding ⇧ expands everything).
+- The text after the fold bar is `sepScope`: the symbol line containing the first line of the change below (separator
+  start + context + hidden line count + context). `Doc.DiffOutline` is the old side's outline (cached by buffer and
+  version), and `outline.Tree.Scope` finds the innermost symbol containing that line. mygo only exposes the fold bar's line
+  count and whether it's at the head or tail; where the separator starts is the unexported `DiffSeparator.a`, which
+  `sepStart` reads via reflect — if it can't, nothing is shown (watched by `TestSepStart`).
+- The hunk buttons are `DiffState.RenderHunkActions` (the same `hunkActions`), and line selection is mygo's own `LineSelection`.
+- The change marks in the scrollbar track are drawn by mygo itself; the hatching on the empty side and mygo's built-in fold bar style live in mygo, and Grove doesn't change them.
+
+## Editor change bar and peek card (`app/peek.go`, `ui/peek.go`)
+
+The change bar next to the editor's line numbers can be clicked to see the original text of that hunk: click the change
+bar (or a line number inside a changed hunk), or run the command `diff.peekHunk`, and a card pops up below the hunk.
+
+- State and actions are in `app/peek.go`: `Peek` (the open card: which tab, which hunk), `DocHunks`, `HunkAt`,
+  `TogglePeek`, `SyncPeek`, `PeekStep` (the card's ↑ ↓); the card is drawn in `ui/peek.go` (`peekCardAt`).
+- Handling clicks: on the mygo editor, `peekSetup` sets `St.OnGutterClick` (when there are hunks it takes over the whole
+  gutter; line numbers outside hunks still select that line); on the ged editor it's `Style.GutterClick`, and the card is placed by `edPeekCard`.
+- What the card can do:
+  - Revert (`PeekRevert`: `DiffState.Revert`, which changes the buffer directly; ⌘Z undoes it, no confirmation).
+  - Stage (`PeekStage`): the file must be saved first; the patch is computed from the raw bytes in HEAD and the file on
+    disk, again through `ReplaceLines` + `HunkPatch`, with `git apply --cached`. If the index already has adjacent changes
+    to this file, git may reject it, and the error is reported.
+  - Open in Diff (`PeekOpenDiff`: unstaged preferred; sets `Doc.HunkLine`, and `diffLook` uses `HunkFromLine` to scroll
+    to the hunk containing the same line of the new file — the Diff compares against the index, so the hunk index may differ).
+- Hunks are computed by the editor's `DiffState{Old: d.Base, New: d.Buf}` (against HEAD; historical revisions against
+  their parent commit), the same algorithm as the change bar. The `DiffState` is kept per tab (the most recent
+  `peekCacheMax` 4); when the buffer changes, mygo only re-diffs the lines near the change rather than the whole document
+  each time (with the gutter taking over clicks, every frame has to ask whether there are hunks).
+- The editor's hunks are recomputed as the buffer changes, and `SyncPeek` follows along: if the hunk disappears, the card
+  closes; when the selection changes, if the caret lands at the start of a hunk (previous / next change, the card's ↑ ↓) the card follows it, otherwise it closes.
+- The card is overlaid on the code (covering a few lines below the hunk), in both the mygo editor and the ged editor. To
+  insert it between two lines and push the code below down like VS Code does, mygo would need the regular editor
+  (`editor.State`) to reserve some height between lines for the caller to draw in; currently only mygo's Diff viewer has
+  that (`DiffState.Annotations` + `RenderAnnotation`, internally `blockAnnotation`), and `State` has no corresponding hook.

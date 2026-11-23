@@ -1,201 +1,201 @@
-# Markdown 渲染
+# Markdown rendering
 
-[← 架构总览](../architecture.md)
+[← Architecture overview](../architecture.md)
 
-Markdown 预览（internal/gmd）、HTML 块的样式（internal/css）、源码整理（internal/mdprep、internal/emoji）、Mermaid 和公式（internal/render），以及并排预览和同步滚动。
+The Markdown preview (internal/gmd), styles for HTML blocks (internal/css), source preprocessing (internal/mdprep, internal/emoji), Mermaid and math (internal/render), plus the side-by-side preview and synchronized scrolling.
 
-## Markdown 渲染
+## Markdown rendering
 
-### 总览：一篇 Markdown 怎么画出来
+### Overview: how a Markdown document gets drawn
 
-| 一步 | 代码 | 做什么 |
+| Step | Code | What it does |
 |---|---|---|
-| 取源码 | `ui/mdpreview.go` 的 `markdownPreview` | 每帧拿源码（并排预览拿源文件的缓冲区） |
-| 整理 | `internal/mdprep`（`mdprep.Prepare`） | front matter、跨块的 HTML 容器换成围栏代码块；最后经 `internal/emoji` 换 emoji 短代码 |
-| 画 | `internal/gmd`（`ui/gmdview.go` 的 `mdShow` → `gmd.View`） | 解析、排版、选择复制；`WORKBENCH_GMD=off` 退回 mygo 的 `markdown.View` |
-| 带样式的 HTML 块 | `internal/css` + `gmd/html.go`、`gmd/htmlrender.go` | 算层叠，按 grid / flex / 盒子画 |
-| Grove 补的内容 | `ui/mdpreview.go` 的 `mdEnv.setup` 挂的钩子 | Mermaid 图和 TeX 公式（经 `internal/render` 的 WebView）、带图片的表格（`ui/mdtable.go`）、front matter 卡片、折叠块、徽章一排…… |
+| Get the source | `markdownPreview` in `ui/mdpreview.go` | Fetches the source every frame (the side-by-side preview takes the source file's buffer) |
+| Preprocess | `internal/mdprep` (`mdprep.Prepare`) | Turns front matter and HTML containers spanning several blocks into fenced code blocks; finally replaces emoji shortcodes via `internal/emoji` |
+| Draw | `internal/gmd` (`mdShow` in `ui/gmdview.go` → `gmd.View`) | Parsing, layout, selection and copy; `WORKBENCH_GMD=off` falls back to mygo's `markdown.View` |
+| Styled HTML blocks | `internal/css` + `gmd/html.go`, `gmd/htmlrender.go` | Computes the cascade and lays out as grid / flex / boxes |
+| Content Grove adds | Hooks installed by `mdEnv.setup` in `ui/mdpreview.go` | Mermaid diagrams and TeX math (through the WebView in `internal/render`), tables with images (`ui/mdtable.go`), front matter cards, collapsible blocks, rows of badges… |
 
-两个视图吃同一份钩子：`gmd.Options` 的字段和 mygo 的 `markdown.Options` 一一对应（`CodeBlock`、`Code`、`Block`、`HTML`、`Math`、`InlineMath`、`LinkMenu`、`OnLink`、`CodeLink`、`Preview`、`LoadImage`……），`gmd.Options.Mygo()` 每次把字段拷成 mygo 的那份（代码块的钩子包一层，mygo 的 `CodeBlockView` 换成 gmd 的）。gmd 另外多了 `CSS`、`Image` 和 `Strings`（视图里的几句文案，`ui.mdStrings` 给译好的）。
+Both views consume the same set of hooks: the fields of `gmd.Options` map one-to-one to mygo's `markdown.Options` (`CodeBlock`, `Code`, `Block`, `HTML`, `Math`, `InlineMath`, `LinkMenu`, `OnLink`, `CodeLink`, `Preview`, `LoadImage`…), and `gmd.Options.Mygo()` copies the fields into mygo's version each time (the code block hook gets wrapped, swapping mygo's `CodeBlockView` for gmd's). gmd additionally has `CSS`, `Image` and `Strings` (the few strings shown in the view; `ui.mdStrings` supplies the translated ones).
 
-### internal/gmd：Grove 自己画的 Markdown 视图
+### internal/gmd: Grove's own Markdown view
 
-做法照 `internal/ged`：解析还用 mygo 的 `ui/markdown/parser`，排版和画只用 mygo 公开的界面接口（Column / Row / Grid、RichText、Painter）。不认 Grove 的主题和 `internal/ui`：样子由 `markdown.Theme` 给（`gmd/theme.go`），文案由 `Options.Strings` 给。段落、列表、表格、代码块的画法改自 mygo 的 `ui/markdown`，去掉了流式显示、提及 / 引用和链接图标这些 Grove 不用的。
+It follows the same approach as `internal/ged`: parsing still uses mygo's `ui/markdown/parser`, while layout and drawing use only mygo's public UI APIs (Column / Row / Grid, RichText, Painter). It knows nothing about Grove's theme or `internal/ui`: its look comes from `markdown.Theme` (`gmd/theme.go`) and its strings from `Options.Strings`. The rendering of paragraphs, lists, tables and code blocks is adapted from mygo's `ui/markdown`, with features Grove doesn't use — streaming display, mentions / citations and link icons — removed.
 
-主要文件：
+Main files:
 
-- `view.go`：`View(c, src, o)` 画一篇，状态（解析结果、段落的字、代码块的高亮、表格列宽、HTML 块排好的样式）留在返回的元素上（`viewState`），src 没变的块下一帧不重算。按块的种类分派（段落、标题、分隔线、代码块、HTML 块、`$$` 公式、引用和 GitHub 的提示块、列表、表格），还有脚注的编号和列表。
-- `options.go`：`Options`（见上）和 `Mygo()`。
-- `spans.go`：段落是带样式的字（RichText），在链接处切开，链接是里面的 `ui.Link`；记着每段字在源码里的位置，复制时用。
-- `code.go`：`CodeBlockView`、`DefaultCodeBlock`（不接手时的样子，带复制按钮），只对改了的行重新高亮。
-- `table.go`：表格的自动布局（见下面“表格”）。
-- `image.go`：图片。先问 `Options.Image`（调用方管缓存），没给就第一次用时在后台 goroutine 里调 `LoadImage`，结果缓存在 `Options` 里（`sync.Map`）。
-- `html.go`、`htmlrender.go`：HTML 块自己的 HTML + CSS 排版（见下面“带样式的 HTML”）。
-- `copy.go`：选择和复制。按文字复制时段落之间空一行、代码块和紧凑列表一行一行、表格单元格用 Tab 隔开；“复制为 Markdown”（右键菜单，或焦点在视图里时 ⇧⌘C）复制选区两端之间的源码，被切断的强调、代码、链接语法补齐。
-- `alert_icons.go`：GitHub 提示块（Note、Tip……）的 Octicons 图标。
+- `view.go`: `View(c, src, o)` draws a document. State (the parse result, paragraph text, code block highlighting, table column widths, the computed styles of HTML blocks) is kept on the returned element (`viewState`), and blocks whose src hasn't changed aren't recomputed next frame. It dispatches by block kind (paragraph, heading, thematic break, code block, HTML block, `$$` math, blockquotes and GitHub alerts, lists, tables), and also handles footnote numbering and the footnote list.
+- `options.go`: `Options` (see above) and `Mygo()`.
+- `spans.go`: a paragraph is styled text (RichText), split at links, with each link being a `ui.Link` inside; it records where each span of text sits in the source, for copying.
+- `code.go`: `CodeBlockView` and `DefaultCodeBlock` (the default look when no hook takes over, with a copy button); only changed lines are re-highlighted.
+- `table.go`: automatic table layout (see [Tables and tables with images](#tables-and-tables-with-images) below).
+- `image.go`: images. It asks `Options.Image` first (the caller manages the cache); if that isn't provided, it calls `LoadImage` in a background goroutine on first use and caches the result in `Options` (`sync.Map`).
+- `html.go`, `htmlrender.go`: the HTML block's own HTML + CSS layout (see [Styled HTML](#styled-html) below).
+- `copy.go`: selection and copying. Copying as text puts a blank line between paragraphs, code blocks and tight lists line by line, and table cells separated by Tab. "Copy as Markdown" (context menu, or ⇧⌘C when the view has focus) copies the source between the two ends of the selection, completing any emphasis, code or link syntax that was cut off.
+- `alert_icons.go`: Octicons icons for GitHub alerts (Note, Tip…).
 
-`ShareSelection`：视图嵌在另一个可选择的容器里（`<details>` 的正文、大文件的一段、表格单元格），和外面共用选区，自己不再 Selectable、不接复制。
+`ShareSelection`: when the view is embedded in another selectable container (the body of a `<details>`, a chunk of a large file, a table cell), it shares the selection with the outer container and is no longer Selectable itself or handles copy.
 
-### internal/css：HTML 块的样式表
+### internal/css: style sheets for HTML blocks
 
-不碰界面的 CSS 解析和层叠，元素由调用方实现 `css.Element` 接口（`Tag` / `Attr` / `Parent` / `Prev` / `Next`）给进来；gmd 的 `hnode`（`gmd/html.go`，用 `x/net/html` 解析出来的节点）就是它。
+UI-free CSS parsing and cascading. Elements are supplied by the caller implementing the `css.Element` interface (`Tag` / `Attr` / `Parent` / `Prev` / `Next`); gmd's `hnode` (`gmd/html.go`, a node parsed with `x/net/html`) is that implementation.
 
-- `parse.go`：`ParseSheet`（`<style>` 的内容 → `Sheet`）、`ParseDecls`（`style=` → `[]Decl`），去注释、认 `!important`。
-- `selector.go`：选择器（复合选择器加 `' '`、`>`、`+`、`~` 组合符）和优先级。
-- `cascade.go`：`Compute(author, e, pseudo, inline, parent, rootPx)` 算一个元素（或 `::before` / `::after`）的 `Style`。层叠顺序：UA → 表现属性 → 文档的 `<style>` → `style=`；`!important` 反过来。同一层按优先级、再按先后。展开简写、继承、`var()`；`font-size` 总换成 px、`font-weight` 换成数、`line-height` 的 em / % / rem 换成 px，`currentcolor` 换成元素的 `color`。
-- `ua.go`：`UA`（照 HTML 标准 Rendering 一节、删掉画不出来的浏览器自带样式）、`Presentational`（`align`、`valign`、`width` / `height`、`bgcolor`、`<font>`、`<table>` 的 `border` / `cellpadding` / `cellspacing`、`nowrap` 折成的声明）。
-- `color.go`、`length.go`：`ParseColor`（十六进制、`rgb()` / `hsl()`、颜色名）、`ParseLength`（px、em、rem、%、fr、vw / vh；pt 等换成 px）、`ParseTracks`（grid 的轨道）。
+- `parse.go`: `ParseSheet` (contents of `<style>` → `Sheet`), `ParseDecls` (`style=` → `[]Decl`); strips comments and recognizes `!important`.
+- `selector.go`: selectors (compound selectors plus the `' '`, `>`, `+`, `~` combinators) and specificity.
+- `cascade.go`: `Compute(author, e, pseudo, inline, parent, rootPx)` computes the `Style` of an element (or of `::before` / `::after`). Cascade order: UA → presentational attributes → the document's `<style>` → `style=`; reversed for `!important`. Within the same level, by specificity, then by order. It expands shorthands and handles inheritance and `var()`; `font-size` is always converted to px, `font-weight` to a number, em / % / rem in `line-height` to px, and `currentcolor` to the element's `color`.
+- `ua.go`: `UA` (following the Rendering section of the HTML standard, with the browser default styles that can't be drawn removed) and `Presentational` (declarations derived from `align`, `valign`, `width` / `height`, `bgcolor`, `<font>`, `<table>`'s `border` / `cellpadding` / `cellspacing`, and `nowrap`).
+- `color.go`, `length.go`: `ParseColor` (hex, `rgb()` / `hsl()`, color names), `ParseLength` (px, em, rem, %, fr, vw / vh; pt and the like are converted to px), `ParseTracks` (grid tracks).
 
-只认预览里画得出来的。认不出的规则、选择器、值一律跳过，不报错也不 panic。
+Only what the preview can actually draw is supported. Unrecognized rules, selectors and values are skipped silently — no errors, no panics.
 
-### 带样式的 HTML
+### Styled HTML
 
-1. `gmd.DocCSS` 只从 HTML 块里收 `<style>`（围栏代码里的不算）。`ui` 按整理结果缓存（`mdView.styles`），放进 `mdEnv.css`，再给 `Options.CSS`：分段画的大文件、嵌在 `<details>` 里的段落都按全文的样式表排。
-2. `ui/mdhtml.go` 的 HTML 钩子先问 `gmd.WantsCSS`：块里有 `<style>`；或者文档里有样式表、块里写了 `class=` / `id=`；或者 `style=` 里有底色、边框、`display`、内外边距、grid、flex、定位、阴影、宽度这类属性。是就交给 `Options.HTMLView`（按 `Options.CSS` 加块里自己的 `<style>` 排）；不是就照旧走下面“预览的钩子”里那条 README 式的路（居中、`<details>`、徽章不受影响）。`WORKBENCH_GMD=off` 时一律走 README 式的路。
-3. `gmd/htmlrender.go` 把算好样式的节点搭成 mygo 元素：
-   - 块级流（外边距折叠）、flex（Row / Column、换行、对齐）、grid（`grid-template-columns` 的 fr / px / `repeat` / `minmax`，`grid-column: span`）、表格（列按内容、`colspan`）、绝对定位；
-   - 背景色和线性渐变、边框（四边一样的用原生边框，不同的画梯形）、圆角、阴影、透明度、`overflow: hidden`；
-   - 行内的连成一段富文本（链接、装饰、行内底色、空的 inline-block 小圆点当对象画）。
-4. 字色（`textColor`）：作者给了底色、没给字色时，字换成那块底上看得清的颜色；作者写的字色和底色几乎分不出时（比如暗色主题里写死的深灰字）也换成看得清的（`readable`）。
-5. 只有 `<style>`（和注释、`<script>` 这类）的 HTML 块不占地方。
+1. `gmd.DocCSS` collects `<style>` only from HTML blocks (not from fenced code). `ui` caches it per preprocessing result (`mdView.styles`), puts it in `mdEnv.css`, and passes it to `Options.CSS`, so large files drawn in chunks and paragraphs nested inside `<details>` are all laid out with the whole document's style sheet.
+2. The HTML hook in `ui/mdhtml.go` first asks `gmd.WantsCSS`: does the block contain `<style>`; or does the document have a style sheet and the block uses `class=` / `id=`; or does `style=` contain properties such as background, border, `display`, margin / padding, grid, flex, positioning, shadow or width? If so, it hands off to `Options.HTMLView` (laid out with `Options.CSS` plus the block's own `<style>`); if not, it takes the README-style path described in [Preview hooks](#preview-hooks) below (centering, `<details>` and badges are unaffected). With `WORKBENCH_GMD=off` everything takes the README-style path.
+3. `gmd/htmlrender.go` builds mygo elements from the styled nodes:
+   - block flow (with margin collapsing), flex (Row / Column, wrapping, alignment), grid (fr / px / `repeat` / `minmax` in `grid-template-columns`, `grid-column: span`), tables (columns sized by content, `colspan`), absolute positioning;
+   - background colors and linear gradients, borders (native borders when all four sides match, trapezoids otherwise), rounded corners, shadows, opacity, `overflow: hidden`;
+   - inline content joined into one run of rich text (links, decorations, inline backgrounds, empty inline-block dots drawn as objects).
+4. Text color (`textColor`): when the author sets a background but no text color, the text switches to a color that is readable on that background; when the author's text color is nearly indistinguishable from the background (for example dark gray text hard-coded into a page viewed in a dark theme), it is also switched to a readable one (`readable`).
+5. HTML blocks containing only `<style>` (plus comments, `<script>` and the like) take up no space.
 
-### 表格和带图片的表格
+### Tables and tables with images
 
-预览铺满标签的宽（照 VS Code，不限一栏的宽）。
+The preview spans the full width of the tab (as in VS Code; no column-width cap).
 
-表格照浏览器的自动表格布局（`gmd/table.go`）：
+Tables follow the browser's automatic table layout (`gmd/table.go`):
 
-- 每列要它最宽的单元格排成一行的宽（max-content），最窄让到折不开的最长一截（min-content，`minContent` 按空格、连字符、中日韩字切开量）。
-- 放得下时整张表按内容宽；放不下时表就是这一栏宽，每个单元格 `Width(max).Shrink(1).MinWidth(min)` 按要的宽成比例让。
-- 只有 min-content 加起来都放不下才包 `ScrollHorizontal` 横着滚（看上一帧这一栏的宽，`Draw` 里发现变了再要一帧）。
+- Each column asks for the width of its widest cell laid out on one line (max-content), and shrinks no further than its longest unbreakable piece (min-content; `minContent` measures by splitting at spaces, hyphens and CJK characters).
+- When it fits, the whole table is sized by content; when it doesn't, the table takes the column's width and each cell gives way in proportion to what it asked for, via `Width(max).Shrink(1).MinWidth(min)`.
+- Only when even the sum of min-content widths doesn't fit is it wrapped in `ScrollHorizontal` for horizontal scrolling (based on the column width from the previous frame; if `Draw` notices it changed, it requests another frame).
 
-带图片的表格在 `ui/mdtable.go`：`Block` 钩子碰到单元格里有图片的表格（`tableHasImage`）自己搭——列等宽铺满一栏，全空的表头行不画，每个单元格是一个 `ShareSelection` 的小预览视图（`mdShow`；选项存在表格元素的 `ui.Local` 上，图片缓存才留得住）。`cellSource` 给开头像块标记的字加反斜杠，免得单独解析成标题、列表。别的表格照旧由预览自己排。
+Tables with images are in `ui/mdtable.go`: when the `Block` hook meets a table with an image in a cell (`tableHasImage`), it builds the table itself — equal-width columns filling the column, an all-empty header row not drawn, and each cell a small `ShareSelection` preview view (`mdShow`; options are stored on the table element's `ui.Local`, so the image cache survives). `cellSource` backslash-escapes leading text that looks like block markers, so a cell isn't parsed on its own as a heading or list. Other tables are still laid out by the preview itself.
 
-### internal/mdprep 和 internal/emoji：交给解析之前先整理
+### internal/mdprep and internal/emoji: preprocessing before parsing
 
-`mdprep.Prepare` 处理 mygo 的解析器不认、README 里又常见的写法：
+`mdprep.Prepare` handles constructs that mygo's parser doesn't recognize but that are common in READMEs:
 
-- 文件开头的 front matter（`---` YAML `---` 或 `+++` TOML `+++`）；
-- 跨了几个块的 HTML 容器（`<details>`、`<div align>`、`<p align>`、`<center>`……开、闭标签之间隔着空行写 Markdown 的）。
+- front matter at the start of the file (`---` YAML `---` or `+++` TOML `+++`);
+- HTML containers spanning several blocks (`<details>`, `<div align>`, `<p align>`, `<center>`… with Markdown written between the opening and closing tags, separated by blank lines).
 
-做法是把这样的一段换成一个围栏代码块，信息串写成 `grove-region N`，第 N 段的内容记在 `Doc.Regions` 里，预览在 `CodeBlock` 钩子里认出来自己画。`Doc` 还带着链接引用定义（`Defs`，分块画时接在每块后面）和有没有脚注（`Footnotes`，有就不分块）。
+Each such region is replaced with a fenced code block whose info string is `grove-region N`, with the contents of region N recorded in `Doc.Regions`; the preview recognizes it in the `CodeBlock` hook and draws it itself. `Doc` also carries the link reference definitions (`Defs`, appended after each chunk when drawing in chunks) and whether there are footnotes (`Footnotes`; if so, no chunking).
 
-`Prepare` 最后经 `internal/emoji` 的 `emoji.Replace` 把 `:tada:` 这样的短代码换成 emoji：
+At the end, `Prepare` replaces shortcodes like `:tada:` with emoji via `emoji.Replace` from `internal/emoji`:
 
-- 表 `emoji/gemoji.txt` 是 GitHub gemoji 的别名（一行“别名 TAB emoji”，embed 进二进制，第一次用时读成 map；`Lookup` 查一个）；
-- 围栏代码块、行内代码里的不换，冒号两边挨着字母、数字的（`10:100:20`）不算；整理出来的围栏块里的也不换（容器里的 Markdown 另外整理时再换）。
+- The table `emoji/gemoji.txt` holds GitHub's gemoji aliases (one "alias TAB emoji" per line, embedded in the binary and read into a map on first use; `Lookup` looks one up).
+- Shortcodes inside fenced code blocks and inline code aren't replaced, and colons with a letter or digit directly on either side (`10:100:20`) don't count; shortcodes inside the fenced blocks produced by preprocessing aren't replaced either (the Markdown inside a container is replaced when it is preprocessed separately).
 
-两步都只换一行里面的字、不增删换行：源码的第 k 行在整理后还是第 k 行，大纲跳转、同步滚动按行对得上。
+Both steps only replace text within a line and never add or remove line breaks: line k of the source is still line k after preprocessing, so outline navigation and synchronized scrolling line up by line number.
 
-### internal/render：Mermaid 和公式
+### internal/render: Mermaid and math
 
-每个窗口一个 `Renderer`（`app/render.go` 的 `a.Renderer()` 懒建；设置 `NoDiagrams` 关掉，只显示代码块和 TeX 原文）。
+There is one `Renderer` per window (`a.Renderer()` in `app/render.go`, created lazily; the `NoDiagrams` setting turns it off, showing only the code block and the raw TeX).
 
-- 预览每帧来取（`Get`）：命中缓存直接返回；否则排进队列，先拿这张图在主题 / 缩放变化前的版本顶着，没有旧版本时显示代码块或 TeX 原文。
-- 一个后台 goroutine 依次渲染，完成后通知界面重绘。
-- 缓存最多 512 张 / 32 MB；队列 128 条，满了丢最早的请求（新请求优先）。
-- 空闲 60 秒后销毁后端，下次需要时重建。源码本身的错（`SourceError`）只是这一张画不了；别的错当后端坏了，关掉重建。
+- The preview requests results every frame (`Get`): a cache hit returns immediately; otherwise the request is queued, and in the meantime the version of the image from before the theme / scale change stands in, or, if there's no old version, the code block or raw TeX is shown.
+- A single background goroutine renders requests one by one and notifies the UI to redraw when each finishes.
+- The cache holds at most 512 images / 32 MB; the queue holds 128 requests and drops the oldest when full (new requests take priority).
+- After 60 seconds idle the backend is destroyed and recreated when next needed. An error in the source itself (`SourceError`) only means that one image can't be drawn; any other error is treated as a broken backend, which is closed and recreated.
 
-后端（`web.go`）是一个看不见的 `mygo.WebView`，跑 `page.html`（`wbRender`）。资源 embed 在二进制里，脚本存成 `.js.gz`，经自定义协议 `wbrender://` 给 WebView 时解开（`assetHandler`：有原样的给原样的，没有就找 `.gz`）。页面按需加载脚本。
+The backend (`web.go`) is an invisible `mygo.WebView` running `page.html` (`wbRender`). Resources are embedded in the binary, with scripts stored as `.js.gz` and decompressed when served to the WebView over the custom `wbrender://` scheme (`assetHandler`: serves the plain file if there is one, otherwise looks for the `.gz`). The page loads scripts on demand.
 
 #### Mermaid
 
-mermaid.js 12.3 画所有的图，外观由 `page.html` 的 `groveConfig` 定：
+mermaid.js 12.3 draws all diagrams; their look is set by `groveConfig` in `page.html`:
 
-- `theme: "base"`、`look: "classic"`；`layout` 不写，由 12 自己挑（流程图、状态图、类图、ER 图用 ELK，线走直角、拐角带圆；全局写 `elk` 的话思维导图画不出来）。
-- `themeVariables` 从配色混出来，是 VS Code 里 Markdown 预览常见的黑白文档风：节点白底（深色是比底亮一档的灰）、深色细边，连线是字色，边上的字垫浅灰底，节点带 Mermaid 自己那种往右下偏的淡影子（`themeCSS` 只给形状加，不给字）。
-- 饼图、思维导图、git 图、甘特图用一套低饱和的六色（浅色是淡的、深色是暗的，字都是正文色；VS Code 2026 的 `charts.*` 和 Mermaid 自己的 default 主题都太艳）。
-- `flowchart` / `state` 的 `minNodeWidth` 关掉（12 默认 120，短的节点会被撑宽）。
-- 画完 `polish` 只做一件事：把思维导图圆形根节点的字挪回正中。
-- 用户自己的 front matter / `%%{init}%%` 照样盖得过这些（比如 `layout: dagre` 退回老排法）。
-- `htmlLabels: false`，标签画成 SVG 文字，canvas 才取得到。图都画到 canvas 上取 PNG。
-- Mermaid 12 要 Safari 17.4 起的 WebKit：`mermaidSVG` 先查一下，老的抛 `render.OldWebKit`，预览里换成一句“要更新系统”。
+- `theme: "base"`, `look: "classic"`; `layout` is left unset so Mermaid 12 picks one itself (flowcharts, state diagrams, class diagrams and ER diagrams use ELK, with right-angle edges and rounded corners; setting `elk` globally breaks mind maps).
+- `themeVariables` are blended from the palette into the black-and-white document style common in VS Code's Markdown preview: nodes with white fill (in dark mode, a gray one step lighter than the background) and thin dark borders, edges in the text color, edge labels on a light gray background, and nodes with Mermaid's own faint drop shadow offset to the lower right (`themeCSS` applies it only to shapes, not text).
+- Pie charts, mind maps, git graphs and Gantt charts use a low-saturation set of six colors (pale in light mode, dark in dark mode, with text always in the body text color; VS Code 2026's `charts.*` and Mermaid's own default theme are both too saturated).
+- `minNodeWidth` is turned off for `flowchart` / `state` (Mermaid 12 defaults to 120, which stretches short nodes).
+- After drawing, `polish` does only one thing: moves the text of a mind map's circular root node back to the exact center.
+- The user's own front matter / `%%{init}%%` still overrides all of this (for example `layout: dagre` to go back to the old layout).
+- `htmlLabels: false`, so labels are drawn as SVG text, which is the only way the canvas can capture them. Every diagram is drawn onto a canvas and captured as PNG.
+- Mermaid 12 needs WebKit from Safari 17.4 or later: `mermaidSVG` checks first and throws `render.OldWebKit` on older versions, which the preview replaces with a message asking the user to update macOS ("Mermaid diagrams need Safari 17.4 or later: update macOS in System Settings → General → Software Update").
 
-配色：`ui/mdrender.go` 的 `mdPalette` 从主题算（底色、字色、线色、强调色、节点底、边框），JSON 放在 `Request.Palette`，在缓存的键里；换主题先拿旧的顶着再重画。底色取 mygo 浅色 / 深色主题的窗口底，不取当前元素的 `Background`（排版和画的时候不一样会画两遍）。
+Colors: `mdPalette` in `ui/mdrender.go` computes them from the theme (background, text, line, accent, node fill, border); the JSON goes in `Request.Palette` and is part of the cache key. When the theme changes, the old image stands in while the new one renders. The background is taken from the window background of mygo's light / dark theme, not from the current element's `Background` (if it differed between layout and drawing, the diagram would be rendered twice).
 
-#### 公式
+#### Math
 
-MathJax 4（`tex-svg.js`，New Computer Modern 字体；字体分片和 mhchem / bbm / dsfont 的字体扩展在 `mathjax/fonts/`，`loader.paths.fonts` 指过去，不上网）。
+MathJax 4 (`tex-svg.js`, with the New Computer Modern font; the font chunks and the font extensions for mhchem / bbm / dsfont are in `mathjax/fonts/`, which `loader.paths.fonts` points to, so nothing is fetched from the network).
 
-- SVG 里只有路径（`fontCache: "none"`，字形是 `currentColor`）时返回 SVG 文本，`render` 用 `ui.ParseSVG` 解成 `Result.Vector`，mygo 按画的时候的字色和像素画。
-- 有 `<text>`（字体里没有的字，比如 `\text{}` 里的中文）等 mygo 画不了的才画成 PNG。
-- 矢量的结果不分主题、缩放、字色：`Get` 拿同一张（`near`）直接给、不排队。
+- When the SVG contains only paths (`fontCache: "none"`, glyphs in `currentColor`), the SVG text is returned, `render` parses it with `ui.ParseSVG` into `Result.Vector`, and mygo draws it with the text color and pixel density at draw time.
+- Only output mygo can't draw, such as `<text>` (characters missing from the font, for example Chinese inside `\text{}`), is rendered as PNG.
+- Vector results don't depend on theme, scale or text color: `Get` hands back the same image (`near`) directly, without queuing.
 
-#### 接到预览上
+#### Hooking into the preview
 
-`ui/mdrender.go` 的 `mdRender` 把渲染器接到 `gmd.Options` 上：挂 `Code["mermaid"]`、`Math`、`InlineMath`，`$…$` 行内公式靠 `ExtDollarMath`。结果的键里带主题、配色，大小按界面缩放乘 `ZoomFactor`；返回 `Gen()`，预览拿它当那一栏的 key（有了新的行内公式结果，段落重排）。渲染器没有（设置里关了、测试里没给）时这几个钩子摘掉，`$…$` 也不认，照旧是字。
+`mdRender` in `ui/mdrender.go` wires the renderer into `gmd.Options`: it installs `Code["mermaid"]`, `Math` and `InlineMath`, and `$…$` inline math relies on `ExtDollarMath`. Result keys include the theme and palette, and sizes are multiplied by the UI scale's `ZoomFactor`. It returns `Gen()`, which the preview uses as that column's key (when new inline math results arrive, paragraphs are laid out again). When there is no renderer (turned off in Settings, or not provided in tests), these hooks are removed and `$…$` isn't recognized either, staying as plain text.
 
-### 预览的钩子
+### Preview hooks
 
-预览（`ui/mdpreview.go` 的 `markdownPreview`）每帧拿源码，先过 `mdprep.Prepare`，再给 `mdShow`。选项是 `app/markdown.go` 的 `MarkdownOptions`（存在 `Doc.MD`，第一次预览时建，改名后、换了网上图片的设置后重建），钩子都在 `mdEnv.setup` 里挂：
+The preview (`markdownPreview` in `ui/mdpreview.go`) fetches the source every frame, runs it through `mdprep.Prepare`, then passes it to `mdShow`. Its options are `MarkdownOptions` from `app/markdown.go` (stored in `Doc.MD`, created on first preview and rebuilt after a rename or after the remote images setting changes), and all hooks are installed in `mdEnv.setup`:
 
-- 块：`CodeBlock`（`ui/mdblocks.go` 的 `codeBlock`）认出 `grove-region` 围栏：front matter 画成能收起的键值卡（`mdFrontMatter`），容器画成折叠块 / 对齐的一栏，里面的 Markdown 用嵌套的 `ShareSelection` 视图（`mdEnv.nested`，选项、整理结果存在元素的 `ui.Local` 上）。`Block` 钩子一直挂着：放跳转记号和同步用的探针（下面），接手只有图片的段落（一排徽章）和带图片的表格。
-- HTML：`HTML` 钩子（`ui/mdhtml.go` 的 `mdHTML`）带样式的交给 `Options.HTMLView`（见上）；别的用 `x/net/html` 解析，块级标签各自成块，连着的行内节点转成 Markdown 排成一段，只有图片的画成一排按 `width` / `height` 的图片，`<picture>` 按主题挑 `<source media>`。不认识的标签只显示字，`<script>`、`<style>`、注释不显示。
-- 图片有两条路：
-  - gmd 自己画的图片（Markdown 的 `![]()`）走 `app/mdimages.go` 的 `ImageLoader`（就是 `Options.LoadImage`）：本地的相对文档目录读，缓存在 gmd 的 `Options` 里。
-  - Grove 自己搭的图片（一排徽章、HTML 里的 `<img>`，`ui/mdblocks.go` 的 `mdImage`）走 `PreviewImage`：进程级的缓存（几个窗口、几个预览共用，按像素字节算，48 MB），后台读好了叫界面重画；带文字的 SVG（shields.io 那种徽章）交给窗口的渲染器（WebKit）画成位图，渲染器没有时才退回 mygo 画（字画不出来，只剩色块）。
-  - 两条路都认本地文件、`data:` 地址和网上的地址；网上的经 `FetchImage`（只 GET、不带 Cookie、8 MB 上限，同时最多取 6 张，测试换成桩）在后台取。`PreviewImage` 那条路不读 `http:` 的（`imageKey` 返回 `errInsecure`），`ImageLoader` 没有这道检查。设置 `NoRemoteImages` 关掉网上的，只显示说明文字。`ForgetImages` 清空进程级的缓存（测试用）。
-- 主题：`ui/mdtheme.go` 的 `mdTheme` 在 mygo 默认主题上调字号、行距、标题和块的间距，代码用编辑器的字体；VS Code 风格照它的 `markdown.preview.fontSize` 14 / `lineHeight` 1.6；按（界面主题、字体、风格）缓存。
-- emoji 短代码：见上面 `internal/emoji`。
-- 链接：
-  - `LinkMenu`（`ui/mdlinks.go` 的 `mdLinkMenu`）：打开链接、复制链接，本地文件再加复制路径、在访达中显示，后面是选中文字的编辑项。
-  - `Preview`（`mdLinkPreview`）：停在本地文件的链接上时显示它的仓库内路径（仓库外的写成 `~/…`），找不到的说一声。
-  - `CodeLink`（`ui/mdblocks.go` 的 `codeLink`）把行内代码里像路径、而且在文档目录或仓库根下 `os.Stat` 得到的变成链接（结果按代码缓存在 `mdEnv.links`）。
-  - 这几处在主线程只 stat、不读内容。
+- Blocks: `CodeBlock` (`codeBlock` in `ui/mdblocks.go`) recognizes `grove-region` fences: front matter is drawn as a collapsible key-value card (`mdFrontMatter`), and containers as collapsible blocks / aligned columns, with the Markdown inside rendered by a nested `ShareSelection` view (`mdEnv.nested`; options and the preprocessing result are stored on the element's `ui.Local`). The `Block` hook is always installed: it places jump markers and the sync probes (below), and takes over paragraphs consisting only of images (a row of badges) and tables with images.
+- HTML: the `HTML` hook (`mdHTML` in `ui/mdhtml.go`) hands styled blocks to `Options.HTMLView` (see above); everything else is parsed with `x/net/html`. Block-level tags each become their own block, runs of adjacent inline nodes are converted to Markdown and laid out as one paragraph, image-only content is drawn as a row of images sized by `width` / `height`, and `<picture>` picks a `<source media>` based on the theme. Unknown tags show only their text; `<script>`, `<style>` and comments aren't shown.
+- Images take one of two paths:
+  - Images gmd draws itself (Markdown's `![]()`) go through `ImageLoader` in `app/mdimages.go` (that is, `Options.LoadImage`): local paths are read relative to the document's folder and cached in gmd's `Options`.
+  - Images Grove builds itself (rows of badges, `<img>` in HTML; `mdImage` in `ui/mdblocks.go`) go through `PreviewImage`: a process-wide cache (shared by all windows and previews, sized by pixel bytes, 48 MB) that tells the UI to redraw once the background load finishes. SVGs with text (shields.io-style badges) are rendered to bitmaps by the window's renderer (WebKit); only when there's no renderer does it fall back to mygo's drawing (which can't draw the text, leaving just the colored blocks).
+  - Both paths accept local files, `data:` URLs and remote URLs; remote ones are fetched in the background via `FetchImage` (GET only, no cookies, 8 MB limit, at most 6 at once; stubbed out in tests). The `PreviewImage` path doesn't load `http:` URLs (`imageKey` returns `errInsecure`); `ImageLoader` has no such check. The `NoRemoteImages` setting turns off remote images, showing only their alt text. `ForgetImages` clears the process-wide cache (for tests).
+- Theme: `mdTheme` in `ui/mdtheme.go` adjusts font size, line height, and heading and block spacing on top of mygo's default theme, using the editor font for code; the VS Code style follows its `markdown.preview.fontSize` 14 / `lineHeight` 1.6. Cached per (UI theme, font, style).
+- Emoji shortcodes: see `internal/emoji` above.
+- Links:
+  - `LinkMenu` (`mdLinkMenu` in `ui/mdlinks.go`): Open Link and Copy Link, plus Copy Path and Show in Finder for local files, followed by editing items for the selected text.
+  - `Preview` (`mdLinkPreview`): resting on a link to a local file shows its path within the repository (written as `~/…` outside a repository), or says if it can't be found.
+  - `CodeLink` (`codeLink` in `ui/mdblocks.go`) turns inline code that looks like a path, and that `os.Stat` finds under the document's folder or the repository root, into a link (results cached per code string in `mdEnv.links`).
+  - All of these only stat on the main thread; they never read contents.
 
-点链接（`app/markdown.go` 的 `MarkdownLink`）：`#标题` 滚到那个标题；http、https、mailto 交给系统；别的当文件路径（相对文档所在目录，可带 `:行[:列]`）在编辑器里打开，是 Markdown 就直接显示预览（带 `#片段` 的滚到那个标题），目录在文件树里显示；别的协议不开。
+Clicking a link (`MarkdownLink` in `app/markdown.go`): `#heading` scrolls to that heading; http, https and mailto are handed to the system; anything else is treated as a file path (relative to the document's folder, optionally with `:line[:col]`) and opened in the editor — Markdown files open straight into the preview (scrolling to the heading if there's a `#fragment`), and directories are revealed in the file tree. Other schemes aren't opened.
 
-### 跳转
+### Jumping
 
-点 `#标题` 的链接设 `d.Anchor`；侧栏大纲点一项、旁边的编辑器滚了设 `d.AnchorLine`（从 1 起）。
+Clicking a `#heading` link sets `d.Anchor`; clicking an item in the sidebar outline, or scrolling the editor alongside, sets `d.AnchorLine` (1-based).
 
-- `markdownPreview` 只认这一帧开始时就有的值（这一帧里点链接设的下一帧才算）。
-- `Block` 钩子碰到那个标题 / 盖住那一行的顶层块时放一个看不见、比视图还高的记号（`mdMarker`）并 `ScrollIntoView`，那一块就滚到最上面。
-- 找不到就提示（`#标题`）或作罢（行号）。
+- `markdownPreview` only honors values present at the start of the frame (one set by clicking a link during this frame takes effect next frame).
+- When the `Block` hook reaches that heading / the top-level block covering that line, it places an invisible marker taller than the view (`mdMarker`) and calls `ScrollIntoView`, which scrolls that block to the top.
+- If nothing is found, it shows a notice (`#heading`) or gives up silently (line numbers).
 
-### 大文件
+### Large files
 
-整理后超过 32 KB（`mdChunkMin`）且没有脚注时按顶层块分段（`mdSplit`：一段到 512 字节后遇到标题、到 4 KB 后遇到哪块都另起），每段一个 `mdShow` 视图，放在 `ui.List` 里只排看得见的。
+After preprocessing, documents over 32 KB (`mdChunkMin`) with no footnotes are split into chunks by top-level blocks (`mdSplit`: a new chunk starts at the next heading once a chunk reaches 512 bytes, or at any block once it reaches 4 KB). Each chunk is its own `mdShow` view, placed in a `ui.List` that lays out only the visible ones.
 
-- 跳到还没排出来的地方时先 `ListState.ScrollTo` 那一段（`seekChunk`），下一帧那段排出来了再放记号，最多试几帧。
-- 每段最后一块的行号范围到下一段第一行为止。
-- `mdView`（存在 `Doc.MDView`，按文档留着）记着整理结果、分段和列表位置：在源码和预览之间切换不重新整理；打字时源码变了等停下 150 ms 再重排（`mdSettle`），刚切过来（500 ms 没画过，`mdIdle`）就马上排。
+- When jumping to a place not yet laid out, it first does `ListState.ScrollTo` to that chunk (`seekChunk`), and places the marker next frame once the chunk is laid out, trying for at most a few frames.
+- The line range of each chunk's last block extends up to the first line of the next chunk.
+- `mdView` (stored in `Doc.MDView`, kept per document) remembers the preprocessing result, the chunks and the list position: switching between source and preview doesn't preprocess again; when the source changes while typing, it waits for a 150 ms pause before laying out again (`mdSettle`), but right after switching over (not drawn for 500 ms, `mdIdle`) it lays out immediately.
 
-### 并排预览
+### Side-by-side preview
 
-`app/mdside.go`。入口：⌥⇧⌘V（`view.markdownSidePreview`），或 Markdown 标签条上的“在旁边打开预览”按钮（照 VS Code，标签条上不放就地预览的眼睛，就地预览 ⇧⌘V 走快捷键和菜单）。
+`app/mdside.go`. Entry points: ⌥⇧⌘V (`view.markdownSidePreview`), or the "Open Preview to the Side" button on a Markdown tab strip (as in VS Code, the tab strip has no eye button for the in-place preview; the in-place preview, ⇧⌘V, is reached through the shortcut and the menu).
 
-- 它是一个 `docs.MDPreview` 标签：`MDSource` 指向源文件的 Doc，Key 是 `(MDPreview, Root, Rel)`（不在仓库里时用绝对路径）。
-- 放在旁边一组（已经有旁边的组就挪过去，只有一组时 `splitOff` 向右分出一组），固定标签，一开就滚到编辑器正看着的那一节，键盘还给源文件。
-- 它不读盘，每帧拿 `MDSource` 的缓冲区。
-- 源文件的编辑器看不见时（预览被拖进同一组、源文件在显示就地预览，`App.EditorShown`）预览不跟它：看不见的编辑器不排版，`TopLine` 停在最后画的那一帧。
-- 这种标签不进会话（state.json 不变）。
+- It is a `docs.MDPreview` tab: `MDSource` points to the source file's Doc, and its Key is `(MDPreview, Root, Rel)` (an absolute path when outside a repository).
+- It goes into the neighboring group (moving there if a neighboring group already exists; with only one group, `splitOff` splits off a new group to the right), as a pinned tab. On opening, it scrolls to the section the editor is currently showing, and the keyboard goes back to the source file.
+- It doesn't read from disk; it takes `MDSource`'s buffer every frame.
+- When the source file's editor isn't visible (the preview was dragged into the same group, or the source file is showing the in-place preview; `App.EditorShown`), the preview doesn't follow it: an invisible editor isn't laid out, and its `TopLine` stays at the last frame drawn.
+- These tabs aren't saved in the session (state.json is unchanged).
 
-#### 和源码的对应（`ui/mdsync.go`）
+#### Mapping to the source (`ui/mdsync.go`)
 
-照 VS Code 的 markdown 预览：
+Modeled on VS Code's Markdown preview:
 
-- 探针：每个顶层块里一个看不见、铺满它的探针（`mdEnv.topBlock`），把这块的行号范围和上一帧的框记进 `mdView.blocks`；`lineAt(y)` 按块里的位置比例换算出带小数的行号。
-- 按屏幕行摊：照 VS Code，一块的顶到下一块的顶（连着中间的空当）对着这块的第一行到下一块的第一行。中间按源文件编辑器的屏幕行摊（`Doc.RowOf` / `LineAtRow`，ged 的折行和折叠都算上；mygo 的编辑器一行一个屏幕行），不按源码行数：按行数的话，折成三行的一段和它后面一个空行各算一行，编辑器匀速滚时预览一帧快一帧慢。
-- 放跳转记号时这块和下一块的框都取上一帧的 `mdView.prev`（同一次排版量的，滚着时差才不带一帧的滚动）。
-- `RowOf` / `LineAtRow` 用的是 ged 只按估的折行数算的 `etops`（`TopLine` 还用真排出来的 `tops`）：滚动时新排出来的行和估的不一样，`tops` 会变、块里比例的分母跟着变，预览就一跳一跳；`etops` 只在行、宽、字体变了时重算，滚着时不动。
-- 分块的预览（`seekChunk`）要放记号的那块上一帧已经排着时不先 `ScrollTo` 到块首，直接放记号，不然一帧块首一帧原处地来回闪。
+- Probes: each top-level block contains an invisible probe filling it (`mdEnv.topBlock`), which records the block's line range and its frame from the previous frame in `mdView.blocks`; `lineAt(y)` converts a position within a block proportionally into a fractional line number.
+- Spread by screen rows: as in VS Code, the span from the top of one block to the top of the next (including the gap between them) maps to the span from the block's first line to the next block's first line. Within it, positions are spread by the source editor's screen rows (`Doc.RowOf` / `LineAtRow`, accounting for ged's wrapping and folding; in mygo's editor each line is one screen row), not by source line count. With line counts, a paragraph wrapped onto three rows and the blank line after it would each count as one line, so when the editor scrolls at a steady speed the preview would alternate between fast and slow frames.
+- When placing the jump marker, the frames of this block and the next are both taken from the previous frame's `mdView.prev` (measured in the same layout pass, so while scrolling the difference doesn't carry a frame's worth of scroll).
+- `RowOf` / `LineAtRow` use ged's `etops`, computed only from estimated wrap counts (`TopLine` still uses `tops`, from actual layout): while scrolling, newly laid-out lines differ from the estimates, so `tops` changes and so does the denominator of the in-block ratio, making the preview jump around; `etops` is recomputed only when the lines, width or font change, and stays put while scrolling.
+- For a chunked preview (`seekChunk`), if the block that needs the marker was already laid out last frame, it places the marker directly instead of first doing `ScrollTo` to the chunk's start; otherwise it would flicker between the chunk start and the original spot every other frame.
 
-#### 两边同步
+#### Two-way sync
 
-- 编辑器 → 预览：`Doc.TopLine()`（ged 是 `Editor.TopLine`，带小数：顶上那一行滚过了几分之几）变了就设 `AnchorLine`，小数记在 `mdView.frac`，放记号时按比例往块里挪。对应 VS Code 的 `scrollPreviewWithEditor`；设置 `NoPreviewSync`（state.json 里是 `noPreviewScrollSync`）关掉。
-- 预览 → 编辑器：指针在预览上、预览顶上对着的行变了，`Doc.ScrollToFrac`（ged 的 `ScrollToLineFrac` 按小数停在那一行中间）滚编辑器。对应 VS Code 的 `scrollEditorWithPreview`；设置 `NoEditorSync`（`noEditorScrollSync`）关掉。
-- 一边拖着另一边走之后 `mdSyncQuiet`（200 ms）里另一边的变化只更新基准、不往回传，免得两边来回拉。
+- Editor → preview: when `Doc.TopLine()` changes (for ged it's `Editor.TopLine`, fractional: how much of the top line has scrolled past), `AnchorLine` is set and the fraction stored in `mdView.frac`, and when placing the marker it is moved proportionally into the block. This corresponds to VS Code's `scrollPreviewWithEditor`; the `NoPreviewSync` setting (`noPreviewScrollSync` in state.json) turns it off.
+- Preview → editor: when the pointer is over the preview and the line at the preview's top changes, `Doc.ScrollToFrac` (ged's `ScrollToLineFrac`, which stops partway through that line by the fraction) scrolls the editor. This corresponds to VS Code's `scrollEditorWithPreview`; the `NoEditorSync` setting (`noEditorScrollSync`) turns it off.
+- After one side drags the other along, for `mdSyncQuiet` (200 ms) changes on the other side only update the baseline and aren't sent back, so the two sides don't pull each other back and forth.
 
-#### 别的对应
+#### Other mappings
 
-- 源文件光标所在的块左边一道竖条（VS Code 的 `markEditorSelection`，在 `topBlock` 里画）。
-- 双击预览（滚动容器的 `HandleInput`，`Clicks == 2`）下一帧 `RevealSource` 回到那一行（VS Code 的 `doubleClickToSwitchToEditor`）。
-- 标题左边悬停出 🔗（`headingLink`），点了复制 `仓库内路径#slug` 并滚到它。
+- The block containing the source file's caret gets a vertical bar on its left (VS Code's `markEditorSelection`, drawn in `topBlock`).
+- Double-clicking the preview (the scroll container's `HandleInput`, `Clicks == 2`) runs `RevealSource` next frame to go back to that line (VS Code's `doubleClickToSwitchToEditor`).
+- Hovering to the left of a heading shows 🔗 (`headingLink`); clicking it copies `repo-relative-path#slug` and scrolls to the heading.
 
-#### 跟着当前标签
+#### Following the current tab
 
-- 键盘换到另一组里的另一个 Markdown 文件（它自己没开并排预览）时 `FollowSidePreview` 把这个预览改指向它，滚到那个编辑器正看着的地方。
-- 源文件的标签没了（预览标签被 `addDoc` 顶掉不经 `RemoveDoc`）的预览也跟，所以先跟再看源文件在不在。
-- `view.markdownLockPreview`（标签右键菜单里也有“锁定预览”）锁定了就不跟，标题写成 `[预览] x`（没锁的是 `预览 x`）。
-- 源文件关了（`RemoveDoc` → `closeSidePreviews`）改跟同一个文件的另一份，没有就一起关。
+- When the keyboard switches to another Markdown file in another group (one without its own side-by-side preview), `FollowSidePreview` retargets this preview to it and scrolls to where that editor is currently looking.
+- A preview whose source tab is gone (when the preview tab is pushed out by `addDoc` without going through `RemoveDoc`) also follows, so it follows first and then checks whether the source file still exists.
+- `view.markdownLockPreview` ("Lock Preview" is also in the tab context menu) locks it so it doesn't follow; its title becomes `[Preview] x` (unlocked it's `Preview x`).
+- When the source file is closed (`RemoveDoc` → `closeSidePreviews`), the preview switches to another copy of the same file, or closes along with it if there is none.

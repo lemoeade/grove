@@ -1,152 +1,192 @@
-# 架构
+# Architecture
 
-本文是 Grove 结构的总览：分了哪几层、各层之间怎么依赖、每个包管什么、改代码时要守哪些约定。各子系统的细节在
-[`docs/architecture/`](architecture/) 下按主题分文件，见下面的[子系统](#子系统)。各版本改了什么记在根目录的
-[`CHANGELOG.md`](../CHANGELOG.md)。
+This is an overview of how Grove is structured: its layers, how they depend on each other, what each package is responsible
+for, and the conventions to follow when changing code. Details of each subsystem live in topic files under
+[`docs/architecture/`](architecture/); see [Subsystems](#subsystems) below. What changed in each release is recorded in
+[`CHANGELOG.md`](../CHANGELOG.md) at the repository root.
 
-## 分层
+## Layers
 
 ```
-cmd/workbench ─► internal/ui ─► internal/app ─► 逻辑包 internal/{git, files, docs, workspace, search, globs, fuzzy,
-（三个窗口、单实例、  （建控件、画、   （状态机、命令注册表、   watch, graph, outline, history, askpass, termd,
-  日志、子命令入口、    接事件）       界面交互的状态）         tasks, snippets, render, fonts, highlight}
-  自动更新的接线）       │                                       （不建控件；docs、render 等用到 mygo 的类型）
-      │                  ├─► 部件包 internal/{ged, gmd}（自己排字、画、接输入；gmd 用 css）
-      │                  └─► 逻辑包的类型和纯函数（不做 IO）、internal/{mdprep, appicon}
-      └─► internal/{workspace, render, fonts, askpass, termd, version, crash, appicon}、mygo 的 ui（接线）
-                                internal/i18n（文案表，各层都用）
+cmd/workbench ─► internal/ui ─► internal/app ─► logic packages internal/{git, files, docs, workspace, search, globs, fuzzy,
+(three windows,     (builds      (state machine,     watch, graph, outline, history, askpass, termd,
+ single instance,    widgets,     command registry,  tasks, snippets, render, fonts, highlight}
+ logging, subcommand draws,       UI interaction     (build no widgets; docs, render, etc. use mygo types)
+ entry points,       handles      state)
+ auto-update wiring) events)
+      │                  ├─► widget packages internal/{ged, gmd} (do their own layout, drawing and input; gmd uses css)
+      │                  └─► types and pure functions of the logic packages (no IO), internal/{mdprep, appicon}
+      └─► internal/{workspace, render, fonts, askpass, termd, version, crash, appicon}, mygo's ui (wiring)
+                                internal/i18n (string catalog, used by every layer)
 ```
 
-依赖方向从左到右，没有环（Go 也不允许）。
+Dependencies point left to right, with no cycles (Go wouldn't allow them anyway).
 
-### `ui` 和 `app`
+### `ui` and `app`
 
-- `ui` 读 `app` 的状态、调它的方法和命令；`app` 不 import `ui`。
-- `ui` 还直接 import 了 `docs`、`git`、`workspace`、`files`、`search`、`outline`、`graph`、`render`、`snippets`、`highlight`、
-  `history`、`askpass`、`fonts`、`version`、`appicon`、`mdprep`，但只用类型、常量和纯函数（`git.Change`、`workspace.Settings`
-  的可选值、`files.JoinPath`、`askpass` 的提示种类……）。读写文件、跑 git 都经 `app`（`ui` 里没有 `os.*` / `exec`）。
-- 两者的边界不是“逻辑 / 界面”，而是“谁建控件”：
-  - `app` 不建控件、不画。除了 `BindShortcuts` 在传进来的 `ui.Context` 上登记快捷键外，不碰 `wui.Context`。
-  - 为了无头测试，界面交互的状态机放在 `app`：
-    - 自画的右键菜单（`popmenu.go`：项、位置、命中、子菜单计时）；
-    - 侧栏滚轮的手感（`sidescroll.go`）；
-    - 文件树悬停提示的延迟和暖启动（`treetip.go`）；
-    - 编辑器组拖放标签的落点几何（`groups.go` 的 `DropSide` / `DropRect`）；
-    - `App` 里由 `ui` 每帧写回的“这一帧 / 上一帧”字段（`GitHover`、`TreeSpans`、`TreeDragging`、`MenuKeyAt`、`TermFocused`……）。
-  - 所以 `app` 也 import mygo 的 `ui`、`editor`，用的是键位、`ListState`、`Rect` 这类类型。
+- `ui` reads `app`'s state and calls its methods and commands; `app` does not import `ui`.
+- `ui` also imports `docs`, `git`, `workspace`, `files`, `search`, `outline`, `graph`, `render`, `snippets`, `highlight`,
+  `history`, `askpass`, `fonts`, `version`, `appicon` and `mdprep` directly, but only for types, constants and pure functions
+  (`git.Change`, the allowed values of `workspace.Settings`, `files.JoinPath`, the prompt kinds in `askpass`, ...). Reading and
+  writing files and running git always go through `app` (there is no `os.*` / `exec` in `ui`).
+- The boundary between them is not "logic vs. UI" but "who builds widgets":
+  - `app` builds no widgets and draws nothing. Apart from `BindShortcuts` registering shortcuts on the `ui.Context` passed to
+    it, it never touches `wui.Context`.
+  - For the sake of headless testing, UI interaction state machines live in `app`:
+    - the custom-drawn context menus (`popmenu.go`: items, position, hit testing, submenu timing);
+    - the feel of sidebar scroll-wheel scrolling (`sidescroll.go`);
+    - the delay and warm start of file tree hover tips (`treetip.go`);
+    - the drop-target geometry for dragging tabs between editor groups (`DropSide` / `DropRect` in `groups.go`);
+    - the "this frame / last frame" fields on `App` that `ui` writes back every frame (`GitHover`, `TreeSpans`, `TreeDragging`,
+      `MenuKeyAt`, `TermFocused`, ...).
+  - That is why `app` also imports mygo's `ui` and `editor`, for types such as key codes, `ListState` and `Rect`.
 
-### 逻辑包和部件包
+### Logic packages and widget packages
 
-- 逻辑包之间只有少量依赖：`search` 用 `docs` / `files` / `git` / `globs`；`docs` 用 `git` / `highlight` / `outline` / `snippets`
-  （还有部件包 `ged` / `gmd` 的状态类型）；`files` 用 `fuzzy` / `git`；`watch` 用 `git`；`mdprep` 用 `emoji`。它们都不依赖
-  `app` 和 `ui`。
-- “逻辑包”指不建控件，不是不碰 mygo：
-  - `docs.Doc` 持有 mygo 编辑器的 `editor.State` / `editor.Buffer`（mygo 的编辑器还在用的那些情况）和 Markdown 预览的选项；
-  - `highlight` 复制 mygo 的语言定义；
-  - `render` 用不可见的 `mygo.WebView`；
-  - `watch` 包装 `mygo.WatchFiles`；
-  - `termd` 用 mygo 的终端插件；
-  - `fonts` 注册字体；
-  - `outline` 用 mygo 的 Markdown 解析器。
-- 部件包 `ged`（编辑器和 Diff）、`gmd`（Markdown 预览）只用 mygo 公开的排字、画图、输入接口，自己排版、绘制、处理输入，
-  不认 Grove 的主题，也不 import `app` / `ui`。样式由 `ui` 传进去，`app` / `docs` 只持有它们的状态。`gmd` 用 `css`，`css` 不依赖别的包。
+- The logic packages depend on each other only a little: `search` uses `docs` / `files` / `git` / `globs`; `docs` uses `git` /
+  `highlight` / `outline` / `snippets` (plus the state types of the widget packages `ged` / `gmd`); `files` uses `fuzzy` / `git`;
+  `watch` uses `git`; `mdprep` uses `emoji`. None of them depend on `app` or `ui`.
+- "Logic package" means it builds no widgets, not that it never touches mygo:
+  - `docs.Doc` holds the mygo editor's `editor.State` / `editor.Buffer` (in the cases where mygo's editor is still used) and the
+    Markdown preview options;
+  - `highlight` copies mygo's language definitions;
+  - `render` uses an invisible `mygo.WebView`;
+  - `watch` wraps `mygo.WatchFiles`;
+  - `termd` uses mygo's terminal plugin;
+  - `fonts` registers fonts;
+  - `outline` uses mygo's Markdown parser.
+- The widget packages `ged` (editor and Diff) and `gmd` (Markdown preview) use only mygo's public text layout, drawing and input
+  APIs and do their own layout, drawing and input handling. They know nothing of Grove's theme and import neither `app` nor `ui`.
+  Styles are passed in by `ui`; `app` / `docs` only hold their state. `gmd` uses `css`, and `css` depends on no other package.
 
 ### `cmd/workbench`
 
-除了 `app` / `ui` 还直接用：
+Besides `app` / `ui`, it uses directly:
 
-- `askpass` 和 `termd`：同一个可执行文件也是这两个子命令的入口；
-- `render`：`main.go` 里 `render.Register` 注册 WebView 后端；
-- `workspace`：设置窗口的回调、材质；
-- `fonts`、`crash`（日志）、`version`、`appicon`（更新窗口里的图标）；
-- mygo 的 `ui`（`wui.View` 把三个窗口的界面挂上去）和更新插件 `plugins/updater`（见 [app.md 的自动更新](architecture/app.md#自动更新)）。
+- `askpass` and `termd`: the same executable is also the entry point for these two subcommands;
+- `render`: `render.Register` in `main.go` registers the WebView backend;
+- `workspace`: callbacks from the settings window, materials;
+- `fonts`, `crash` (logging), `version`, `appicon` (the icon in the update window);
+- mygo's `ui` (`wui.View` mounts the UI of the three windows) and the updater plugin `plugins/updater` (see
+  [auto-update in app.md](architecture/app.md#auto-update)).
 
-### 线程和状态
+### Threads and state
 
-- `app.App` 保存一个窗口的全部状态。界面每帧读状态，只通过命令（`a.Exec(id)`）或 `App` 的方法改。
-- 后台 goroutine 不碰 `App`，把结果交给 `a.Update(func())`，回主线程再改。开始前先拿好 `up := a.Update`：切换工作区（`switchTo`）
-  会重写整个 `*a`，回来时还要核对原来的仓库、文档还在不在（比仓库指针；文档比 `Doc.Gen`）。
-- 要把键盘给某个控件时，`app` 置一个一次性的 `FocusXxx` 请求字段，画那个控件的界面函数看到就 `Focus(c)` 并清掉。
+- `app.App` holds all the state of one window. The UI reads that state every frame and changes it only through commands
+  (`a.Exec(id)`) or `App` methods.
+- Background goroutines never touch `App`; they hand results to `a.Update(func())`, which applies them on the main thread.
+  Grab `up := a.Update` before starting: switching workspaces (`switchTo`) rewrites all of `*a`, so on the way back you must also
+  check that the original repository and document still exist (compare repository pointers; for documents compare `Doc.Gen`).
+- To give the keyboard to a particular widget, `app` sets a one-shot `FocusXxx` request field; the UI function that draws that
+  widget sees it, calls `Focus(c)` and clears it.
 
-细节（`switchTo` 保留哪些字段、`FocusXxx` 的全部字段、命令注册表、多窗口）见 [App、命令和窗口](architecture/app.md)。
+For details (which fields `switchTo` keeps, the full list of `FocusXxx` fields, the command registry, multiple windows), see
+[App, commands and windows](architecture/app.md).
 
-## 子系统
+## Subsystems
 
-| 文档 | 内容 |
+| Document | Contents |
 |---|---|
-| [App、命令和窗口](architecture/app.md) | `App`、`FocusXxx`、`switchTo`；命令注册表和由它生成的菜单、快捷键、面板；自定义快捷键；多窗口、启动、关窗口和退出、设置窗口和关于窗口、版本、自动更新 |
-| [工作区、设置、会话和状态文件](architecture/state.md) | `.code-workspace` 和普通目录、`Settings`、按工作区的 `Session`、状态目录、state.json 的格式和迁移 |
-| [Git](architecture/git.md) | 所有仓库同时可见、Git 栏、合并的历史；只读和刷新、写命令队列、凭据、冲突、进行中的操作、分支 / 标签 / 远程、历史、提交图、工作树、子模块、交互式变基、克隆、远程网页、普通文件夹 |
-| [Diff 和暂存](architecture/staging.md) | 按块、按行暂存 / 取消暂存 / 丢弃，补丁怎么拼；Diff 标签的两条代码路径（ged / mygo）、ged Diff 的模型和视图、就地编辑；编辑器改动条和就地卡 |
-| [文件监听和文件树](architecture/files.md) | 每个仓库一个监听、两类提示；文件树的模型（`git ls-files`、增量更新、被忽略的懒读、合并目录）、交互和外观 |
-| [右键菜单和按钮的菜单](architecture/menus.md) | Grove 自己画的菜单：哪些地方用、`app.PopMenu` 状态机、`ui/gmenu.go` 的事件和绘制、磨砂、还用 mygo 菜单的几处 |
-| [编辑器、搜索和本地历史](architecture/editor.md) | 文档和标签、大文件、编码、保存、格式化、大纲和粘性滚动、跳转、编辑器组；Grove 自己的编辑器部件 `ged`（单栏编辑器和共用部分）；跨仓库搜索和替换；本地历史 |
-| [Markdown 渲染](architecture/markdown.md) | `mdprep` 的预处理、`gmd` 的排版和绘制、`css` 的层叠、emoji 短代码、Mermaid 和公式（`render`）、并排预览和滚动同步 |
-| [终端](architecture/terminal.md) | 标签和分屏、任务、agent 状态、回滚内容的保存、termd 后台进程 |
-| [外观、语言和快捷键](architecture/look.md) | 窗口底、材质和颜色、应用图标、中英文、快捷键的分派域 |
+| [App, commands and windows](architecture/app.md) | `App`, `FocusXxx`, `switchTo`; the command registry and the menus, shortcuts and palette generated from it; custom shortcuts; multiple windows, startup, closing windows and quitting, the settings and About windows, versions, auto-update |
+| [Workspaces, settings, sessions and the state file](architecture/state.md) | `.code-workspace` files and plain folders, `Settings`, per-workspace `Session`, the state folder, the state.json format and migrations |
+| [Git](architecture/git.md) | All repositories visible at once, the Git sidebar, merged history; reads and refreshing, the write-command queue, credentials, conflicts, operations in progress, branches / tags / remotes, history, the commit graph, worktrees, submodules, interactive rebase, cloning, remote web pages, plain folders |
+| [Diff and staging](architecture/staging.md) | Staging / unstaging / discarding by hunk and by line and how patches are assembled; the two code paths of the Diff tab (ged / mygo), the model and view of the ged Diff, inline editing; the editor change bar and inline cards |
+| [File watching and the file tree](architecture/files.md) | One watcher per repository and its two kinds of hints; the file tree model (`git ls-files`, incremental updates, lazily read ignored files, compact folders), interaction and appearance |
+| [Context menus and button menus](architecture/menus.md) | Grove's own menus: where they are used, the `app.PopMenu` state machine, events and drawing in `ui/gmenu.go`, frosted glass, the few places that still use mygo menus |
+| [Editor, search and local history](architecture/editor.md) | Documents and tabs, large files, encodings, saving, formatting, outline and sticky scroll, navigation, editor groups; Grove's own editor widget `ged` (the single-pane editor and shared parts); cross-repository search and replace; local history |
+| [Markdown rendering](architecture/markdown.md) | Preprocessing in `mdprep`, layout and drawing in `gmd`, cascading in `css`, emoji shortcodes, Mermaid and math (`render`), side-by-side preview and scroll sync |
+| [Terminal](architecture/terminal.md) | Tabs and splits, tasks, agent status, saving scrollback, the termd background process |
+| [Appearance, language and shortcuts](architecture/look.md) | Window backdrop, materials and colors, the app icon, Chinese and English, shortcut dispatch domains |
 
-别的文档：[测试](testing.md)、[发布](release.md)、[快捷键表](shortcuts.md)、[术语](terms.md)、[踩过的坑](mygo-pitfalls.md)。
+Other documents: [testing](testing.md), [releasing](release.md), [shortcut table](shortcuts.md), [terms](terms.md),
+[pitfalls](mygo-pitfalls.md).
 
-## 目录
+## Directories
 
-| 目录 | 职责 |
+| Directory | Responsibility |
 |---|---|
-| `cmd/workbench/` | 入口。第一个参数是 `askpass` / `termd` 时交给 `askpass.Main` / `termd.Main`；否则解析参数（工作区路径）、搬旧目录（`migrate.go`）、载字体、接自动更新（`setupUpdates`）、建 `app.Windows` 并把 mygo 的窗口回调接上去（`NewWindow`、`OnClose` → `CanClose`、`OnClosed` → `Closed`、`OnFocus`、`OnBeforeQuit` → `RequestQuit`），单实例锁和 `deliver`，日志和崩溃日志，设置窗口和关于窗口，`WORKBENCH_*` 环境变量 |
-| `internal/app/` | 状态机：工作区和仓库、面板开关、编辑器组和标签、文件树、Git 栏、历史、搜索、终端、git 写命令队列、对话框状态、命令注册表和由它生成的菜单栏、state.json 读写、多窗口注册表、自动更新的钩子（`updates.go`）、界面交互的状态（自画菜单、滚轮、拖放几何，见上）。一个窗口一个 `App` |
-| `internal/ui/` | 纯界面，按区域分文件：`view.go` 总布局，`titlebar.go`，`sidebar.go`（文件树），`gitbar.go`，`search.go`，`outline.go`，`openeditors.go`，`tabs.go`（编辑器组和标签内容），`history.go` / `graph.go`（右栏），`bottom.go`（终端 / 输出 / 问题），`statusbar.go` / `statusdoc.go`（状态栏；后者是当前标签的几项和语言 / 缩进 / 换行 / 编码菜单），`palette.go`，`dialogs.go` / `dialogframe.go`，`menus.go`（右键菜单），`settings.go` / `about.go`（两个小窗口），`widgets.go` / `icons.go` / `fileicons.go` / `accent.go` |
-| `internal/workspace/` | `.code-workspace` 解析、state.json 的 schema 和旧格式迁移、`Settings`、`Session`（按工作区的标签、展开目录、终端、布局）、几个窗口共用的 `Store`、设置的 JSON 形式（`settingsjson.go`）、`files.exclude` 的读取 |
-| `internal/git/` | Git 命令调用。只读：status（porcelain v2）、diff 两侧、log、分支 / 标签 / 远程、blob、ls-files、blame、工作树、子模块；写入：`RunRW` / `RunOp`（非交互环境、超时、进程组）；块级和行级补丁（`hunk.go`）、远程地址转网页（`web.go`）、常见错误说明（`explain.go`）、需要终端的命令识别（`interactive.go`） |
-| `internal/askpass/` | 凭据提示的两端：`Main` / `Run` 处理 `Grove askpass <提示>` 子进程（连接套接字、发送一行 JSON、等待回答），`Listen` / `Server` / `Close` 处理应用端；`CleanStale` 清理上次遗留的目录，`Classify` 识别用户名、密码或口令提示 |
-| `internal/files/` | 文件树模型：`git ls-files` 建，普通文件夹用 `Walk`；展开收起、筛选、改动标记、被忽略的文件懒读、符号链接、子模块行、合并目录、增量 `Diff` / `Apply`、空目录 |
-| `internal/docs/` | 打开的文档：各种 `Kind`、读写、外部改动检测、编码、大文件、历史版本、Diff 两侧、冲突块解析、保存整理、按行 diff（`LineEdits`）、交互式变基的计划、光标信息 |
-| `internal/ged/` | Grove 自己画的编辑器部件：Diff（并排、统一、就地编辑）和文件标签的单栏编辑器，默认都用它（`WORKBENCH_GED=off` / `WORKBENCH_GED_EDITOR=off` 退回 mygo 的）；只用 mygo 公开的排字、画图、输入接口，不认 Grove 的主题和 `internal/ui`。见 [editor.md](architecture/editor.md) |
-| `internal/highlight/` | 大文件的后台高亮：`For(name)` 复制 mygo 的语言定义，只替换 `Highlighter`；一个 goroutine 从头分词并记录每行开头的状态，主线程据此处理可见行 |
-| `internal/search/` | 跨仓库全文搜索和替换的计算：候选、worker、字面 / 整词 / 正则、glob、编码、`advanced.go` 的 regexp2 后备、`replace.go` |
-| `internal/globs/` | 路径 glob（`**` 跨目录，`*` `?` 不跨，`{a,b}`，不分大小写）：`Set.Match` 给搜索的包含 / 排除，`Set.MatchRoot` 给 `files.exclude`，带目录缓存的 `Matcher` |
-| `internal/fuzzy/` | 快速打开和命令面板的模糊匹配：优先匹配文件名，无法匹配时再包含目录；连续、词首和完整文件名匹配会加分，命中位置返回给界面用于高亮 |
-| `internal/watch/` | 文件监听：每个仓库一个 `Watcher`，封装 `mygo.WatchFiles` 的 HintsOnly 模式，报“工作区变了 / git 变了”两类提示 |
-| `internal/graph/` | 提交图的泳道算法，纯算法，不碰 git 和界面 |
-| `internal/outline/` | 大纲：解析 Markdown 标题、Go（`go/parser`），其他语言按行正则或花括号嵌套识别；计算粘性滚动的吸顶行（`sticky.go`） |
-| `internal/history/` | 本地历史存储：每个文件一个目录，包含 `index.json` 和内容文件；记录时机和恢复流程在 `app/localhist.go` |
-| `internal/termd/` | 终端后台进程：帧协议（`proto.go`）、`Server`、会话（pty + shell + 无头终端）、应用端的 `client.go`、自行实现的 pty（`pty_darwin.go`）、`Spawn` |
-| `internal/tasks/` | 读取仓库根目录中的任务定义：package.json 的 scripts、Makefile / justfile 的目标、Cargo.toml / go.mod 的常用命令；仅读取文件 |
-| `internal/snippets/` | 代码片段：内置的（embed）加状态目录里 `snippets/*.json` 的；`Expand` 把 VS Code 片段体展开成文字和跳位，`Session` 管 Tab / ⇧Tab 跳位 |
-| `internal/mdprep/` | Markdown 交给预览之前的整理：front matter、跨块的 HTML 容器（`<details>`、`<div align>`…）换成信息串 `grove-region N` 的围栏代码块，内容记在 `Regions`；emoji 短代码换成字符（`emoji`）；只换开头、结尾那一行，行号不变 |
-| `internal/emoji/` | GitHub 的 emoji 短代码表（`gemoji.txt`，来自 github/gemoji）：`:tada:`、`:+1:` 换成 emoji 字符，代码块和行内代码里的不换 |
-| `internal/gmd/` | Grove 自己画的 Markdown 预览（解析用 mygo 的）：块和行内排版、选择复制、代码块、表格、图片；带样式的 HTML 块按 `internal/css` 的结果画成 grid / flex / 盒子（`htmlrender.go`）；`WORKBENCH_GMD=off` 退回 mygo 的 |
-| `internal/css/` | CSS：颜色、长度、grid 轨道、声明和样式表的解析，选择器匹配、优先级层叠、继承、`var()`、UA 样式表；元素由调用方包成 `css.Element`，不碰界面 |
-| `internal/render/` | Markdown 预览中 Mermaid 图和公式的渲染：`Renderer`（缓存、队列、一个 goroutine）和 `Backend`；`web.go` 使用不可见的 `mygo.WebView` 作为后端 |
-| `internal/fonts/` | 编辑器 / 终端等宽字体的选择和内置字体注册；`app` 渲染 Markdown 时也会使用，因此不放在 `ui` 中 |
-| `internal/i18n/` | 文案表：`T` / `Tf` / `Tn` / `List`，`zh-CN.json`（测试从代码里收）、`en.json`；`Set` / `Lang` / `Locale` |
-| `internal/version/` | 版本号：`App`（`mygo build` 用 ldflags 编进来，`go run` 和测试里是 `dev`）、`Mygo()`、`Go()`、`Platform()`、`String()` |
-| `internal/crash/` | 日志目录：`workbench.log`（满 1 MB 轮换）和崩溃日志 |
-| `internal/appicon/` | 用有向距离场绘制应用图标（浅色圆角方块上的钢蓝色 G 形 git 分支）；`-update` 生成 `assets/icon.png`，关于窗口和更新窗口使用同一套绘制代码 |
-| `internal/testutil/` | 测试用：临时仓库（`TempRepo` / `NewRepo` / `ThreeRepos` / `SubmoduleRepo`）、后台回调队列 `Queue`、推帧等待、`Budget` / `Race`、`WaitTermReady` |
-| `tools/measure/` | 测量内存和启动用时的脚本，不包含在应用中：`measure.sh`、`report.py`、`longrun.sh`、`seed/`；Go 端仅有 `TestMeasureScripts` |
-| `.github/workflows/` | `ci.yml`：推送到 main 和 PR 时 vet、测试、构建 .app（`-race` 手动触发或每周跑）；`release.yml`：推 `v*` 标签时构建、签名、把更新包传到草稿 Release（见 [release.md](release.md)）；`claude.yml`：issue / PR 评论里写 `@claude` 时跑 Claude Agent SDK（`.github/claude/`） |
+| `cmd/workbench/` | Entry point. When the first argument is `askpass` / `termd` it hands off to `askpass.Main` / `termd.Main`; otherwise it parses arguments (the workspace path), moves old folders (`migrate.go`), loads fonts, wires up auto-update (`setupUpdates`), creates `app.Windows` and connects mygo's window callbacks to it (`NewWindow`, `OnClose` → `CanClose`, `OnClosed` → `Closed`, `OnFocus`, `OnBeforeQuit` → `RequestQuit`); also the single-instance lock and `deliver`, logs and crash logs, the settings and About windows, and the `WORKBENCH_*` environment variables |
+| `internal/app/` | The state machine: workspaces and repositories, panel visibility, editor groups and tabs, the file tree, the Git sidebar, history, search, terminals, the git write-command queue, dialog state, the command registry and the menu bar generated from it, reading and writing state.json, the window registry, auto-update hooks (`updates.go`), and UI interaction state (custom-drawn menus, scroll wheel, drag-and-drop geometry; see above). One `App` per window |
+| `internal/ui/` | Pure UI, one file per area: `view.go` (overall layout), `titlebar.go`, `sidebar.go` (file tree), `gitbar.go`, `search.go`, `outline.go`, `openeditors.go`, `tabs.go` (editor groups and tab contents), `history.go` / `graph.go` (right panel), `bottom.go` (terminal / output / problems), `statusbar.go` / `statusdoc.go` (status bar; the latter holds the items for the current tab and the language / indentation / line ending / encoding menus), `palette.go`, `dialogs.go` / `dialogframe.go`, `menus.go` (context menus), `settings.go` / `about.go` (the two small windows), `widgets.go` / `icons.go` / `fileicons.go` / `accent.go` |
+| `internal/workspace/` | `.code-workspace` parsing, the state.json schema and migration of old formats, `Settings`, `Session` (per-workspace tabs, expanded folders, terminals, layout), the `Store` shared by all windows, the JSON form of settings (`settingsjson.go`), reading `files.exclude` |
+| `internal/git/` | Invoking git. Reads: status (porcelain v2), both sides of a diff, log, branches / tags / remotes, blobs, ls-files, blame, worktrees, submodules. Writes: `RunRW` / `RunOp` (non-interactive environment, timeouts, process groups). Hunk- and line-level patches (`hunk.go`), turning remote URLs into web pages (`web.go`), explanations of common errors (`explain.go`), detecting commands that need a terminal (`interactive.go`) |
+| `internal/askpass/` | Both ends of credential prompts: `Main` / `Run` handle the `Grove askpass <prompt>` child process (connect to the socket, send one line of JSON, wait for the answer); `Listen` / `Server` / `Close` handle the app side; `CleanStale` cleans up folders left over from last time; `Classify` recognizes username, password and passphrase prompts |
+| `internal/files/` | The file tree model: built from `git ls-files`, or with `Walk` for plain folders; expand / collapse, filtering, change markers, lazily read ignored files, symlinks, submodule rows, compact folders, incremental `Diff` / `Apply`, empty folders |
+| `internal/docs/` | Open documents: the various `Kind`s, reading and writing, detecting external changes, encodings, large files, historical versions, both sides of a Diff, parsing conflict blocks, cleanup on save, line diffs (`LineEdits`), interactive rebase plans, cursor info |
+| `internal/ged/` | Grove's own editor widget: the Diff (side by side, unified, inline editing) and the single-pane editor for file tabs, both used by default (`WORKBENCH_GED=off` / `WORKBENCH_GED_EDITOR=off` fall back to mygo's); uses only mygo's public text layout, drawing and input APIs and knows nothing of Grove's theme or `internal/ui`. See [editor.md](architecture/editor.md) |
+| `internal/highlight/` | Background highlighting for large files: `For(name)` copies mygo's language definition and replaces only the `Highlighter`; one goroutine tokenizes from the start and records the state at the start of every line, which the main thread uses to handle visible lines |
+| `internal/search/` | The computation behind cross-repository full-text search and replace: candidates, workers, literal / whole word / regex, globs, encodings, the regexp2 fallback in `advanced.go`, `replace.go` |
+| `internal/globs/` | Path globs (`**` crosses folders, `*` and `?` don't, `{a,b}`, case-insensitive): `Set.Match` for search include / exclude, `Set.MatchRoot` for `files.exclude`, and a `Matcher` with a folder cache |
+| `internal/fuzzy/` | Fuzzy matching for Quick Open and the command palette: matches the file name first and includes folders only when that fails; consecutive, word-start and full-file-name matches score higher, and match positions are returned to the UI for highlighting |
+| `internal/watch/` | File watching: one `Watcher` per repository wrapping the HintsOnly mode of `mygo.WatchFiles`, reporting two kinds of hints, "the working tree changed" and "git changed" |
+| `internal/graph/` | The lane algorithm for the commit graph; pure algorithm, touches neither git nor the UI |
+| `internal/outline/` | Outline: parses Markdown headings and Go (`go/parser`); other languages are recognized by per-line regexes or brace nesting; computes the pinned lines for sticky scroll (`sticky.go`) |
+| `internal/history/` | Local history storage: one folder per file, containing `index.json` and content files; when snapshots are taken and how restoring works lives in `app/localhist.go` |
+| `internal/termd/` | The terminal background process: frame protocol (`proto.go`), `Server`, sessions (pty + shell + headless terminal), the app-side `client.go`, a home-grown pty (`pty_darwin.go`), `Spawn` |
+| `internal/tasks/` | Reads task definitions at repository roots: package.json scripts, Makefile / justfile targets, common commands for Cargo.toml / go.mod; only reads files |
+| `internal/snippets/` | Code snippets: the built-in ones (embedded) plus `snippets/*.json` in the state folder; `Expand` expands a VS Code snippet body into text and tab stops, `Session` handles jumping between tab stops with Tab / ⇧Tab |
+| `internal/mdprep/` | Cleanup before Markdown goes to the preview: front matter; HTML containers that span blocks (`<details>`, `<div align>`, ...) become fenced code blocks with the info string `grove-region N`, with their content recorded in `Regions`; emoji shortcodes become characters (`emoji`). Only the opening and closing lines are replaced, so line numbers don't change |
+| `internal/emoji/` | GitHub's emoji shortcode table (`gemoji.txt`, from github/gemoji): turns `:tada:` and `:+1:` into emoji characters, but not inside code blocks or inline code |
+| `internal/gmd/` | Grove's own Markdown preview (parsing uses mygo's parser): block and inline layout, selection and copy, code blocks, tables, images; styled HTML blocks are drawn as grid / flex / boxes from the results of `internal/css` (`htmlrender.go`); `WORKBENCH_GMD=off` falls back to mygo's |
+| `internal/css/` | CSS: parsing colors, lengths, grid tracks, declarations and style sheets; selector matching, specificity-based cascading, inheritance, `var()`, the UA style sheet; callers wrap elements as `css.Element`, and it never touches the UI |
+| `internal/render/` | Rendering Mermaid diagrams and math in the Markdown preview: `Renderer` (cache, queue, one goroutine) and `Backend`; `web.go` uses an invisible `mygo.WebView` as the backend |
+| `internal/fonts/` | Choosing the monospace font for the editor / terminal and registering bundled fonts; `app` also uses it when rendering Markdown, so it doesn't live in `ui` |
+| `internal/i18n/` | String catalog: `T` / `Tf` / `Tn` / `List`, `zh-CN.json` (collected from code by a test), `en.json`; `Set` / `Lang` / `Locale` |
+| `internal/version/` | Version numbers: `App` (compiled in via ldflags by `mygo build`; `dev` under `go run` and in tests), `Mygo()`, `Go()`, `Platform()`, `String()` |
+| `internal/crash/` | The log folder: `workbench.log` (rotated at 1 MB) and crash logs |
+| `internal/appicon/` | Draws the app icon with a signed distance field (a steel-blue G-shaped git branch on a light rounded square); `-update` generates `assets/icon.png`, and the About and update windows use the same drawing code |
+| `internal/testutil/` | Test helpers: temporary repositories (`TempRepo` / `NewRepo` / `ThreeRepos` / `SubmoduleRepo`), the background callback queue `Queue`, waiting by pumping frames, `Budget` / `Race`, `WaitTermReady` |
+| `tools/measure/` | Scripts for measuring memory and startup time, not shipped in the app: `measure.sh`, `report.py`, `longrun.sh`, `seed/`; on the Go side there is only `TestMeasureScripts` |
+| `.github/workflows/` | `ci.yml`: vet, test and build the .app on pushes to main and on PRs (`-race` runs on manual trigger or weekly); `release.yml`: on a `v*` tag, build, sign and upload the update packages to a draft Release (see [release.md](release.md)); `claude.yml`: runs the Claude Agent SDK when `@claude` is mentioned in an issue / PR comment (`.github/claude/`) |
 
-## 开发约定
+## Development conventions
 
-新增代码需遵守以下约定：
+New code must follow these conventions:
 
-- 界面只读状态；改状态走命令（`a.Exec(id)`）或 `App` 的方法。后台 goroutine 只经 `a.Update` 回主线程，开始前先拿好 `up := a.Update`（`switchTo` 会重写 `*a`）。
-- 新动作先在 `app/commands.go` 登记，菜单、快捷键、面板、提示、快捷键文档都从这里来。改了键跑 `TestShortcutDoc -update`。
-- git 的读命令带 `GIT_OPTIONAL_LOCKS=0 LC_ALL=C`；写命令非交互、有超时、经每个仓库的队列（`RunOp`）。
-- 只在用户明确操作时写磁盘或改仓库：刷新、监听、打开、切换都不写。文件写盘只经 `WriteDoc` → `diskWrite`。
-- 危险操作（丢弃改动、强推、硬重置、删除分支等）通过 `AskDanger` 确认，使用红色按钮；盖掉用户的配置（恢复默认设置、导入设置、重置全部快捷键）或没保存的改动（本地历史恢复）、不能撤销的也算。完整名单见 `app/danger_test.go`。作用于整个仓库的确认（丢弃全部、强推、重置、删分支、丢弃贮藏……）标题用 `a.inRepo(r, …)` 包一层，工作区里不止一个仓库时前面写上仓库名（`TestConfirmInRepo` 按源码数）。
-- 菜单栏和命令面板里的 Git 命令作用于当前仓库：菜单栏没有别的上下文，当前仓库跟着上一次点的仓库走（`a.UseRepo`），确认框写明是哪个（上一条）。Git 栏、文件树、历史里的按钮和右键作用于那一行所在的仓库，并把当前仓库切过去。
-- 主线程不跑 git、不遍历目录。同步读盘只限三种、都是读一个文件且有大小上限：
-  - 悬停（`app/hover.go`，不开着的文件 `hoverMaxFile` 1 MB 以内，编辑器要马上拿到结果）；
-  - 冲突行的“标记为已解决”（数磁盘上的冲突标记）；
-  - 替换和替换预览（按搜索的文件大小上限，替换是用户点的写操作，开着的文件要在主线程改缓冲区）。
+- The UI only reads state; state changes go through commands (`a.Exec(id)`) or `App` methods. Background goroutines return to
+  the main thread only through `a.Update`; grab `up := a.Update` before starting (`switchTo` rewrites `*a`).
+- Register new actions in `app/commands.go` first; menus, shortcuts, the palette, tooltips and the shortcut docs all come from
+  there. After changing keys, run `TestShortcutDoc -update`.
+- Git read commands run with `GIT_OPTIONAL_LOCKS=0 LC_ALL=C`; write commands are non-interactive, have timeouts and go through the
+  per-repository queue (`RunOp`).
+- Write to disk or change a repository only on an explicit user action: refreshing, watching, opening and switching never write.
+  File writes go only through `WriteDoc` → `diskWrite`.
+- Dangerous operations (discarding changes, force pushing, hard resetting, deleting branches, and so on) are confirmed via
+  `AskDanger` with a red button. Overwriting the user's configuration (restoring default settings, importing settings, resetting
+  all shortcuts) or unsaved changes (restoring from local history), and anything that can't be undone, count too. The full list is
+  in `app/danger_test.go`. Confirmations that act on a whole repository (discard all, force push, reset, delete branch, drop
+  stash, ...) wrap their title in `a.inRepo(r, …)`, which prefixes the repository name when the workspace has more than one
+  repository (`TestConfirmInRepo` counts these in the source).
+- Git commands in the menu bar and command palette act on the current repository: the menu bar has no other context, so the
+  current repository follows the repository last clicked (`a.UseRepo`), and the confirmation names it (previous item). Buttons and
+  context menus in the Git sidebar, file tree and history act on the repository of that row and switch the current repository to it.
+- The main thread never runs git or walks folders. Synchronous disk reads are limited to three cases, each reading a single file
+  with a size cap:
+  - hover (`app/hover.go`; files that aren't open must be within `hoverMaxFile`, 1 MB, because the editor needs the result
+    immediately);
+  - "Mark as Resolved" on a conflict row (counts the conflict markers on disk);
+  - replace and replace preview (capped at the search file-size limit; replacing is a write the user clicked, and open files must
+    have their buffers changed on the main thread).
 
-  别的读盘放后台 goroutine。
-- 对话框只用 `ui/dialogframe.go` 的 `dialogFrame` 和它的 `dlgButton` / `dlgField` / `dlgInput` 等，样子统一。新对话框的状态照“新建分支”的写法：`App` 上一个 `XxxDialog` 结构、带 `Open` 字段，`a.OpenXxx(…)` 一次填好打开（`OpenNewBranch`）。现有几种别的写法（`ConfirmOpen` + `Confirm`、单独的 `bool` 等）是历史留下的，不再新增。
-- 设置里默认开着的开关存反面（`noHoverDefinition`、`noStickyScroll`、`treeNoCompact` …，零值 = 默认，`omitempty` 不写进文件）。设置文档里看到的就是这些键名；改成正面会让用户的设置文件和导出的 JSON 失效，不改。新的默认开的开关也这么存。
-- 每个可点击元素的标签（Label）需在窗口内唯一，供测试和无障碍功能使用：同名的加上仓库或位置，写法照现有的来（`名（仓库）`、`标签 x`、`编辑 x`、`分支 x`、`位置 仓库/路径`、`打开 …`、`命令 …`）。
-- 文案一律 `i18n.T` / `Tf` / `Tn`，写字面量；跑 `TestCatalog -update` 收进 `zh-CN.json`，再补 `en.json`。
-- 所有仓库同时可见：不要加“当前仓库 + 切换器”式的列表。
-- 控制内存占用：大列表按需计算、后台读取；批量操作后调用 `debug.FreeOSMemory()`；渲染后端、termd 等组件空闲后关闭。
-- 改了行为同步文档：功能和快捷键写进 README，`CHANGELOG.md` 的“## 未发布”，这里或 `docs/architecture/` 下对应的那篇。
+  All other disk reads go in a background goroutine.
+- Dialogs use only `dialogFrame` from `ui/dialogframe.go` and its `dlgButton` / `dlgField` / `dlgInput` and friends, so they look
+  the same. State for a new dialog follows the "New Branch" pattern: an `XxxDialog` struct on `App` with an `Open` field, and an
+  `a.OpenXxx(…)` that fills it in and opens it in one go (`OpenNewBranch`). The few other existing patterns (`ConfirmOpen` +
+  `Confirm`, a standalone `bool`, and so on) are historical; don't add more of them.
+- Switches that are on by default are stored inverted in settings (`noHoverDefinition`, `noStickyScroll`, `treeNoCompact`, ...;
+  the zero value is the default, and `omitempty` keeps it out of the file). These are the key names users see in the settings
+  document; flipping them to positive would break users' settings files and exported JSON, so they stay. Store new default-on
+  switches the same way.
+- Every clickable element's label (Label) must be unique within its window, for tests and accessibility: add the repository or
+  position to duplicate names, following the existing patterns (`name (repo)`, `Tab x`, `Edit x`, `Branch x`, `Location repo/path`,
+  `Open …`, `Command …`; the Chinese UI uses `名（仓库）`, `标签 x`, and so on).
+- All UI strings go through `i18n.T` / `Tf` / `Tn` as literals; run `TestCatalog -update` to collect them into `zh-CN.json`, then
+  fill in `en.json`.
+- All repositories are visible at once: don't add a "current repository + switcher" style list.
+- Keep memory in check: compute large lists on demand and read them in the background; call `debug.FreeOSMemory()` after bulk
+  operations; shut down the render backend, termd and similar components when idle.
+- When behavior changes, update the docs: features and shortcuts in the README, the unreleased section of `CHANGELOG.md`, and this
+  file or the matching one under `docs/architecture/`.
 
-完整开发约定见 [`AGENTS.md`](../AGENTS.md)，mygo 的使用注意事项见 [mygo-pitfalls.md](mygo-pitfalls.md)，测试方法见 [testing.md](testing.md)。
+For the full development conventions see [`AGENTS.md`](../AGENTS.md); for notes on using mygo see
+[mygo-pitfalls.md](mygo-pitfalls.md); for how to test see [testing.md](testing.md).
