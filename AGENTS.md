@@ -61,8 +61,8 @@ Docs:
    PR as needing manual testing. Real windows steal focus and the keyboard: on a machine someone else is using, prefer
    headless tests, and if you really need a window, launch it in the background with `open -g -n --env …`.
 5. **Quality bar**:
-   - `gofmt` clean; `go vet` clean; `go test ./...` and `go test -race ./...` all pass (UI tests also run under
-     `-race`).
+   - `gofmt` clean; `go vet` clean; `go test ./...` and `go test -race -timeout 30m ./...` all pass (UI tests also
+     run under `-race`; `internal/ui` alone takes over ten minutes there, past the default 10-minute timeout).
    - Every icon button has a `Label` / `Tooltip`. `TestAccessLabels` in `internal/ui` checks this automatically; new
      regions, overlays and windows need a step in it that draws them, or they go unchecked.
    - No shortcut conflicts (`TestShortcutConflicts`, computed per dispatch context).
@@ -91,7 +91,8 @@ Run from the repo root. go.mod may require a newer Go than the one installed loc
 ```sh
 GOTOOLCHAIN=auto go vet ./...
 GOTOOLCHAIN=auto go test ./...
-GOTOOLCHAIN=auto go test -race ./...                                   # the full suite takes a minute or two, mostly internal/ui
+GOTOOLCHAIN=auto go test -race -timeout 30m ./...                      # 10–15 minutes, nearly all internal/ui; without -timeout it
+                                                                   # hits go test's default 10-minute limit per package and fails
 WORKBENCH_TEST_WS=<.code-workspace or directory> GOTOOLCHAIN=auto go test ./...   # also runs the read-only tests against a real workspace
 mkdir -p <dir> && WORKBENCH_SHOT=<dir> GOTOOLCHAIN=auto go test -run 'TestScreenshot|TestAboutView' -v ./internal/ui/
 GOTOOLCHAIN=auto go test -run '^$' -bench . -benchtime 20x ./internal/search/ ./internal/fuzzy/   # search / fuzzy-match speed

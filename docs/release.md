@@ -32,7 +32,8 @@ To release a new version:
 2. Rename `## Unreleased` in `CHANGELOG.md` to `## v<version> — <date>`, and add a new empty `## Unreleased` above it.
    This section is the "what changed" text in the update window (mygo writes it into the update manifest), so write it
    for users.
-3. `GOTOOLCHAIN=auto go vet ./... && GOTOOLCHAIN=auto go test -count=1 ./... && GOTOOLCHAIN=auto go test -race ./...`
+3. `GOTOOLCHAIN=auto go vet ./... && GOTOOLCHAIN=auto go test -count=1 ./... && GOTOOLCHAIN=auto go test -race -timeout 30m ./...`
+   (`-race` takes 10–15 minutes, nearly all of it `internal/ui`, which is past go test's default 10-minute timeout)
 4. Build as described below, and manually check in a real window what screenshots can't verify (menus, dialogs,
    vibrancy, drag and drop, terminal).
 5. Commit (`chore(release): v<version>`), push to main, then tag that commit and push the tag:
@@ -290,7 +291,7 @@ everyday `.github/workflows/ci.yml` runs on `macos-latest`:
 
 - On every push to main and every PR, it runs gofmt, `go vet ./...`, `go test -count=1 ./...` and
   `mygo build -skip-dmg -skip-notarize -sign -`, zips the .app and keeps it as a build artifact for 14 days.
-- `go test -race ./internal/...` takes longer, so it only runs when triggered manually with `race` checked, or once a
+- `go test -race -timeout 30m ./internal/...` takes longer (`internal/ui` alone is over ten minutes), so it only runs when triggered manually with `race` checked, or once a
   week on Monday.
 
 `GOTOOLCHAIN=auto` is set in env (go.mod requires 1.27.3); mygo uses the version pinned in go.mod, and CI must not run

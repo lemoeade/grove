@@ -7,7 +7,8 @@ Run from the repo root:
 ```sh
 GOTOOLCHAIN=auto go vet ./...
 GOTOOLCHAIN=auto go test -count=1 ./...   # the full suite takes tens of seconds, mostly internal/ui
-GOTOOLCHAIN=auto go test -race ./...      # UI tests also run under -race; a minute or two
+GOTOOLCHAIN=auto go test -race -timeout 30m ./...   # UI tests also run under -race; 10–15 minutes, nearly all internal/ui,
+                                                    # so raise go test's default 10-minute per-package timeout
 WORKBENCH_TEST_WS=<.code-workspace or directory> GOTOOLCHAIN=auto go test ./...   # adds the read-only tests against a real workspace (they skip when unset)
 mkdir -p <dir> && WORKBENCH_SHOT=<dir> GOTOOLCHAIN=auto go test -run 'TestScreenshot|TestAboutView' -v ./internal/ui/   # screenshots; copy the ones to update into docs/screenshots/
 GOTOOLCHAIN=auto go test -run TestCatalog ./internal/i18n/   # after changing UI text, first collect zh-CN.json with -update, then add translations to en.json
