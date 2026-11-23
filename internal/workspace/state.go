@@ -15,14 +15,18 @@ const StateFile = "state.json"
 
 // Version 是 state.json 当前的版本。没有 version 的是原型时期的（面板表或四个布尔），要迁移；
 // 从 2 起字段只加不改，旧版本的文件直接读（3 加了 sessions 和 settings；4 起会话里的 groups 记的是
-// 和默认反过来的分组，贮藏默认收着，3 的文件里收起的贮藏就是默认，读的时候去掉）。
-const Version = 4
+// 和默认反过来的分组，贮藏默认收着，3 的文件里收起的贮藏就是默认，读的时候去掉；5 起界面默认英文，
+// 设置里 lang 没写是"按默认"，4 及以前没写的是中文，读的时候补上 "zh"）。
+const Version = 5
 
 // firstPlain 是不用迁移、直接读的最早版本。
 const firstPlain = 2
 
 // firstToggled 是会话里的 groups 记"和默认反过来的分组"（而不是"收起的分组"）的第一个版本。
 const firstToggled = 4
+
+// firstEnglish 是界面默认英文的第一个版本：之前的文件 lang 没写是中文。
+const firstEnglish = 5
 
 // 侧栏的四种模式。
 const (
@@ -375,6 +379,9 @@ func LoadState(dir string) (State, error) {
 		_ = json.Unmarshal(data, &v1)
 		st.Added, st.Hidden, st.Unified, st.FullDiff, st.SidebarW = v1.Added, v1.Hidden, v1.Unified, v1.FullDiff, v1.SidebarW
 		migratePanels(&st, old.Panels)
+	}
+	if old.Version < firstEnglish && st.Settings.Lang == "" {
+		st.Settings.Lang = "zh" // 老版本默认中文：升级了也照旧是中文，新装的才默认英文
 	}
 	st.Version = Version
 	st.clamp()

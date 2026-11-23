@@ -89,6 +89,42 @@ func TestStateMigration(t *testing.T) {
 	}
 }
 
+// 界面语言：5 以前的文件 lang 没写是中文，读成 "zh"；写了 "en" 的照旧；5 起没写是"按默认"，留空；没有文件也留空。
+func TestStateLangMigration(t *testing.T) {
+	for _, tc := range []struct{ name, data, want string }{
+		{"没有文件", "", ""},
+		{"原型时期", `{"panels":[true,false,true,false]}`, "zh"},
+		{"4 没写", `{"version":4}`, "zh"},
+		{"4 写了 en", `{"version":4,"settings":{"lang":"en"}}`, "en"},
+		{"5 没写", `{"version":5}`, ""},
+		{"5 写了 zh", `{"version":5,"settings":{"lang":"zh"}}`, "zh"},
+		{"5 读不懂", `{"version":5,"settings":{"lang":"fr"}}`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.data != "" {
+				if err := os.WriteFile(filepath.Join(dir, StateFile), []byte(tc.data), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			st, err := LoadState(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.Settings.Lang != tc.want {
+				t.Errorf("lang = %q，要 %q", st.Settings.Lang, tc.want)
+			}
+			// 存回去再读：不再迁移
+			if err := SaveState(dir, st); err != nil {
+				t.Fatal(err)
+			}
+			if again, _ := LoadState(dir); again.Settings.Lang != tc.want {
+				t.Errorf("存回去再读 lang = %q，要 %q", again.Settings.Lang, tc.want)
+			}
+		})
+	}
+}
+
 // 老版本的最近搜索只记字（"searches"）：新的 searchHistory 空着时迁过来，开关都关着；存回去只写新的键。
 // 两个都有（新版读过又被旧版加了几条）时只认新的。
 func TestSearchHistoryMigration(t *testing.T) {
@@ -150,7 +186,12 @@ func TestStateRoundTrip(t *testing.T) {
 	if _, ok := raw["panels"]; ok {
 		t.Error("新版不该再写 panels")
 	}
-	if set, _ := raw["settings"].(map[string]any); len(set) != 0 { // 设置全是默认（通透开、材质侧栏……）：一项都不写
+	set, _ := raw["settings"].(map[string]any)
+	if set["lang"] != "zh" { // 老版本默认中文，迁移时补上
+		t.Errorf("老文件的语言没迁成中文：%v", set)
+	}
+	delete(set, "lang")
+	if len(set) != 0 { // 别的设置全是默认（通透开、材质侧栏……）：一项都不写
 		t.Errorf("默认设置不该写进文件：%v", set)
 	}
 	if raw["version"] != float64(Version) {

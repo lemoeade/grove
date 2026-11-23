@@ -34,7 +34,7 @@ var (
 	termThemeNames  = map[string]string{"": "跟随外观", "light": "浅色", "dark": "深色"}
 	termDockNames   = map[string]string{"": "底栏", "right": "右边"}
 	pullModeNames   = map[string]string{"": "只快进（--ff-only）", "rebase": "变基（--rebase）", "merge": "合并（--no-rebase）"}
-	langNames       = map[string]string{"": "中文", "en": "English"}
+	langNames       = map[string]string{"en": "English", "zh": "中文"}
 	iconStyleNames  = map[string]string{"": "彩色底块", "plain": "线形"}
 	webKindNames    = map[string]string{"github": "GitHub", "gitlab": "GitLab", "bitbucket": "Bitbucket", "gitea": "Gitea / Forgejo", "generic": "通用（GitHub 的路径）"}
 )
@@ -347,7 +347,7 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 				webHostsField(a, c, s, done)
 			}},
 			{6, "片段目录", snippetDirDesc, func(c *wui.Context, l, d string) { snippetDirField(a, c, l, d) }},
-			{7, "界面语言", "", func(c *wui.Context, l, d string) { choice(c, l, d, &s.Lang, i18n.Langs, langNames, done) }},
+			{7, "界面语言", "", func(c *wui.Context, l, d string) { langField(c, l, d, s, done) }},
 			{8, "自动检查更新", "每天在后台看一次 GitHub 上有没有新版本，有就弹窗说改了什么，装不装由你", func(c *wui.Context, l, d string) {
 				updateToggle(c, l, d, func(u *app.UpdateHooks) func() bool { return u.AutoCheck }, func(u *app.UpdateHooks) func(bool) { return u.SetAutoCheck }, nil)
 			}},
@@ -636,6 +636,21 @@ func choice(c *wui.Context, label, desc string, v *string, values []string, name
 				done()
 			}
 		}
+	})
+}
+
+// langField 是界面语言：没选过（存的 ""）时显示现在用着的那种（应用默认英文），选了存 "en" / "zh"。
+func langField(c *wui.Context, label, desc string, s *workspace.Settings, done func()) wui.Element {
+	v := s.Lang
+	if v == "" {
+		v = "zh"
+		if i18n.Lang() == "en" {
+			v = "en"
+		}
+	}
+	return choice(c, label, desc, &v, i18n.Langs, langNames, func() {
+		s.Lang = v
+		done()
 	})
 }
 

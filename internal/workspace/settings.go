@@ -88,7 +88,7 @@ type Settings struct {
 	Linters    map[string]string `json:"linters,omitempty"`    // 每种语言的检查命令：没有或 "" 是内置默认，"-" 是不检查
 
 	// 语言
-	Lang string `json:"lang,omitempty"` // "" 中文、"en" 英文
+	Lang string `json:"lang,omitempty"` // "en" 英文、"zh" 中文；"" 是没选过，按应用的默认（英文，i18n.Default）
 }
 
 // WebHost 是设置里"网页风格"表的一行：这台主机（远程地址里的主机名，https 的带端口）的网页按 Kind 拼。
@@ -182,7 +182,7 @@ var (
 	TermThemes  = []string{"", "light", "dark"} // 后面还可以是 Ghostty 的主题名，Clamp 不查
 	TermDocks   = []string{"", "right"}
 	PullModes   = []string{"", "rebase", "merge"}
-	Langs       = []string{"", "en"}
+	Langs       = []string{"", "en", "zh"}
 )
 
 // DefaultAccent 是 Accent 存成 "" 时的强调色："black" 中性的黑（主按钮、焦点框、选中都不带颜色；之前是 "blue" VS Code 蓝，

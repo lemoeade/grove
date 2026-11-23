@@ -155,6 +155,9 @@ func main() {
 
 	setupUpdates()
 
+	// 设置里没选过语言（新装的）是英文；老版本的 state.json 读的时候补上了 "zh"，照旧中文
+	i18n.Default("en")
+	i18n.Set("")
 	mygo.App.SetLanguages(i18n.Locale()) // 界面语言不跟系统走，由设置里的"语言"定（读完设置后 OnSettings 再设一次）
 	mygo.App.WhenReady(func() {
 		fonts.Load()

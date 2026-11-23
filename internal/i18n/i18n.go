@@ -12,20 +12,31 @@ import (
 	"sync/atomic"
 )
 
-// Langs 是界面能用的语言："" 中文、"en" 英文（和设置里存的一样）。
-var Langs = []string{"", "en"}
+// Langs 是设置里能选的界面语言："en" 英文、"zh" 中文。设置里存 "" 是没选过，按 Default 定的语言。
+var Langs = []string{"en", "zh"}
 
 //go:embed en.json
 var enJSON []byte
 
 var (
-	lang   atomic.Value // string
+	lang   atomic.Value // string："" 中文、"en" 英文
+	def    atomic.Value // string：Set("") 用的语言
 	enOnce sync.Once
 	en     map[string]string
 )
 
-// Set 换界面语言：""（或不认识的）是中文，"en" 是英文。
+// Default 定 Set("")（设置里没选过语言）用哪种语言："en" 英文，别的是中文。
+// 不调时是中文（代码里文案的原文，测试都按它写）；应用启动时 cmd/workbench 先调 Default("en")，
+// 新装的 Grove 默认是英文（老版本的 state.json 迁移时补上 "zh"，见 workspace.LoadState）。
+func Default(l string) {
+	def.Store(l)
+}
+
+// Set 换界面语言："en" 英文，"zh" 中文，""（或不认识的）按 Default。
 func Set(l string) {
+	if l != "en" && l != "zh" {
+		l, _ = def.Load().(string)
+	}
 	if l != "en" {
 		l = ""
 	}

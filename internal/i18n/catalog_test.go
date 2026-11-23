@@ -94,7 +94,7 @@ func variantSuffixes(s string) []string {
 
 // collect 是 sourceDirs 里所有带汉字的字符串字面量，去重排序；log 和 panic 的参数、
 // 名字以 Logf 结尾的函数变量（readyLogf 那样测试换掉的 log.Printf、拼日志行的 lineLogf）的参数、
-// ShortcutDoc（生成 docs/shortcuts.md，文档是中文的）不算：不给用户看。
+// ShortcutDoc（生成 docs/shortcuts.md，文档是英文的）不算：不给用户看。
 func collect(t *testing.T) []string {
 	seen := map[string]bool{}
 	for _, dir := range sourceDirs {
@@ -169,7 +169,7 @@ func verbs(s string) []string {
 	return out
 }
 
-// TestLang：只认 "en"，其余都是中文；中文时 T 原样返回，英文时查表，表里没有的原样返回。
+// TestLang："en" 是英文，"zh" 和不认识的（没调 Default 时）是中文；中文时 T 原样返回，英文时查表，表里没有的原样返回。
 func TestLang(t *testing.T) {
 	t.Cleanup(func() { Set("") })
 	Set("fr")
@@ -185,6 +185,26 @@ func TestLang(t *testing.T) {
 	}
 	if got := T("表里没有的"); got != "表里没有的" {
 		t.Errorf("T(表里没有的) = %q", got)
+	}
+	Set("zh")
+	if Lang() != "" {
+		t.Fatalf("Set(zh): Lang=%q", Lang())
+	}
+}
+
+// TestDefault：设置里没选过语言（Set("")）时按 Default；明确选的 "zh" / "en" 不受它管。
+func TestDefault(t *testing.T) {
+	t.Cleanup(func() { Default(""); Set("") })
+	Default("en")
+	if Set(""); Lang() != "en" {
+		t.Fatalf("Default(en) 后 Set(\"\")：Lang=%q", Lang())
+	}
+	if Set("zh"); Lang() != "" {
+		t.Fatalf("Default(en) 后 Set(zh)：Lang=%q", Lang())
+	}
+	Default("")
+	if Set(""); Lang() != "" {
+		t.Fatalf("Default(\"\") 后 Set(\"\")：Lang=%q", Lang())
 	}
 }
 
