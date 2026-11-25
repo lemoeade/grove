@@ -231,7 +231,7 @@ func (a *App) findWanted(r *Repo) {
 	if i := slices.IndexFunc(h.Commits, func(c git.Commit) bool { return c.Hash == h.want }); i >= 0 {
 		h.want = ""
 		setHistSel(r, i, -1)
-		a.OnHistSelected(r)
+		a.ExpandCommit(r, i)
 		a.HistList.ScrollIntoView(h.Sel)
 		return
 	}

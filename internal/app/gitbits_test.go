@@ -59,8 +59,8 @@ func TestStashExpand(t *testing.T) {
 	pickGit(a, i)
 	a.GitHover = -1
 	a.OnChangeSelected(false)
-	if r.StashOpen != "" || a.GitSel != i {
-		t.Fatalf("键盘走到贮藏上不该展开: open %q sel %d", r.StashOpen, a.GitSel)
+	if len(r.StashOpen) != 0 || a.GitSel != i {
+		t.Fatalf("键盘走到贮藏上不该展开: open %v sel %d", r.StashOpen, a.GitSel)
 	}
 	a.syncChangeSel()
 	if a.GitSel != i {
@@ -68,13 +68,13 @@ func TestStashExpand(t *testing.T) {
 	}
 	// 回车展开：先是"读取中…"
 	a.OnChangeSelected(true)
-	if r.StashOpen != two.Hash || !r.StashLoading {
-		t.Fatalf("回车应展开: %q", r.StashOpen)
+	if !r.StashOpen[two.Hash] || !r.StashLoading(two.Hash) {
+		t.Fatalf("回车应展开: %v", r.StashOpen)
 	}
 	if rows := a.GitRows(); rows[i+1].Kind != RowNote || rows[i+1].Title != "读取中…" {
 		t.Errorf("读的时候: %+v", rows[i+1])
 	}
-	wait("读贮藏的文件", func() bool { return r.StashFilesFor == two.Hash })
+	wait("读贮藏的文件", stashRead(r, two.Hash))
 	rows := a.GitRows()
 	var paths []string
 	for _, cr := range rows[i+1:] {
@@ -103,35 +103,52 @@ func TestStashExpand(t *testing.T) {
 		t.Errorf("选中应跟着贮藏里的文件: %d", a.GitSel)
 	}
 
-	// 空的贮藏：展开另一条（这条收起），写一句
+	// 空的贮藏：再展开另一条（先开的那条还开着），写一句
 	empty := r.Extra.Stashes[0]
 	a.ToggleStash(r, empty)
-	wait("读空的贮藏", func() bool { return r.StashFilesFor == empty.Hash })
+	wait("读空的贮藏", stashRead(r, empty.Hash))
 	j := stashRow(empty)
-	if rows := a.GitRows(); rows[j+1].Kind != RowNote || rows[j+1].Title != "这条贮藏是空的" || slices.ContainsFunc(rows, func(cr ChangeRow) bool { return cr.Kind == RowStashFile }) {
+	if rows := a.GitRows(); rows[j+1].Kind != RowNote || rows[j+1].Title != "这条贮藏是空的" {
 		t.Errorf("空的贮藏: %+v", rows[j+1])
 	}
-	// 键在一个仓库段里不重：两条说明（没有未提交的变更、这条贮藏是空的）
-	keys := map[any]bool{}
-	for _, cr := range a.GitRows() {
-		if keys[cr.Key()] {
-			t.Errorf("重复的键 %+v", cr.Key())
+	if !r.StashOpen[two.Hash] || gitRow(a, func(cr ChangeRow) bool { return cr.Kind == RowStashFile && cr.Change.Path == "new.txt" }) < 0 {
+		t.Errorf("展开另一条不该收起先开的: %v", r.StashOpen)
+	}
+	// 键在一个仓库段里不重：几条说明（没有未提交的变更、这条贮藏是空的；两条同时在读时两句"读取中…"）
+	uniq := func(what string) {
+		keys := map[any]bool{}
+		for _, cr := range a.GitRows() {
+			if keys[cr.Key()] {
+				t.Errorf("%s: 重复的键 %+v", what, cr.Key())
+			}
+			keys[cr.Key()] = true
 		}
-		keys[cr.Key()] = true
+	}
+	uniq("读完")
+	read := r.StashFiles
+	r.StashFiles = nil
+	if n := len(slices.DeleteFunc(a.GitRows(), func(cr ChangeRow) bool { return cr.Title != "读取中…" })); n != 2 {
+		t.Errorf("两条都在读应各有一句读取中…: %d", n)
+	}
+	uniq("都在读")
+	r.StashFiles = read
+	// 收起再展开：读过的不再读，文件马上就在
+	a.ToggleStash(r, two)
+	a.ToggleStash(r, two)
+	if r.StashLoading(two.Hash) || gitRow(a, func(cr ChangeRow) bool { return cr.Kind == RowStashFile && cr.Change.Path == "new.txt" }) < 0 {
+		t.Error("再展开读过的贮藏应马上有文件")
 	}
 
 	// 丢掉展开着的那条：重读后收起
 	repo.Git("stash", "drop", "-q", "stash@{0}")
 	a.RefreshRepo(r, WhyManual)
 	wait("重读", func() bool { return idle(r)() && len(r.Extra.Stashes) == 1 })
-	if r.StashOpen != "" || r.StashFiles != nil {
-		t.Errorf("丢掉后应收起: %q", r.StashOpen)
+	if r.StashOpen[empty.Hash] || r.StashFiles[empty.Hash] != nil || !r.StashOpen[two.Hash] {
+		t.Errorf("丢掉的应收起、别的还开着: %v", r.StashOpen)
 	}
-	// 再展开剩下那条、再点一次收起
+	// 剩下那条再点一次收起
 	a.ToggleStash(r, two)
-	wait("读贮藏的文件", func() bool { return r.StashFilesFor == two.Hash })
-	a.ToggleStash(r, two)
-	if r.StashOpen != "" || gitRow(a, func(cr ChangeRow) bool { return cr.Kind == RowStashFile }) >= 0 {
+	if len(r.StashOpen) != 0 || gitRow(a, func(cr ChangeRow) bool { return cr.Kind == RowStashFile }) >= 0 {
 		t.Error("再点应收起")
 	}
 }
@@ -208,6 +225,7 @@ func TestCompareCommits(t *testing.T) {
 	a.OpenDiff(r, cp.Files[0], true)
 	h.Sel = 5
 	a.OnHistSelected(r)
+	a.ToggleCommit(r, 0)
 	wait("C 的文件", func() bool { return h.FilesFor == cC.Hash })
 	a.OpenDiff(r, h.Files[0], true)
 	var keys []docs.Key
@@ -573,4 +591,9 @@ func TestDiscardChosenSubs(t *testing.T) {
 	if a.ConfirmOpen || a.Toast != inner {
 		t.Fatalf("全是里面改动的子模块：confirm=%v toast=%q", a.ConfirmOpen, a.Toast)
 	}
+}
+
+// stashRead 是这条贮藏的文件读完了。
+func stashRead(r *Repo, hash string) func() bool {
+	return func() bool { _, ok := r.StashFiles[hash]; return ok }
 }

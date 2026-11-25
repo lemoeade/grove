@@ -83,15 +83,19 @@ func (a *App) DiscardHunk(d *docs.Doc, h editor.DiffHunk) {
 }
 
 // diffFiles 是 d 这个 Diff 标签所在的那串文件和它在里面的位置：未提交的改动是所有仓库的
-// （按 Git 栏的顺序，收起的段也算），提交里的是那次提交改的文件（历史里展开着它时）。
+// （按 Git 栏的顺序，收起的段也算），提交里的是那次提交改的文件（历史里读过它的文件时）。
 func (a *App) diffFiles(d *docs.Doc) (r []*Repo, chs []git.Change, at int) {
 	at = -1
 	if d.Change.Kind == git.InCommit {
 		x := a.RepoOf(d)
-		if x == nil || x.Hist.FilesFor != d.Change.Commit {
+		if x == nil {
 			return nil, nil, -1
 		}
-		for i, ch := range x.Hist.Files {
+		fs, ok := x.Hist.FilesOf(d.Change.Commit)
+		if !ok {
+			return nil, nil, -1
+		}
+		for i, ch := range fs {
 			r, chs = append(r, x), append(chs, ch)
 			if ch.Path == d.Change.Path {
 				at = i

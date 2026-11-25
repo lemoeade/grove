@@ -400,7 +400,7 @@ func luminance(c wui.Color) float64 {
 	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
 }
 
-// gmenuBg 是菜单面板的底色：浅色白、深色比卡片亮一档（raisedBg，和展开的提交卡片一样）。
+// gmenuBg 是菜单面板的底色：浅色白、深色比卡片亮一档（raisedBg）。
 func gmenuBg(t *wui.Theme) wui.Color { return raisedBg(t) }
 
 // 面板是磨砂的（frost.go 的 frostMaterial）：窗口画在它底下的东西糊开，上面盖一层半透明的底色（gmenuTint）。

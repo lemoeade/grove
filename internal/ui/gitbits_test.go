@@ -69,7 +69,7 @@ func TestStashFileRows(t *testing.T) {
 	mustText(t, tt, "改了两个")
 
 	mustClickRow(t, tt, "改了两个")
-	wait("读贮藏的文件", func() bool { return r.StashFilesFor != "" })
+	wait("读贮藏的文件", func() bool { return len(r.StashFiles) > 0 })
 	tt.Frame()
 	for _, s := range []string{"a.txt", "新文件.txt", "+2", "−1", "收起 stash@{0}"} {
 		if !shows(tt, s) {
@@ -98,29 +98,29 @@ func TestStashFileRows(t *testing.T) {
 
 	// 再点贮藏这一行：收起，选中回到它上面；它已经选中了再点也是展开 / 收起
 	mustClickRow(t, tt, "改了两个")
-	if r.StashOpen != "" || shows(tt, "新文件.txt") {
-		t.Fatalf("再点应收起: %q", r.StashOpen)
+	if len(r.StashOpen) != 0 || shows(tt, "新文件.txt") {
+		t.Fatalf("再点应收起: %v", r.StashOpen)
 	}
 	if rows := a.GitRows(); a.GitSel < 0 || rows[a.GitSel].Kind != app.RowStash {
 		t.Errorf("收起后选中应在贮藏上: %d", a.GitSel)
 	}
 	mustClickRow(t, tt, "改了两个")
-	wait("读贮藏的文件", func() bool { return r.StashFilesFor != "" })
+	wait("读贮藏的文件", func() bool { return len(r.StashFiles) > 0 })
 	mustClickRow(t, tt, "改了两个")
-	if r.StashOpen != "" {
-		t.Fatalf("选中的贮藏再点应收起: %q", r.StashOpen)
+	if len(r.StashOpen) != 0 {
+		t.Fatalf("选中的贮藏再点应收起: %v", r.StashOpen)
 	}
 	// 箭头、右键
 	mustClickRow(t, tt, "展开 stash@{0}")
-	if r.StashOpen == "" {
+	if len(r.StashOpen) == 0 {
 		t.Fatal("点箭头应展开")
 	}
 	mustRightClickRow(t, tt, "改了两个", "收起")
-	if r.StashOpen != "" {
+	if len(r.StashOpen) != 0 {
 		t.Fatal("右键收起没收")
 	}
 	mustRightClickRow(t, tt, "改了两个", "查看改动")
-	if r.StashOpen == "" {
+	if len(r.StashOpen) == 0 {
 		t.Fatal("右键查看改动没展开")
 	}
 }
@@ -618,7 +618,7 @@ func TestGitRowsGroveMenu(t *testing.T) {
 	// 贮藏里的文件
 	mustClickRow(t, tt, "展开 贮藏")
 	mustClickRow(t, tt, "藏一个")
-	wait("读贮藏的文件", func() bool { return r.StashFilesFor != "" })
+	wait("读贮藏的文件", func() bool { return len(r.StashFiles) > 0 })
 	tt.Frame()
 	if err := rightClickRow(tt, "st.txt"); err != nil {
 		t.Fatal(err)
@@ -731,7 +731,8 @@ func TestChangeLetterAtEnd(t *testing.T) {
 	if !ok {
 		t.Fatalf("没有行数: %q", tt.Texts())
 	}
-	if m, ok := tt.Find("M"); !ok || m.X < plus.X+plus.W || m.Y >= plus.Y+plus.H || plus.Y >= m.Y+m.H {
-		t.Errorf("提交文件行的字母不在行数右边: 行数 %v 字母 %v %v", plus, m, ok)
+	// 历史卡片里改的文件（M）不写字母，+/− 已经说了；A / D 这些写在行数右边（TestHistNarrow 的截图里看得到）
+	if m, ok := tt.Find("M"); ok {
+		t.Errorf("历史卡片里改的文件还写着 M: 行数 %v 字母 %v", plus, m)
 	}
 }

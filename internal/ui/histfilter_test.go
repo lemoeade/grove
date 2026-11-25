@@ -81,7 +81,7 @@ func TestHistoryFilter(t *testing.T) {
 	waitHist("清空搜索", all...)
 
 	// 所有分支：多出分支上的提交，记进 state.json
-	mustClickRow(t, tt, "所有分支")
+	pickHistFilter(t, tt, "所有分支")
 	waitHist("所有分支", append([]string{"分支上的提交"}, all...)...)
 	if !a.St.HistBranches {
 		t.Fatal("所有分支没记下来")
@@ -94,7 +94,7 @@ func TestHistoryFilter(t *testing.T) {
 		t.Error("state.json 里没有所有分支")
 	}
 	b.Close()
-	mustClickRow(t, tt, "所有分支")
+	pickHistFilter(t, tt, "所有分支")
 	waitHist("只当前分支", all...)
 
 	// 文件树右键：目录历史只看动过 docs 的提交；文件历史跟着重命名往前找到 a.txt 的提交
@@ -174,7 +174,7 @@ func TestHistoryAgentFilter(t *testing.T) {
 		t.Errorf("修登录的 agent 是 %q", got)
 	}
 
-	mustClickRow(t, tt, "只看 agent 写的")
+	pickHistFilter(t, tt, "只看 agent 写的")
 	waitHist("只看 agent", "改样式", "修登录")
 	if !a.HistFiltered(r) || a.HistGraph(r) {
 		t.Errorf("只看 agent 时 HistFiltered=%v HistGraph=%v", a.HistFiltered(r), a.HistGraph(r))
@@ -204,9 +204,19 @@ func TestHistoryAgentFilter(t *testing.T) {
 	a.SetHistAll(false)
 	tt.Frame()
 
-	mustClickRow(t, tt, "只看 agent 写的")
+	pickHistFilter(t, tt, "只看 agent 写的")
 	waitHist("关掉只看 agent", all...)
 	if !a.HistGraph(r) {
 		t.Error("关掉只看 agent 后提交图没回来")
 	}
+}
+
+// pickHistFilter 点历史头部的筛选按钮，在弹出的菜单里勾 / 取消 item。
+func pickHistFilter(t *testing.T, tt *wui.Tester, item string) {
+	t.Helper()
+	mustClickRow(t, tt, "筛选历史")
+	if err := chooseMenu(t, tt, item); err != nil {
+		t.Fatalf("筛选菜单选 %q：%v；菜单 %q", item, err, shownMenu(t, tt))
+	}
+	tt.Frame()
 }

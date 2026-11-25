@@ -91,6 +91,8 @@ func gitView(a *app.App, c *wui.Context) {
 		if list.Changed() {
 			a.OnChangeSelected(false)
 			c.Invalidate() // 点在分组标题上时选中又退回去了，再画一帧
+		} else if g.again != nil {
+			g.again()
 		}
 		if list.Submitted() {
 			a.OnChangeSelected(true)
@@ -112,6 +114,8 @@ func gitView(a *app.App, c *wui.Context) {
 // gitFrame 是画一帧 Git 栏时各行共用的：do 把行内按钮的动作留到列表建完再做。
 type gitFrame struct {
 	do func(func())
+	// again 是这一帧点了已经选着的那行时要做的（工作树：展开 / 收起）：列表建完、选中没变（不是点了别的行）才做。
+	again func()
 }
 
 // showActions 是这一行出不出行内按钮：指针在上面，或列表有键盘、它是选中的（键盘用户也看得到能做什么）。
@@ -441,7 +445,7 @@ func stashRow(a *app.App, row wui.ListRow, r *app.Repo, s git.Stash) {
 	if onAccent(a, row.Selected()) {
 		muted = t.AccentText.Alpha(0.75)
 	}
-	open := r.StashOpen == s.Hash
+	open := r.StashOpen[s.Hash]
 	toggle := func() { a.ToggleStash(r, s) }
 	el := wui.Row(c).Height(26).Padding(0, 4, 0, 16).Gap(6).AlignItems(wui.Center).
 		Tooltip(s.Ref + "  " + s.Message + "\n" + s.Date.Local().Format("2006-01-02 15:04"))
@@ -812,9 +816,54 @@ func pathLabel(c *wui.Context, ch git.Change, sel bool, muted wui.Color, size fl
 		return
 	}
 	// 裁在一个盒子里：一点地方都不剩时 Text 还会画出一个“…”，跟在截断的文件名后面成了两个
-	wui.Box(c).Basis(0).Grow(1).MinWidth(0).Clip().Children(func() {
+	box := wui.Box(c).Basis(0).Grow(1).MinWidth(0).Clip()
+	if ch.Orig == "" { // Basis(0) Grow(1)：宽度是文件名剩下的地方，和写了什么无关，拿上一帧的
+		rest = midDir(c, rest, box.LayoutBounds())
+	}
+	box.Children(func() {
 		wui.Text(c, rest).FontSize(sideSub).TextColor(muted).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 	})
+}
+
+// midDir 是放不下的目录省掉中间、留下最后一级（离文件最近、最能分出同名文件的那段）：
+// ".agents/skills/app-foo" → ".agents/…/app-foo"，再窄 "…/app-foo"（还放不下就照常从尾巴截）。
+// 前面能多留几级就多留几级。b 是盒子上一帧的位置：新出来的（还没排过）先不写、再要一帧，
+// 不然切提交时新的文件行先露一帧全路径再缩；排过但一点宽都没有（文件名占满了）原样返回，别一直要帧。
+func midDir(c *wui.Context, dir string, b wui.Rect) string {
+	if b.H == 0 {
+		c.AnimationFrame()
+		return ""
+	}
+	w := b.W
+	if w <= 0 {
+		return dir
+	}
+	fits := func(s string) bool {
+		x, _ := c.MeasureText(0, wui.Span{Text: s, Size: sideSub})
+		return x <= w
+	}
+	segs := strings.Split(dir, "/")
+	if len(segs) < 2 || fits(dir) {
+		return dir
+	}
+	return midCut(segs, fits)
+}
+
+// midCut 是 midDir 不量字的那一半：segs 是目录的一级级，fits 说一个写法放不放得下。
+func midCut(segs []string, fits func(string) bool) string {
+	last := segs[len(segs)-1]
+	best := "…/" + last
+	if !fits(best) {
+		return best
+	}
+	for k := 1; k < len(segs)-1; k++ {
+		s := strings.Join(segs[:k], "/") + "/…/" + last
+		if !fits(s) {
+			break
+		}
+		best = s
+	}
+	return best
 }
 
 // lineCounts 是提交里的文件行右边的 +12 −3（diff-tree --numstat），二进制是灰的"二进制"，是 0 的一边不画。

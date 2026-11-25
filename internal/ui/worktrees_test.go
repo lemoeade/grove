@@ -293,4 +293,18 @@ func TestWorktreeKeys(t *testing.T) {
 	tt.Advance(time.Second)
 	mustClickRow(t, tt, i18n.Tf("工作树 %s", title(w2)))
 	onWt("单击第二个工作树", w2)
+	if !a.WtExpanded(pr, w2) {
+		t.Fatalf("单击选中 %s 应展开它", title(w2))
+	}
+	// 再点一下这行（已经选着）：收起；再点：展开
+	tt.Advance(time.Second)
+	mustClickRow(t, tt, i18n.Tf("工作树 %s", title(w2)))
+	if a.WtExpanded(pr, w2) {
+		t.Errorf("点已经展开的 %s 应收起它", title(w2))
+	}
+	tt.Advance(time.Second)
+	mustClickRow(t, tt, i18n.Tf("工作树 %s", title(w2)))
+	if !a.WtExpanded(pr, w2) {
+		t.Errorf("再点收着的 %s 应展开它", title(w2))
+	}
 }

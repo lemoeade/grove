@@ -111,8 +111,8 @@ func (cr ChangeRow) Key() ChangeKey {
 		return ChangeKey{cr.Repo.Root, cr.Kind, 0, cr.Wt.Path}
 	case RowWtFile:
 		return ChangeKey{cr.Repo.Root, cr.Kind, 0, cr.Wt.Path + ":" + cr.Change.Path}
-	case RowNote: // 一个仓库段里可以有好几条说明（没有改动、展开的贮藏在读、展开的未跟踪目录还有更多）
-		return ChangeKey{cr.Repo.Root, cr.Kind, 0, cr.InDir + cr.Title}
+	case RowNote: // 一个仓库段里可以有好几条说明（没有改动、展开的贮藏在读（好几条同时在读）、展开的未跟踪目录还有更多）
+		return ChangeKey{cr.Repo.Root, cr.Kind, 0, cr.InDir + cr.Stash.Hash + ":" + cr.Title}
 	}
 	return ChangeKey{cr.Repo.Root, cr.Kind, cr.Change.Kind, cr.Change.Path}
 }
@@ -189,7 +189,10 @@ func (a *App) OpenCommit(r *Repo) {
 func (a *App) GitRows() []ChangeRow {
 	n := 0
 	for _, r := range a.Repos {
-		n += 1 + len(r.Status.Changes) + 8 + len(r.Extra.Stashes) + len(r.StashFiles)
+		n += 1 + len(r.Status.Changes) + 8 + len(r.Extra.Stashes)
+		for h := range r.StashOpen {
+			n += len(r.StashFiles[h])
+		}
 		if r.WtShown() {
 			n += len(r.Worktrees)
 		}
@@ -260,16 +263,17 @@ func appendStashes(rows []ChangeRow, r *Repo) []ChangeRow {
 	}
 	for _, s := range r.Extra.Stashes {
 		rows = append(rows, ChangeRow{Kind: RowStash, Repo: r, Stash: s})
-		if s.Hash != r.StashOpen {
+		if !r.StashOpen[s.Hash] {
 			continue
 		}
+		fs, read := r.StashFiles[s.Hash]
 		switch {
-		case r.StashFilesFor != s.Hash:
+		case !read:
 			rows = append(rows, ChangeRow{Kind: RowNote, Repo: r, Stash: s, Title: i18n.T("读取中…")})
-		case len(r.StashFiles) == 0:
+		case len(fs) == 0:
 			rows = append(rows, ChangeRow{Kind: RowNote, Repo: r, Stash: s, Title: i18n.T("这条贮藏是空的")})
 		}
-		for _, ch := range r.StashFiles {
+		for _, ch := range fs {
 			rows = append(rows, ChangeRow{Kind: RowStashFile, Repo: r, Stash: s, Change: ch})
 		}
 	}

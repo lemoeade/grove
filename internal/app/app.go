@@ -79,11 +79,9 @@ type Repo struct {
 	emptyRead  map[string]int      // 大仓库里读过一层找空目录的目录 → 那次文件列表的 Gen（emptylazy.go）
 	emptyAt    [2]int              // lazyEmpty 上次看的时候 Files 的 Gen、Version
 
-	// Git 栏里展开看文件的贮藏（stash.go，不保存）：一个仓库同时只展开一条
-	StashOpen     string       // 展开着的那条（Stash.Hash），空为都收着
-	StashFiles    []git.Change // 它改了的文件（StashFilesFor 那条的）
-	StashFilesFor string       // StashFiles 是哪条贮藏的；和 StashOpen 不一样是还在读
-	StashLoading  bool         // 正在读 StashOpen 的文件
+	// Git 栏里展开看文件的贮藏（stash.go，不保存）：一个仓库可以同时展开好几条
+	StashOpen  map[string]bool         // 展开着的（Stash.Hash）
+	StashFiles map[string][]git.Change // 读过的贮藏改了的文件（按 Stash.Hash；贮藏的内容不会变，收起了也留着，贮藏没了才删）；展开着却还没有的是在读
 
 	DirOpen map[string]bool // Git 栏里展开着的未跟踪目录（Change.Path，untracked.go），不保存：换了工作区仓库是新的，自然清掉
 

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"testing"
+	"time"
 
 	"fmt"
 
@@ -68,5 +69,19 @@ func mustRightClickRow(t *testing.T, tt *wui.Tester, s string, item ...string) {
 		t.Fatalf("右键 %q 选 %q: %v；菜单=%q", s, item, err, shownMenu(t, tt))
 	}
 	tt.Frame()
+	tt.Frame()
+}
+
+// mustClickTitle 点历史里名字是 s 的提交那一格的第一行（标题）。展开的提交那一格往下还有作者、正文和文件，
+// 点正中会落在下面（只选中，不收起）；点标题才是"展开 / 收起"。Tester 的钟不走，先拨一秒，
+// 免得和上一下凑成双击。
+func mustClickTitle(t *testing.T, tt *wui.Tester, s string) {
+	t.Helper()
+	tt.Advance(time.Second)
+	r, ok := tt.Find(s)
+	if !ok || r.W <= 0 || r.H <= 0 {
+		t.Fatalf("历史里没有提交 %q；texts=%q", s, tt.Texts())
+	}
+	tt.ClickAt(r.X+r.W/2, r.Y+min(r.H, histRowH())/2)
 	tt.Frame()
 }

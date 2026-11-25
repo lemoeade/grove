@@ -319,7 +319,11 @@ A page (`LogPage`) is 200 commits; scrolling down loads the next page.
 
 - The file list in commit details is `diffTreeFiles`: first `--name-status`, then `--numstat` for added / removed line counts.
 - Comparing two commits is in `app/compare.go` (`docs.Key.Parent` records which one is on the left).
-- Stashes (`app/stash.go`) can be expanded to show their files (untracked files of a `-u` stash are in `^3`);
+- Stashes (`app/stash.go`) can be expanded to show their files (untracked files of a `-u` stash are in `^3`). Several can
+  be open per repo: `Repo.StashOpen` is a set of stash hashes and `Repo.StashFiles` caches the files read per hash (a
+  stash's content never changes, so collapsing keeps it; `syncStashOpen` drops both for stashes that are gone). Open
+  without cached files means still loading (`StashLoading`); the "Loading…" note's row key includes the stash hash so two
+  loading stashes don't collide.
   `ApplyStashFiles` uses `restore --source` to take just a few files, and asks first if those files have changes in the working tree.
 
 #### List rows
@@ -332,18 +336,49 @@ The right-panel history's list rows are in `ui/history.go`, one row per commit.
   `ListState.Header`: pinned to the top while scrolling, pushed away by the next day, not selectable by keyboard or mouse, and they need a background.
 - The first row, "Uncommitted changes", only exists when the working tree has changes (or the status hasn't been read,
   or you're viewing a worktree / tag) (`uncommittedRow`); when it comes and goes, `keepRowSel` moves `Hist.Sel` by one row.
-- An expanded commit doesn't draw the selection background: `commitTitle` is the card's first line, the `commitCard`
-  below it sits outside the selection background (`histParts`), the expanded files are separate list rows, and then the
-  card's sides and bottom are drawn (`histFileRow`).
+- Expanding works as in VS Code's Source Control Graph: clicking a commit's title (`titleClick`, mygo's `RowClicked`)
+  or pressing Return expands it, doing it again collapses it (`App.ToggleCommit`), and expanding another one leaves the
+  first open; several commits can be open at once (`History.Open`, keyed by hash; `History.Expanded` is the latest one
+  still open, which `Files` / `FilesFor` / `FilesLoading` describe). Selecting alone (arrow keys, `OnHistSelected`)
+  never expands. A double click toggles once: its second click is `RowDoubleClicked` and the `Submitted` it brings is
+  skipped. For that, `histParts` builds the same element tree for a collapsed and an expanded commit (an extra `Column`
+  even without details): if the title row became a different element when it expanded, mygo would count the second
+  click from 1 again and a double click would open and then close. Clicking a blame chunk expands the commit with
+  `App.ExpandCommit` (never collapses). In All Repositories, `ToggleAllCommit` does the same per repository.
+- An expanded commit is laid out flat, as in VS Code's Source Control Graph: no card, border or raised background. Its
+  title row (`commitTitle`, the full title in bold, padded to sit exactly where the one-line title sits when collapsed)
+  gets the selection background like any selected row; the details
+  below it (`commitCard`: author · time, branches, body, hash and buttons) sit outside the selection background
+  (`histParts`), indented to the title, on an opaque panel background (like the day headers) so that mygo's row hover
+  only shows on the title line instead of turning the whole expanded commit into a gray block. The expanded files are
+  separate list rows at the same indent (`histFileRow`); their selection fills the whole row, graph column included,
+  the same as the list's hover.
+- Expanding commits shouldn't make the panel jump: `History.files` keeps the files of up to `filesCacheMax` commits (a
+  commit never changes; when full, commits that aren't open are dropped), so reopening one lays its files out in the
+  same frame; "Loading files…" only
+  appears after `filesWait` (300 ms); the header spinner only spins for `git log` (`AllLogLoading`), not for a
+  commit's files; and `midDir` leaves a new row's folder empty for its first frame instead of showing the full path
+  and then cutting it.
 - The message body `bodyItems` is split into items, and `Hist.BodyOpen` records which commit's body is expanded; text
   can't be measured in the list, so `bodyFits` estimates from character widths whether "Show all" is needed.
 - Branch labels go through `foldRefs`: a remote branch with the same name is folded into the local branch.
+- Narrow panel (`histTight`, below `histRoomy` = 380, which includes the default width of 320): `rowWhen` drops the
+  time for This week / Last week (the group header already says which week), and `refChip` shows only the last part of
+  a branch name, capped at `histChipTight`. The title has a minimum width of `histSubjectMin` × the panel width, so a
+  long branch label is cut before the title is.
+- The header (`histHeader`): search, a filter button (`histFilter`: a menu with All branches and Agent commits only;
+  the button looks pressed while either is on), All Repositories, then Close. `histTitle` measures the repository
+  name against last frame's width of the title area and leaves the branch name out when less than `histSubMin` of it
+  would show, instead of drawing just an icon and "…".
+- Changed files of the expanded commit (`histFileLabel`) show the status letter only when it isn't M. Their folder (as in the Git
+  panel, `pathLabel`) drops the middle when it doesn't fit (`midDir`: `.agents/…/app-foo`, then `…/app-foo`), keeping the
+  last folder, which is what tells two files of the same name apart.
 
 #### Agent marker
 
 `git.AgentOf` recognizes the `Co-Authored-By:` trailer in a commit message (a word in the name or the email domain
 matching the `agentPats` table) and fills in `Commit.Agent` while reading the log. List rows don't draw the marker; it goes
-on the info line of the expanded card (`commitMeta`).
+on the info line of the expanded commit (`commitMeta`).
 
 "Agent commits only" (`App.HistAgent`, not saved to state.json) reads a page and then filters it; `Hist.read` records how
 many commits git log has read, and the next page continues from there.
@@ -406,7 +441,9 @@ ready to merge → has changes → idle → no agent → merged (lower values ne
 - Whether state is computed and folders are watched is separate: `Repo.WtTracked` = `WtOpen` or `wtAuto` (some worktree
   is waiting for you / running / ready to merge, checked every frame by `SyncWtAuto`), so even when collapsed, the
   "Needs you" bar and the group header's symbol stay current.
-- Only one worktree is expanded at a time (`App.WtExp`, not saved): `git.BranchFiles` first finds the merge-base and then
+- Only one worktree is expanded at a time (`App.WtExp`, not saved). Selecting a worktree row expands it; clicking the
+  row that is already selected toggles it (`gitFrame.again`, run only when the click didn't change the selection), as
+  Return does. `git.BranchFiles` first finds the merge-base and then
   lists the files from merge-base → branch (i.e. `main...branch`); the rows are `RowWtSummary` / `RowWtFile` / `RowWtTerm`.
 - "Merge into main" goes through `App.Merge` after an `Ask`; the reason it's grayed out is `MergeWorktreeWhy`.
 - The "Needs you" bar is `NeedsYou` (waiting-for-you first, then ready-to-merge; ready-to-merge is only recognized for

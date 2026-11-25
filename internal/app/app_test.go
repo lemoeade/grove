@@ -364,9 +364,13 @@ func TestHistoryRows(t *testing.T) {
 	if a.St.SidebarMode != workspace.ModeGit {
 		t.Fatal("没切到 Git 栏")
 	}
-	// 点提交展开它，点它的文件开预览 Diff 标签
+	// 选中提交只是选中（方向键走过不展开）；点标题（ToggleCommit）展开它，点它的文件开预览 Diff 标签
 	r.Hist.Sel = 2
 	a.OnHistSelected(r)
+	if len(r.Hist.Open) != 0 || len(HistRows(r)) != 4 {
+		t.Fatalf("只是选中就展开了：%v", r.Hist.Open)
+	}
+	a.ToggleCommit(r, 0)
 	wait("读提交的文件", func() bool { return !r.Hist.FilesLoading && r.Hist.FilesFor != "" })
 	rows = HistRows(r)
 	if len(rows) != 5 || rows[3].File != 0 {

@@ -82,8 +82,11 @@ func worktreeRow(a *app.App, row wui.ListRow, r *app.Repo, w app.Worktree, g *gi
 	if hover {
 		a.GitHover = row.Index
 	}
-	if el.RowDoubleClicked() { // 单击由列表选中（OnChangeSelected，展开）
+	switch {
+	case el.RowDoubleClicked(): // 单击由列表选中（OnChangeSelected，展开）
 		a.OpenWorktree(w)
+	case el.RowClicked() && !w.Main: // 点已经选着的那行：展开着就收起、收着就展开（点别的行是列表去选中）
+		g.again = func() { a.ToggleWorktree(r, w) }
 	}
 	if st == app.WtMerged {
 		el.Opacity(0.5)

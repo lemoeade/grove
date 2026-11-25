@@ -315,8 +315,11 @@ func TestAccessLabels(t *testing.T) {
 	mustClickRow(t, tt, "A 返回 1") // 提交行装了 Grove 的右键菜单（ctxMenu），点它按坐标
 	wait("展开的提交", func() bool { return r.Hist.Expanded != "" && !r.Hist.FilesLoading })
 	accessCheck(t, tt, "展开的提交")
-	// 头部的图标开关是切换按钮（按下 = 开）
-	for _, name := range []string{"搜索历史", "所有分支", "只看 agent 写的", "所有仓库"} {
+	// 头部的图标开关是切换按钮（按下 = 开）；所有分支 / 只看 agent 写的收在"筛选历史"的菜单里
+	if !slices.ContainsFunc(accessTree(t, tt), func(n accNode) bool { return n.Label == "筛选历史" }) {
+		t.Error("历史头部没有筛选按钮")
+	}
+	for _, name := range []string{"搜索历史", "所有仓库"} {
 		if !slices.ContainsFunc(accessTree(t, tt), func(n accNode) bool { return n.Role == roleToggleButton && n.Label == name }) {
 			t.Errorf("历史头部没有叫 %q 的开关", name)
 		}

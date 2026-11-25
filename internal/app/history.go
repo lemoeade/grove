@@ -26,12 +26,19 @@ type History struct {
 	Err     error
 	gen     int // 每次重读递增，旧的结果作废
 
-	Expanded     string       // 展开着的提交
+	// 展开着的提交：点标题开、再点收（回车也一样），开别的不收这个，方向键只移选中，像 VS Code 的源代码管理图。
+	// Expanded 是最近展开、还开着的那个，Files / FilesFor / FilesLoading / FilesSince 说的是它（syncCur 跟着改）；
+	// 每个提交的文件在 files 里（提交不会变，读过一次就不再读）。
+	Open         map[string]bool
+	Expanded     string
 	BodyOpen     string       // 卡片里正文全露出来的提交（"展开全文"）
-	Files        []git.Change // 展开的提交改的文件
+	Files        []git.Change // Expanded 改的文件
 	FilesFor     string
 	FilesLoading bool
-	Sel, PrevSel int // 列表里选中的行（含有改动时第一行的"未提交的改动"）
+	FilesSince   time.Time
+	files        map[string][]git.Change // 读过的提交的文件
+	loading      map[string]time.Time    // 正在读文件的提交和开始读的时候
+	Sel, PrevSel int                     // 列表里选中的行（含有改动时第一行的"未提交的改动"）
 
 	Path    string // 文件历史：只看动过它的提交（仓库内路径），空为不筛
 	PathDir bool   // Path 是目录（不跟重命名）
@@ -154,6 +161,7 @@ func keepRowSel(r *Repo, had bool) {
 func HistRows(r *Repo) []HistRow {
 	h := &r.Hist
 	rows := make([]HistRow, 0, 2+len(h.Commits)+len(h.Files))
+	// 展开的几个提交的文件各自跟在它下面（File 是 FilesOf(那个提交) 的下标）
 	if uncommittedRow(r) {
 		rows = append(rows, HistRow{-1, -1})
 	}
@@ -178,8 +186,8 @@ func HistRows(r *Repo) []HistRow {
 			rows = append(rows, HistRow{DayRow, i})
 		}
 		rows = append(rows, HistRow{i, -1})
-		if c.Hash == h.Expanded && h.FilesFor == c.Hash {
-			for j := range h.Files {
+		if fs, ok := h.ShownFiles(c.Hash); ok {
+			for j := range fs {
 				rows = append(rows, HistRow{i, j})
 			}
 		}
@@ -239,8 +247,8 @@ func (a *App) LoadHistory(r *Repo, reset bool) {
 	}
 	if ci >= 0 {
 		selHash = h.Commits[ci].Hash
-		if file >= 0 && file < len(h.Files) {
-			selPath = h.Files[file].Path
+		if fs, ok := h.FilesOf(selHash); ok && file >= 0 && file < len(fs) {
+			selPath = fs[file].Path
 		}
 	}
 	q, hq := a.logQuery(r)
@@ -290,21 +298,24 @@ func (a *App) LoadHistory(r *Repo, reset bool) {
 				}
 			}
 			h.Done = n < git.LogPage
-			if h.Expanded != "" {
-				i := slices.IndexFunc(h.Commits, func(c git.Commit) bool { return c.Hash == h.Expanded })
-				switch {
-				case i < 0:
-					h.Expanded, h.Files, h.FilesFor = "", nil, ""
-				case reset:
-					a.loadCommitFiles(r, h.Commits[i])
+			// 展开着的提交不在新读的里面了（换了筛选、改写了历史）就收起；还在的不用重读文件（提交不会变）
+			if reset {
+				for hash := range h.Open {
+					if !slices.ContainsFunc(h.Commits, func(c git.Commit) bool { return c.Hash == hash }) {
+						delete(h.Open, hash)
+					}
 				}
+				if !h.Open[h.Expanded] {
+					h.Expanded = ""
+				}
+				h.syncCur()
 			}
 			// 选中的提交 / 文件还在就还选着它
 			if reset && selHash != "" {
 				ci := slices.IndexFunc(h.Commits, func(c git.Commit) bool { return c.Hash == selHash })
 				file := -1
-				if selPath != "" && h.FilesFor == selHash {
-					file = slices.IndexFunc(h.Files, func(c git.Change) bool { return c.Path == selPath })
+				if fs, ok := h.ShownFiles(selHash); ok && selPath != "" {
+					file = slices.IndexFunc(fs, func(c git.Change) bool { return c.Path == selPath })
 				}
 				setHistSel(r, ci, file)
 			}
@@ -316,24 +327,132 @@ func (a *App) LoadHistory(r *Repo, reset bool) {
 	}()
 }
 
-// loadCommitFiles 在后台读一次提交改的文件。
+// FilesOf 是读过的提交 hash 改的文件。
+func (h *History) FilesOf(hash string) ([]git.Change, bool) {
+	fs, ok := h.files[hash]
+	return fs, ok
+}
+
+// ShownFiles 是列表里跟在提交 hash 下面的文件：展开着、文件读好了才有。
+func (h *History) ShownFiles(hash string) ([]git.Change, bool) {
+	if !h.Open[hash] {
+		return nil, false
+	}
+	return h.FilesOf(hash)
+}
+
+// FileAt 是第 ci 个提交下面的第 j 个文件（HistRow{ci, j}）。
+func (h *History) FileAt(ci, j int) git.Change {
+	fs, _ := h.FilesOf(h.Commits[ci].Hash)
+	return fs[j]
+}
+
+// LoadingOf 是提交 hash 的文件还在读，和从什么时候开始读的。
+func (h *History) LoadingOf(hash string) (time.Time, bool) {
+	t, ok := h.loading[hash]
+	return t, ok
+}
+
+// syncCur 让 Files / FilesFor / FilesLoading / FilesSince 跟上 Expanded。
+func (h *History) syncCur() {
+	fs, ok := h.files[h.Expanded]
+	since, ld := h.loading[h.Expanded]
+	h.Files, h.FilesFor = nil, ""
+	if h.Expanded != "" && ok {
+		h.Files, h.FilesFor = fs, h.Expanded
+	}
+	h.FilesLoading, h.FilesSince = h.Expanded != "" && ld, since
+}
+
+// filesCacheMax 是 History.files 最多记几个提交：多了把没展开的扔掉。
+const filesCacheMax = 64
+
+// ToggleCommit 展开 / 收起第 ci 个提交（点它的标题、回车）。展开别的不收这个。
+func (a *App) ToggleCommit(r *Repo, ci int) {
+	h := &r.Hist
+	if ci < 0 || ci >= len(h.Commits) {
+		return
+	}
+	c := h.Commits[ci]
+	sci, file := histKey(r)
+	if h.Open[c.Hash] {
+		delete(h.Open, c.Hash)
+		if h.Expanded == c.Hash {
+			h.Expanded = ""
+		}
+		h.syncCur()
+		if sci == ci { // 选着它下面的文件：选中回到它自己
+			file = -1
+		}
+		if sci >= 0 {
+			setHistSel(r, sci, file)
+		}
+		return
+	}
+	a.ExpandCommit(r, ci)
+}
+
+// ExpandCommit 展开第 ci 个提交（开着的不动），选中的行照旧选着；ShowInHistory 也用它。
+func (a *App) ExpandCommit(r *Repo, ci int) {
+	h := &r.Hist
+	if ci < 0 || ci >= len(h.Commits) {
+		return
+	}
+	c := h.Commits[ci]
+	sci, file := histKey(r)
+	if h.Open == nil {
+		h.Open = map[string]bool{}
+	}
+	h.Open[c.Hash], h.Expanded = true, c.Hash
+	a.loadCommitFiles(r, c)
+	h.syncCur()
+	if sci >= 0 {
+		setHistSel(r, sci, file)
+	}
+}
+
+// loadCommitFiles 在后台读一次提交改的文件；读过的不再读（这一帧就排好，下面的行不会先跳一下再跳回来）。
+// 读好时列表变长，选中的行（histKey）照旧选着。
 func (a *App) loadCommitFiles(r *Repo, c git.Commit) {
 	h := &r.Hist
-	h.FilesLoading = true
-	ci, file := histKey(r)
+	if _, ok := h.files[c.Hash]; ok {
+		return
+	}
+	if _, ok := h.loading[c.Hash]; ok {
+		return
+	}
+	if h.loading == nil {
+		h.loading = map[string]time.Time{}
+	}
+	h.loading[c.Hash] = time.Now()
 	up := a.Update
 	go func() {
 		fs, err := git.CommitFiles(r.ctx, r.Root, c)
 		up(func() {
-			if h.Expanded != c.Hash || r.gone() {
+			if r.gone() {
 				return
 			}
-			h.FilesLoading = false
+			ci, file := histKey(r)
+			delete(h.loading, c.Hash)
+			defer h.syncCur()
 			if err != nil {
-				a.Fail(i18n.T("读提交的文件失败"), err)
+				if h.Open[c.Hash] {
+					a.Fail(i18n.T("读提交的文件失败"), err)
+				}
 				return
 			}
-			h.Files, h.FilesFor = fs, c.Hash
+			if len(h.files) >= filesCacheMax {
+				for k := range h.files {
+					if !h.Open[k] {
+						delete(h.files, k)
+					}
+				}
+			}
+			if h.files == nil {
+				h.files = map[string][]git.Change{}
+			}
+			h.files[c.Hash] = fs
+			h.syncCur()
 			if ci >= 0 {
 				setHistSel(r, ci, file)
 			}
@@ -375,8 +494,8 @@ func setHistSel(r *Repo, ci, file int) {
 }
 
 // OnHistSelected 处理历史列表里的点击 / 方向键："未提交的改动"把侧栏切到 Git 栏、滚到这个仓库那一段；
-// 点到提交就展开它（收起上一个）；点到文件就在主区的预览 Diff 标签里显示。比较段的标题只是选中
-// （点它、回车才展开 / 收起，界面上接；方向键走过它不动）。
+// 点到文件就在主区的预览 Diff 标签里显示。提交和比较段的标题只是选中（点标题、回车才展开 / 收起，
+// 界面上接 ToggleCommit / ToggleCompare；方向键走过它们不动）。
 func (a *App) OnHistSelected(r *Repo) {
 	h := &r.Hist
 	rows := HistRows(r)
@@ -395,14 +514,8 @@ func (a *App) OnHistSelected(r *Repo) {
 		a.ShowSidebar(workspace.ModeGit)
 		a.JumpRepo(slices.Index(a.Repos, r))
 	case row.File < 0:
-		c := h.Commits[row.CI]
-		if h.Expanded != c.Hash {
-			h.Expanded, h.Files, h.FilesFor = c.Hash, nil, ""
-			setHistSel(r, row.CI, -1)
-			a.loadCommitFiles(r, c)
-		}
 	default:
-		a.OpenDiff(r, h.Files[row.File], false)
+		a.OpenDiff(r, h.FileAt(row.CI, row.File), false)
 	}
 }
 
@@ -466,7 +579,7 @@ func (row AllHistRow) Key() any {
 		k.hash = row.Repo.Hist.Commits[row.CI].Hash
 	}
 	if row.Kind == AllFile {
-		k.path = row.Repo.Hist.Files[row.File].Path
+		k.path = row.Repo.Hist.FileAt(row.CI, row.File).Path
 	}
 	return k
 }
@@ -519,8 +632,8 @@ func (a *App) AllHistRows() []AllHistRow {
 			day = d
 		}
 		rows = append(rows, AllHistRow{Kind: AllCommit, Repo: r, CI: ci, File: -1})
-		if h := &r.Hist; h.Commits[ci].Hash == h.Expanded && h.FilesFor == h.Expanded {
-			for j := range h.Files {
+		if fs, ok := r.Hist.ShownFiles(r.Hist.Commits[ci].Hash); ok {
+			for j := range fs {
 				rows = append(rows, AllHistRow{Kind: AllFile, Repo: r, CI: ci, File: j})
 			}
 		}
@@ -547,9 +660,26 @@ func (a *App) EnsureAllHistory() {
 	}
 }
 
+// AllLogLoading 是有仓库的历史正在读（不算展开的提交读文件）。
+func (a *App) AllLogLoading() bool {
+	return slices.ContainsFunc(a.Repos, func(r *Repo) bool { return r.Hist.Loading })
+}
+
 // AllHistLoading 是有仓库的历史或提交文件正在读。
 func (a *App) AllHistLoading() bool {
-	return slices.ContainsFunc(a.Repos, func(r *Repo) bool { return r.Hist.Loading || r.Hist.FilesLoading })
+	return slices.ContainsFunc(a.Repos, func(r *Repo) bool { return r.Hist.Loading || len(r.Hist.loading) > 0 })
+}
+
+// ToggleAllCommit 是"所有仓库"视图里展开 / 收起一个提交（点标题、回车）：当前仓库切到它的仓库，选中留在这个提交上。
+func (a *App) ToggleAllCommit(row AllHistRow) {
+	if row.Kind != AllCommit {
+		return
+	}
+	a.UseRepo(row.Repo)
+	a.ToggleCommit(row.Repo, row.CI)
+	a.HistAllSel = slices.IndexFunc(a.AllHistRows(), func(x AllHistRow) bool {
+		return x.Kind == AllCommit && x.Repo == row.Repo && x.CI == row.CI
+	})
 }
 
 // AllHistDone 是每个仓库的历史都读到头了。
@@ -567,7 +697,8 @@ func (a *App) LoadMoreAllHistory() {
 }
 
 // OnAllHistSelected 处理"所有仓库"视图里的点击 / 方向键：有改动的仓库把侧栏切到 Git 栏、滚到它那一段；
-// 提交展开它（别的仓库展开着的收起来）；文件在预览 Diff 标签里显示。点到提交或文件时当前仓库切到它的仓库。
+// 提交只是选中（点标题、回车才展开 / 收起，界面上接 ToggleCommit）；文件在预览 Diff 标签里显示。
+// 点到提交或文件时当前仓库切到它的仓库。
 func (a *App) OnAllHistSelected() {
 	rows := a.AllHistRows()
 	if a.HistAllSel < 0 || a.HistAllSel >= len(rows) {
@@ -581,23 +712,8 @@ func (a *App) OnAllHistSelected() {
 		a.JumpRepo(slices.Index(a.Repos, r))
 	case AllCommit:
 		a.UseRepo(r)
-		c := row.Commit()
-		for _, x := range a.Repos {
-			if x != r && x.Hist.Expanded != "" {
-				x.Hist.Expanded, x.Hist.Files, x.Hist.FilesFor = "", nil, ""
-			}
-		}
-		if h := &r.Hist; h.Expanded != c.Hash {
-			h.Expanded, h.Files, h.FilesFor = c.Hash, nil, ""
-			setHistSel(r, row.CI, -1)
-			a.loadCommitFiles(r, c)
-		}
-		// 收起别的仓库展开的文件后这一行可能往上挪了
-		a.HistAllSel = slices.IndexFunc(a.AllHistRows(), func(x AllHistRow) bool {
-			return x.Kind == AllCommit && x.Repo == r && x.CI == row.CI
-		})
 	case AllFile:
 		a.UseRepo(r)
-		a.OpenDiff(r, r.Hist.Files[row.File], false)
+		a.OpenDiff(r, r.Hist.FileAt(row.CI, row.File), false)
 	}
 }

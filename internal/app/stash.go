@@ -109,52 +109,79 @@ func (a *App) ApplyStashFiles(r *Repo, files []git.Change) {
 	a.AskDanger(a.inRepo(r, i18n.T("覆盖工作区的改动？")), i18n.Tf("会覆盖工作区里 %s 的改动，不能撤销。", i18n.List(dirty)), i18n.T("应用改动"), run)
 }
 
-// ToggleStash 展开 / 收起 Git 栏里的一条贮藏（点它、回车、点箭头、右键）：展开时在后台读它改了哪些文件（只读），
-// 下面一行一个；一个仓库同时只展开一条。Git 栏的选中停到这条贮藏上（点它的时候列表也在选它，别抢回去）。
+// ToggleStash 展开 / 收起 Git 栏里的一条贮藏（点它、回车、点箭头、右键）：展开时在后台读它改了哪些文件（只读，读过的不再读），
+// 下面一行一个；一个仓库可以同时展开好几条。Git 栏的选中停到这条贮藏上（点它的时候列表也在选它，别抢回去）。
 func (a *App) ToggleStash(r *Repo, s git.Stash) {
 	a.gitWt, a.gitStash, a.gitStashDoc = "", s.Hash, a.CurrentDoc()
-	if r.StashOpen == s.Hash {
-		r.closeStash()
+	if r.StashOpen[s.Hash] {
+		delete(r.StashOpen, s.Hash)
 		a.syncChangeSel()
 		return
 	}
-	r.StashOpen, r.StashFiles, r.StashFilesFor, r.StashLoading = s.Hash, nil, "", true
+	if r.StashOpen == nil {
+		r.StashOpen = map[string]bool{}
+	}
+	r.StashOpen[s.Hash] = true
 	a.syncChangeSel()
+	if _, ok := r.StashFiles[s.Hash]; ok {
+		return
+	}
 	up := a.Update
 	go func() {
 		fs, err := git.StashFiles(r.ctx, r.Root, s)
 		up(func() {
-			if r.StashOpen != s.Hash || r.gone() { // 读的时候收起了、换了一条、移除了仓库
+			if !r.StashOpen[s.Hash] || r.gone() { // 读的时候收起了、移除了仓库
 				return
 			}
-			r.StashLoading = false
 			if err != nil {
-				r.closeStash()
+				delete(r.StashOpen, s.Hash)
 				a.syncChangeSel()
 				a.Fail(i18n.T("读贮藏的文件失败"), err)
 				return
 			}
-			r.StashFiles, r.StashFilesFor = fs, s.Hash
+			if r.StashFiles == nil {
+				r.StashFiles = map[string][]git.Change{}
+			}
+			r.StashFiles[s.Hash] = fs
 			a.syncChangeSel()
 		})
 	}()
 }
 
-// closeStash 收起展开着的贮藏。
-func (r *Repo) closeStash() {
-	r.StashOpen, r.StashFiles, r.StashFilesFor, r.StashLoading = "", nil, "", false
+// StashLoading 是这条贮藏展开着、文件还在读。
+func (r *Repo) StashLoading(hash string) bool {
+	_, ok := r.StashFiles[hash]
+	return r.StashOpen[hash] && !ok
 }
 
-// syncStashOpen 在重读了贮藏列表之后：展开着的那条不在了（弹出、丢弃）就收起。
+// syncStashOpen 在重读了贮藏列表之后：不在了的贮藏（弹出、丢弃）收起，读过的文件也扔掉。
 func (r *Repo) syncStashOpen() {
-	if r.StashOpen != "" && !slices.ContainsFunc(r.Extra.Stashes, func(s git.Stash) bool { return s.Hash == r.StashOpen }) {
-		r.closeStash()
+	has := func(h string) bool {
+		return slices.ContainsFunc(r.Extra.Stashes, func(s git.Stash) bool { return s.Hash == h })
+	}
+	for h := range r.StashOpen {
+		if !has(h) {
+			delete(r.StashOpen, h)
+		}
+	}
+	for h := range r.StashFiles {
+		if !has(h) {
+			delete(r.StashFiles, h)
+		}
 	}
 }
 
-// InStash 是 ch 是展开的贮藏里的文件（贮藏的提交不推送，网页上没有）。
+// InStash 是 ch 是读过的贮藏里的文件（贮藏的提交不推送，网页上没有）。
 func (r *Repo) InStash(ch git.Change) bool {
-	return ch.Kind == git.InCommit && slices.ContainsFunc(r.StashFiles, func(f git.Change) bool { return f.Commit == ch.Commit })
+	if ch.Kind != git.InCommit {
+		return false
+	}
+	for _, fs := range r.StashFiles {
+		if slices.ContainsFunc(fs, func(f git.Change) bool { return f.Commit == ch.Commit }) {
+			return true
+		}
+	}
+	return false
 }
 
 // OpenWeb 用浏览器打开仓库在托管网站上的一个网页。

@@ -1819,6 +1819,7 @@
   "第一次连 %s：核对下面的指纹和服务方公布的一样再继续，之后 ssh 记在 ~/.ssh/known_hosts 里。": "First connection to %s: check that the fingerprint below matches the one the service publishes before continuing; ssh then remembers it in ~/.ssh/known_hosts.",
   "等 %d 项": " and others (%d in all)",
   "等你按…": "Waiting for a key…",
+  "筛选历史": "Filter History",
   "筛选文件": "Filter files",
   "箭头函数": "Arrow function",
   "类": "Class",

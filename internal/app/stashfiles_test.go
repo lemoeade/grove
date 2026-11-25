@@ -33,7 +33,7 @@ func stashFiles(t *testing.T, untracked bool) (*App, *Repo, *testutil.Repo, func
 	a.ToggleGitRepo(r)
 	a.ToggleGitGroup(r, GroupStash)
 	a.ToggleStash(r, r.Extra.Stashes[0])
-	wait("读贮藏的文件", func() bool { return r.StashFilesFor == r.Extra.Stashes[0].Hash })
+	wait("读贮藏的文件", stashRead(r, r.Extra.Stashes[0].Hash))
 	return a, r, repo, wait
 }
 

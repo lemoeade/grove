@@ -315,13 +315,14 @@ func TestAllHistory(t *testing.T) {
 	}
 	beta.Hist.Done = true
 
-	// 选中 beta 2：当前仓库切到 beta，展开它的文件
+	// 点 beta 2 的标题：当前仓库切到 beta，展开它的文件
 	pick := func(subject string) {
 		t.Helper()
 		for i, row := range a.AllHistRows() {
 			if row.Kind == AllCommit && row.Commit().Subject == subject {
 				a.HistAllSel = i
 				a.OnAllHistSelected()
+				a.ToggleAllCommit(row)
 				return
 			}
 		}
@@ -336,9 +337,9 @@ func TestAllHistory(t *testing.T) {
 	if row := rows[a.HistAllSel+1]; row.Kind != AllFile || row.Repo != beta || beta.Hist.Files[row.File].Path != "beta.go" {
 		t.Errorf("beta 2 下面应是它的 beta.go: %+v", row)
 	}
-	pick("alpha 2")
-	if a.Current() != alpha || beta.Hist.Expanded != "" || alpha.Hist.Expanded == "" {
-		t.Errorf("选 alpha 2 后当前 %s，beta 展开 %q", a.Current().Name, beta.Hist.Expanded)
+	pick("alpha 2") // 展开别的不收 beta 2
+	if a.Current() != alpha || beta.Hist.Expanded == "" || alpha.Hist.Expanded == "" {
+		t.Errorf("点 alpha 2 后当前 %s，beta 展开 %q", a.Current().Name, beta.Hist.Expanded)
 	}
 	if row := a.AllHistRows()[a.HistAllSel]; row.Commit().Subject != "alpha 2" {
 		t.Errorf("选中行跟丢了: %s", row.Commit().Subject)

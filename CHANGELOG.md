@@ -23,6 +23,19 @@ What changed in each version, newest first.
   header shows a one-word badge (merging, rebasing, cherry-picking, reverting) instead of "merge in progress", which
   squeezed the repository name down to an ellipsis.
 - The README screenshots were retaken with the English interface and English sample content.
+- The right-panel history uses a narrow panel better. In This week / Last week the time at the end of a row shows only
+  the weekday, branch labels show the last part of the name (full name on hover) and give way before the commit title
+  does, and the header no longer shows a lone branch icon with "…" when the branch name doesn't fit. All branches and
+  Agent commits only moved into one filter button in the header. The selected commit no longer expands into a raised,
+  bordered card: like VS Code's graph, its details and files are laid out flat and indented below the highlighted title
+  row, and hovering it highlights only the title line. As in VS Code, clicking a commit's title (or Return) expands
+  it and clicking again collapses it; opening another commit keeps the first one open, the arrow keys only move the
+  selection, and the bold expanded title no longer shifts down. Expanding no longer makes the panel jump: the header
+  spinner and “Loading files…” stay away for quick loads, and commits you've opened before show their files right away.
+  Clicking an expanded worktree in the Git panel now collapses it, and several stashes in a repository can be expanded
+  at once (opening one no longer closes the other; a stash you've opened before shows its files right away).
+  In the expanded commit and the Git panel, a folder path that doesn't fit drops its middle (`.agents/…/app-foo`) so
+  files with the same name can be told apart, and history files no longer show the M letter.
 - The side-by-side Markdown preview no longer jitters while the editor scrolls through a long `<style>` block (or any
   other HTML block that draws nothing) in a large document: it stays on the next block instead of jumping to the start
   of the section and back on every frame.

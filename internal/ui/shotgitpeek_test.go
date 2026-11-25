@@ -110,7 +110,7 @@ func TestScreenshotGitPeek(t *testing.T) {
 
 		a.ToggleGitGroup(r, app.GroupStash)
 		a.ToggleStash(r, r.Extra.Stashes[0])
-		wait("贮藏的文件", func() bool { return !r.StashLoading && len(r.StashFiles) == 3 })
+		wait("贮藏的文件", func() bool { return len(r.StashFiles[r.Extra.Stashes[0].Hash]) == 3 })
 		shot(tt, "stash", dark)
 		a.ToggleStash(r, r.Extra.Stashes[0])
 		a.ToggleGitGroup(r, app.GroupStash)

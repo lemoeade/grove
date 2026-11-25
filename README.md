@@ -69,10 +69,13 @@ about 79 MiB of memory when idle.
   Git actions that are greyed out say why ("Push (in sync with origin)", "Remove Worktree (the main worktree can't be
   removed)"), and button tooltips show the git command they run.
   The commit history in the right panel shows one commit per line, grouped into Today / Yesterday / This week / Last
-  week / This month / earlier months (the group header sticks to the top while scrolling). The selected commit expands
-  into a card with the full title, author, time, branches, message body and changed files. Commits a coding agent
-  (Claude, Codex, Copilot…) co-authored through Co-Authored-By show its name in the card, and you can filter to just
-  those commits.
+  week / This month / earlier months (the group header sticks to the top while scrolling). Clicking a commit expands
+  it in place, VS Code style, showing the full title, author, time, branches, message body and changed files indented
+  below it; click it again to collapse it, and several commits can stay open at once. Commits a coding agent (Claude, Codex, Copilot…) co-authored through Co-Authored-By show its name there,
+  and the filter button in the panel header (All branches, Agent commits only) can narrow the list to just those
+  commits. In a narrow panel each row
+  keeps room for the title: the time shows only the weekday in This week / Last week, branch labels show the last part
+  of the name, and long folder paths of the expanded commit drop their middle (`.agents/…/app-foo`).
   Hovering (or selecting with the keyboard) a changed file shows Open File, Discard Changes and Stage / Unstage
   buttons; with the list focused, Space stages / unstages and ⌘⌫ discards, acting on all selected rows.
 - **Terminals**: built on Ghostty's libghostty-vt. Each repo has its own set of terminals, with split panes. Layout

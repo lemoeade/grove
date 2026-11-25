@@ -928,7 +928,7 @@ func commitMenu(a *app.App, m menu, r *app.Repo, cm git.Commit) {
 // stashMenu 是 Git 栏里一条贮藏的右键菜单。
 func stashMenu(a *app.App, m menu, r *app.Repo, s git.Stash) {
 	look := i18n.T("查看改动")
-	if r.StashOpen == s.Hash {
+	if r.StashOpen[s.Hash] {
 		look = i18n.T("收起")
 	}
 	if m.Item(look).Chosen() {

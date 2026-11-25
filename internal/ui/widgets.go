@@ -42,7 +42,7 @@ const (
 const (
 	toolSize      = 28 // 标题栏、卡片头、侧栏头的图标按钮（toolButton / iconButton / toggleButton），图标 iconTool
 	headToolSize  = 26 // 右栏历史头部的图标按钮和开关（头部一行 histHeadH 46）
-	midToolSize   = 24 // Git 栏仓库段头的拉取 / 推送（syncButton 的高）；展开的提交卡片上的按钮；工作树行上的审查 / 合并
+	midToolSize   = 24 // Git 栏仓库段头的拉取 / 推送（syncButton 的高）；展开的提交里的按钮；工作树行上的审查 / 合并
 	smallToolSize = 22 // 工作树一行、摘要行上的按钮（跳到终端、审查、移除、上一个 / 下一个）；筛选开关 filterToggle
 	rowToolSize   = 20 // 列表行里的小按钮（rowButton、iconAction）
 	closeSize     = 18 // 标签上关掉的 ×（编辑器标签、终端标签）
@@ -109,7 +109,7 @@ func tipStyle(t *wui.Theme, tip wui.Element) wui.Element {
 	return tip
 }
 
-// raisedBg 是浮起来的一层的不透明底：浅色白，深色 #2C2C30（比卡片亮一档）。展开的提交那张卡片、Grove 画的菜单面板（gmenuBg）。
+// raisedBg 是浮起来的一层的不透明底：浅色白，深色 #2C2C30（比卡片亮一档）。Grove 画的菜单面板（gmenuBg）。
 func raisedBg(t *wui.Theme) wui.Color {
 	if t.Dark {
 		return wui.RGBA(44, 44, 48, 1)
