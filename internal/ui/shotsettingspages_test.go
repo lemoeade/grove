@@ -25,7 +25,7 @@ func TestScreenshotSettingsPages(t *testing.T) {
 	a, _, _ := newUI(t, testutil.Workspace(t, shop.Root), termState(t, false))
 	shot := func(name string, page int) {
 		t.Helper()
-		st := wui.NewTester(SettingsView(a), 640, 1100)
+		st := wui.NewTester(SettingsView(a), 780, 1100)
 		st.SetScale(2)
 		st.SetLocale(i18n.Locale())
 		st.Frame()
@@ -37,4 +37,40 @@ func TestScreenshotSettingsPages(t *testing.T) {
 	}
 	a.St.Settings.Backdrop = "vibrancy"
 	shot("settings-page-0-vibrancy.png", 0)
+}
+
+// TestScreenshotSettingsWindow 是设置窗口按默认大小（860×640）开着的样子（WORKBENCH_SHOT=目录 时才跑）：
+//
+//	settings-window-{zh,en}-{light,dark}   外观页，中文 / 英文、浅色 / 深色
+//	settings-window-en-keys                快捷键页（英文、浅色）
+func TestScreenshotSettingsWindow(t *testing.T) {
+	dir := os.Getenv("WORKBENCH_SHOT")
+	if dir == "" {
+		t.Skip("设置 WORKBENCH_SHOT=目录 才渲染截图")
+	}
+	t.Cleanup(func() { i18n.Set("") })
+	shop := testutil.NewRepo(t, "shop")
+	shop.Write("README.md", "# Shop\n")
+	shop.Commit("初始")
+	a, _, _ := newUI(t, testutil.Workspace(t, shop.Root), termState(t, false))
+	for _, lang := range []string{"zh", "en"} {
+		i18n.Set(lang)
+		for _, dark := range []bool{false, true} {
+			st := wui.NewTester(SettingsView(a), 860, 640)
+			st.SetScale(2)
+			st.SetLocale(i18n.Locale())
+			st.SetDark(dark)
+			st.Frame()
+			st.Frame()
+			name := "settings-window-" + lang + "-light.png"
+			if dark {
+				name = "settings-window-" + lang + "-dark.png"
+			}
+			writeShot(t, st, dir, name)
+			if lang == "en" && !dark {
+				mustClick(t, st, i18n.T("快捷键"))
+				writeShot(t, st, dir, "settings-window-en-keys.png")
+			}
+		}
+	}
 }

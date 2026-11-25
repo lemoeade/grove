@@ -206,15 +206,17 @@ func main() {
 			settingsApp = a
 			settingsWin = mygo.NewWindow(mygo.WindowOptions{
 				Title:           i18n.T("设置"),
-				Width:           640,
-				Height:          480,
-				MinWidth:        560,
-				MinHeight:       360,
-				StateKey:        "settings",
+				Width:           860,
+				Height:          640,
+				MinWidth:        640,
+				MinHeight:       400,
+				StateKey:        "settings-sidebar", // 换了侧栏布局换个键：老的 "settings" 记的是顶上一排页签时的大小（多半 640×480），用在侧栏上太小
 				DisableMaximize: true,
+				Hidden:          true, // 挪到打开它的工作台窗口正中再显示（showOver）
 				Content:         wui.View(ui.SettingsView(a)),
 			})
 			a.SettingsWin = settingsWin
+			showOver(settingsWin, a.Win)
 		}
 		openAbout := func(a *app.App) {
 			if aboutWin != nil && !aboutWin.IsDestroyed() {
@@ -237,8 +239,10 @@ func main() {
 				MinHeight:       420,
 				StateKey:        "about",
 				DisableMaximize: true,
+				Hidden:          true,
 				Content:         wui.View(ui.AboutView(a, licenses)),
 			})
+			showOver(aboutWin, a.Win)
 		}
 		closeAux := func(a *app.App) { // a 为 nil：都关
 			if settingsWin != nil && (a == nil || settingsApp == a) {
@@ -432,6 +436,29 @@ func main() {
 func isDir(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && info.IsDir()
+}
+
+// showOver 把刚建好（Hidden）的设置 / 关于窗口挪到 parent（打开它的工作台窗口）正中再显示。
+// StateKey 只留下上回的大小：位置每次都重新算，不然它总回到上回拖到的地方，和工作台窗口对不上。
+func showOver(win, parent *mygo.Window) {
+	if parent != nil && !parent.IsDestroyed() {
+		p := parent.Bounds()
+		win.SetBounds(centerIn(p, win.Bounds(), mygo.Screen.DisplayMatching(p).WorkArea))
+	}
+	win.Show()
+}
+
+// centerIn 是 r 摆在 parent 正中的位置，大小不变；出了 area（parent 所在屏幕的可用区）就推回来，比 area 大就缩到 area 那么大。
+func centerIn(parent, r, area mygo.Rectangle) mygo.Rectangle {
+	r.X = parent.X + (parent.Width-r.Width)/2
+	r.Y = parent.Y + (parent.Height-r.Height)/2
+	if area.Width <= 0 || area.Height <= 0 {
+		return r
+	}
+	r.Width, r.Height = min(r.Width, area.Width), min(r.Height, area.Height)
+	r.X = max(area.X, min(r.X, area.X+area.Width-r.Width))
+	r.Y = max(area.Y, min(r.Y, area.Y+area.Height-r.Height))
+	return r
 }
 
 // cascade 是新窗口的位置：错开 r（前台窗口）右下 24 pt、一样大；出了 r 所在屏幕的可用区就回到它的左上角。

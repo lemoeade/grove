@@ -49,10 +49,10 @@ func TestSettingsSearch(t *testing.T) {
 		return n
 	}
 
-	// groups 是结果里有哪几组的小标题（分组的按钮上也有组名，多出来的那个是小标题）
+	// groups 是结果里有哪几组的小标题（侧栏一行的按钮名和字都是组名，多出来的那个是小标题）
 	groups := func(names ...string) bool {
 		for _, p := range []string{"外观", "编辑器", "格式化", "文件树", "终端", "Git", "语言", "Appearance", "Editor", "Terminal"} {
-			if want := slices.Contains(names, p); count(p) > 1 != want {
+			if want := slices.Contains(names, p); count(p) > 2 != want {
 				return false
 			}
 		}
@@ -82,17 +82,23 @@ func TestSettingsSearch(t *testing.T) {
 	search("后台")
 	mustText(t, sv, "关掉窗口后终端继续在后台运行")
 
-	// 没有对得上的；搜着的时候分组点不动
+	// 没有对得上的；Esc 清空，回到原来那组
 	search("zzzz")
 	mustText(t, sv, "没有匹配的设置")
-	sv.Click("终端")
-	sv.Frame()
-	sv.Key(wui.Cmd, wui.KeyF) // 点了别处，键盘不在框里了
 	sv.Key(0, wui.KeyEscape)
 	sv.Frame()
 	if sv.HasText("没有匹配的设置") || !sv.HasText("界面缩放（%）") {
-		t.Fatalf("Esc 没清空、或搜着的时候分组被点走了：%q", sv.Texts())
+		t.Fatalf("Esc 没清空：%q", sv.Texts())
 	}
+	// 搜着的时候点侧栏的一组：清掉搜索、去那一组
+	sv.Key(wui.Cmd, wui.KeyF)
+	search("zzzz")
+	mustClick(t, sv, "终端")
+	if sv.HasText("没有匹配的设置") || sv.HasText("搜索结果") || !sv.HasText("回滚（MB）") {
+		t.Fatalf("搜着的时候点“终端”没去终端那组：%q", sv.Texts())
+	}
+	mustClick(t, sv, "外观")
+	sv.Key(wui.Cmd, wui.KeyF)
 
 	// 英文界面里搜中文、英文都行
 	a.St.Settings.Lang = "en"
@@ -101,7 +107,7 @@ func TestSettingsSearch(t *testing.T) {
 	sv.Frame()
 	sv.Key(wui.Cmd, wui.KeyF)
 	search("font size")
-	if !groups("Editor", "Terminal") || sv.HasText("Appearance") && count("Appearance") > 1 {
+	if !groups("Editor", "Terminal") || count("Appearance") > 2 {
 		t.Fatalf("英文界面搜 font size：%q", sv.Texts())
 	}
 	search("字号")

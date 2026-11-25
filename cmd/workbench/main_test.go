@@ -42,3 +42,25 @@ func TestVibrancy(t *testing.T) {
 		}
 	}
 }
+
+// 设置 / 关于窗口摆在工作台窗口正中，大小不变；工作台窗口靠着屏幕边时推回可用区里，比可用区大就缩小。
+func TestCenterIn(t *testing.T) {
+	area := mygo.Rectangle{X: 0, Y: 25, Width: 1920, Height: 1055}
+	for _, c := range []struct {
+		parent, r, want mygo.Rectangle
+	}{
+		{mygo.Rectangle{X: 0, Y: 25, Width: 1920, Height: 1055}, mygo.Rectangle{X: 660, Y: 157, Width: 780, Height: 560}, mygo.Rectangle{X: 570, Y: 272, Width: 780, Height: 560}},
+		{mygo.Rectangle{X: 200, Y: 100, Width: 1000, Height: 700}, mygo.Rectangle{Width: 600, Height: 400}, mygo.Rectangle{X: 400, Y: 250, Width: 600, Height: 400}},
+		{mygo.Rectangle{X: 1700, Y: 900, Width: 400, Height: 300}, mygo.Rectangle{Width: 780, Height: 560}, mygo.Rectangle{X: 1140, Y: 520, Width: 780, Height: 560}}, // 出了右下角：推回来
+		{mygo.Rectangle{X: -300, Y: 0, Width: 400, Height: 300}, mygo.Rectangle{Width: 780, Height: 560}, mygo.Rectangle{X: 0, Y: 25, Width: 780, Height: 560}},       // 出了左上角
+		{mygo.Rectangle{X: 0, Y: 25, Width: 1920, Height: 1055}, mygo.Rectangle{Width: 2400, Height: 1200}, area},                                                     // 比可用区大：缩成可用区
+	} {
+		if got := centerIn(c.parent, c.r, area); got != c.want {
+			t.Errorf("centerIn(%v, %v) = %v, want %v", c.parent, c.r, got, c.want)
+		}
+	}
+	// 拿不到屏幕（可用区为空）：只摆正中，不推不缩
+	if got := centerIn(mygo.Rectangle{Width: 100, Height: 100}, mygo.Rectangle{Width: 200, Height: 200}, mygo.Rectangle{}); got != (mygo.Rectangle{X: -50, Y: -50, Width: 200, Height: 200}) {
+		t.Errorf("no work area: %v", got)
+	}
+}

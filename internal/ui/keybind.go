@@ -76,7 +76,7 @@ func shortcutsPage(a *app.App, c *wui.Context, k *keysView, toMain func()) {
 	t := c.Theme()
 	q := strings.ToLower(strings.TrimSpace(k.query))
 	items := keyItems(q)
-	wui.Column(c).Grow(1).MinHeight(0).Padding(14, 20, 0).Gap(10).Children(func() {
+	wui.Column(c).Grow(1).MinHeight(0).Padding(4, 28, 0).Gap(10).Children(func() {
 		wui.Row(c).Gap(8).AlignItems(wui.Center).Shrink(0).Children(func() {
 			wui.Row(c).Grow(1).MinWidth(0).Children(func() {
 				filterBox(c, &k.query, &k.box, i18n.T("搜索快捷键"), i18n.T("命令、id 或键（⇧⌘P、cmd+shift+p）"), nil)

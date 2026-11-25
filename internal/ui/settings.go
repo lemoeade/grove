@@ -39,12 +39,55 @@ var (
 	webKindNames    = map[string]string{"github": "GitHub", "gitlab": "GitLab", "bitbucket": "Bitbucket", "gitea": "Gitea / Forgejo", "generic": "通用（GitHub 的路径）"}
 )
 
-// settingsPages 是设置窗口顶上的分组。
-var settingsPages = []string{"外观", "编辑器", "格式化", "文件树", "终端", "Git", "片段", "语言", "更新", "快捷键"}
+// settingsPages 是设置窗口左边侧栏的分组；settingsPageIcons 是每组前面的图标，一一对应。
+var (
+	settingsPages     = []string{"外观", "编辑器", "格式化", "文件树", "终端", "Git", "片段", "语言", "更新", "快捷键"}
+	settingsPageIcons = []*wui.SVG{iconPalette, iconType, iconOutput, iconFiles, iconTerminal, iconBranch, iconBraces, iconGlobe, iconFetch, iconKeyboard}
+)
 
-// SettingsView 是设置窗口（⌘,）的内容：顶上分组和搜索框（⌘F 到框里，Esc 清空），下面这一组的设置；搜着的时候是
-// 所有组里对得上的几项，按组分开。改了马上生效（主窗口、开着的终端跟着变），并存进 state.json。
-// 右上角 ⋯ 是编辑 JSON、导出、导入、恢复默认。最后一页是快捷键（keybind.go），搜索时对得上的命令也列出来。
+const (
+	settingsNavW      = 184 // 设置窗口左边侧栏的宽
+	settingsNavRowH   = 28  // 侧栏一行的高
+	settingsTitleFont = 17  // 右边顶上这一组的标题
+	settingCtlW       = 220 // 右边一列下拉、文字框的宽，几项的右边对齐
+)
+
+// settingsNavRow 是设置侧栏的一行：图标和分组名，选中的照“选中行用淡底”画（淡底是强调色淡淡的一层，实心是强调色的块），
+// 悬停一层淡灰。是按钮（Tab 能按到，读屏念名字）；返回这一帧点没点。
+func settingsNavRow(a *app.App, c *wui.Context, ic *wui.SVG, name string, sel bool) bool {
+	t := c.Theme()
+	b := wui.ButtonBase(c).Label(name).Height(settingsNavRowH).Padding(0, 8).Gap(8).AlignItems(wui.Center).Justify(wui.Start).Radius(rowRadius).
+		Cursor(wui.CursorPointer)
+	fg, ifg := t.Text, t.TextMuted
+	f := softFills(t)
+	switch {
+	case sel && onAccent(a, true):
+		b.Background(t.Accent)
+		fg, ifg = t.AccentText, t.AccentText
+	case sel:
+		b.Background(f.active)
+		ifg = t.Text
+		if !vscode() {
+			ifg = accentTint(t)
+		}
+	case b.Pressed():
+		b.Background(toolFill(t, 0.12))
+	case b.Hovered():
+		b.Background(f.hover)
+	}
+	b.Children(func() {
+		wui.Icon(c, ic).FontSize(iconRow).TextColor(ifg)
+		x := wui.Text(c, name).FontSize(bodyFont).TextColor(fg).SingleLine().MinWidth(0)
+		if sel {
+			x.FontWeight(500)
+		}
+	})
+	return b.Clicked()
+}
+
+// SettingsView 是设置窗口（⌘,）的内容：左边侧栏是搜索框（⌘F 到框里，Esc 清空）和一组一行的分组，右边是这一组的标题和
+// 设置；搜着的时候是所有组里对得上的几项，按组分开。改了马上生效（主窗口、开着的终端跟着变），并存进 state.json。
+// 搜索框旁边的 ⋯ 是编辑 JSON、导出、导入、恢复默认。最后一页是快捷键（keybind.go），搜索时对得上的命令也列出来。
 func SettingsView(a *app.App) func(c *wui.Context) {
 	var page int
 	var query string      // 搜索框里的字（不记：关了设置窗口再开是空的）
@@ -278,7 +321,7 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 			}},
 			{3, "隐藏的文件", "glob，逗号分开，从每个仓库的根算起（**/ 开头的哪一级都算）；和工作区文件、仓库 .vscode/settings.json 的 files.exclude 并在一起。文件树、快速打开、搜索都看不到，Git 栏的改动照常列", func(c *wui.Context, l, d string) {
 				settingField(c, l, d, func() {
-					if settingControl(wui.TextInput(c, &s.Exclude).Width(260)).Placeholder("**/node_modules, **/*.log").Changed() {
+					if settingControl(wui.TextInput(c, &s.Exclude).Width(settingCtlW)).Placeholder("**/node_modules, **/*.log").Changed() {
 						done()
 					}
 				})
@@ -323,7 +366,7 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 			{4, "后台", "终端后台进程在不在跑、几个会话；停止…", func(c *wui.Context, l, d string) { termdField(a, c, l) }},
 			{4, "agent 命令", "终端前台是这些命令时，标签上标出 agent 在等你（响铃、通知）或运行中；claude、codex、gemini、aider、opencode 不用写。逗号分开", func(c *wui.Context, l, d string) {
 				settingField(c, l, d, func() {
-					if settingControl(wui.TextInput(c, &s.AgentNames).Width(260)).Placeholder("goose, amp").Changed() {
+					if settingControl(wui.TextInput(c, &s.AgentNames).Width(settingCtlW)).Placeholder("goose, amp").Changed() {
 						done()
 					}
 				})
@@ -359,61 +402,81 @@ func SettingsView(a *app.App) func(c *wui.Context) {
 		}
 		q := strings.ToLower(strings.TrimSpace(query))
 		c.OnShortcut(wui.Cmd, wui.KeyF, func() { box.Focus(c) })
-		wui.Column(c).Fill().Children(func() {
-			wui.Row(c).Padding(14, 20, 12).Gap(10).Shrink(0).AlignItems(wui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
-				wui.Segmented(c, &page, pages...).Label(i18n.T("设置分组")).Disabled(q != "").Shrink(0)
-				wui.Box(c).Grow(1)
-				wui.Row(c).Width(200).Shrink(1).MinWidth(120).Children(func() {
+		wui.Row(c).Fill().AlignItems(wui.Stretch).Children(func() {
+			// 左边侧栏：搜索框和 ⋯，下面一组一行（图标 + 名字）；搜着的时候哪一行都不亮，点一行清掉搜索、去那一组
+			wui.Column(c).Width(settingsNavW).Shrink(0).Padding(12, 10).Gap(2).Background(toolFill(t, 0.025)).
+				BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Children(func() {
+				wui.Row(c).Gap(4).AlignItems(wui.Center).Margin(0, 0, 10, 0).Children(func() {
 					filterBox(c, &query, &box, i18n.T("搜索设置"), i18n.T("搜索设置"), nil).Tooltip(i18n.T("在所有分组里找设置，名字、说明都算，中英文都行（⌘F）"))
+					iconButton(c, iconMore, i18n.T("更多"), func() {}).Menu(func(m *wui.Menu) {
+						if m.Item(i18n.T("编辑 JSON…")).Chosen() {
+							a.Update(a.OpenSettingsDoc)
+							toMain()
+						}
+						m.Separator()
+						if m.Item(i18n.T("导出…")).Chosen() {
+							a.ExportSettings(a.SettingsWin)
+						}
+						if m.Item(i18n.T("导入…")).Chosen() {
+							a.ImportSettings(a.SettingsWin)
+						}
+						m.Separator()
+						if m.Item(i18n.T("恢复默认…")).Chosen() {
+							toMain()
+							a.Update(a.ResetSettings)
+						}
+					})
 				})
-				iconButton(c, iconMore, i18n.T("更多"), func() {}).Menu(func(m *wui.Menu) {
-					if m.Item(i18n.T("编辑 JSON…")).Chosen() {
-						a.Update(a.OpenSettingsDoc)
-						toMain()
-					}
-					m.Separator()
-					if m.Item(i18n.T("导出…")).Chosen() {
-						a.ExportSettings(a.SettingsWin)
-					}
-					if m.Item(i18n.T("导入…")).Chosen() {
-						a.ImportSettings(a.SettingsWin)
-					}
-					m.Separator()
-					if m.Item(i18n.T("恢复默认…")).Chosen() {
-						toMain()
-						a.Update(a.ResetSettings)
+				nav := wui.Column(c).Gap(2).Label(i18n.T("设置分组"))
+				nav.Children(func() {
+					for i := range settingsPages {
+						if settingsNavRow(a, c.Key(i), settingsPageIcons[i], pages[i], q == "" && page == i) {
+							page, query = i, ""
+						}
 					}
 				})
 			})
-			if page == keysPage && q == "" {
-				shortcutsPage(a, c, &keys, toMain)
-				return
-			}
-			wui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-				wui.Column(c).Padding(20, 28, 28).Gap(14).Children(func() {
-					if q != "" {
-						found := settingsResults(c, rows, q)
-						if keyResults(a, c, q, &keys.rec, func() { page, keys.query, query = keysPage, query, "" }) {
-							found = true
+			// 右边：这一组的标题，下面这一组的设置（搜着的时候是“搜索结果”和所有组里对得上的）
+			wui.Column(c).Grow(1).MinWidth(0).Children(func() {
+				title := pages[page]
+				if q != "" {
+					title = i18n.T("搜索结果")
+				}
+				wui.Text(c, title).FontSize(settingsTitleFont).FontWeight(600).TextColor(t.Text).Padding(18, 28, 10).Shrink(0).SingleLine()
+				if page == keysPage && q == "" {
+					shortcutsPage(a, c, &keys, toMain)
+					return
+				}
+				key := any(page)
+				if q != "" {
+					key = "search"
+				}
+				wui.Scroll(c.Key(key)).Grow(1).MinHeight(0).Children(func() { // 每组各记各的滚动位置，换一组从顶上看起
+					wui.Column(c).Padding(4, 28, 28).Gap(14).Children(func() {
+						if q != "" {
+							found := settingsResults(c, rows, q)
+							if keyResults(a, c, q, &keys.rec, func() { page, keys.query, query = keysPage, query, "" }) {
+								found = true
+							}
+							if !found {
+								wui.Text(c, i18n.T("没有匹配的设置")).FontSize(bodyFont).TextColor(t.TextMuted).AlignSelf(wui.Center).Margin(24, 0, 0, 0)
+							}
+							return
 						}
-						if !found {
-							wui.Text(c, i18n.T("没有匹配的设置")).FontSize(bodyFont).TextColor(t.TextMuted).AlignSelf(wui.Center).Margin(24, 0, 0, 0)
+						vib := s.Backdrop == "vibrancy"
+						settingsCards(c.Key("cards"), rows, page, vib, false)
+						foot := func(s string) { wui.Text(c, s).FontSize(11.5).TextColor(t.TextMuted).Padding(0, 4) }
+						switch page {
+						case 2:
+							foot(formatterFootText())
+							settingsCards(c.Key("after"), rows, page, vib, true)
+							foot(lintFootText())
+						case 4:
+							foot(i18n.T("Shell、回滚大小、光标闪烁、⌥ 作为 Meta 键和后台运行新开的终端才用（开着的按“重新启动终端”）；字体、配色和选中即复制马上换。"))
+						case 6:
+							snippetTables(a, c)
 						}
-						return
-					}
-					vib := s.Backdrop == "vibrancy"
-					settingsCards(c.Key("cards"), rows, page, vib, false)
-					foot := func(s string) { wui.Text(c, s).FontSize(11.5).TextColor(t.TextMuted).Padding(0, 4) }
-					switch page {
-					case 2:
-						foot(formatterFootText())
-						settingsCards(c.Key("after"), rows, page, vib, true)
-						foot(lintFootText())
-					case 4:
-						foot(i18n.T("Shell、回滚大小、光标闪烁、⌥ 作为 Meta 键和后台运行新开的终端才用（开着的按“重新启动终端”）；字体、配色和选中即复制马上换。"))
-					case 6:
-						snippetTables(a, c)
-					}
+					})
 				})
 			})
 		})
@@ -630,7 +693,7 @@ func choice(c *wui.Context, label, desc string, v *string, values []string, name
 		sel = *v
 	}
 	return settingField(c, label, desc, func() {
-		if settingControl(wui.Select(c, &sel, opts).MinWidth(220)).Changed() {
+		if settingControl(wui.Select(c, &sel, opts).MinWidth(settingCtlW)).Changed() {
 			if i := slices.Index(opts, sel); i >= 0 {
 				*v = values[i]
 				done()
@@ -686,7 +749,7 @@ func numberBox(c *wui.Context, label string, v *float64, lo, hi, step float64) b
 	row := wui.Row(c).Gap(4).Shrink(0).AlignItems(wui.Center)
 	text := wui.Local(row, "text", func() string { return format(*v) })
 	row.Children(func() {
-		in := settingControl(wui.TextInput(c, text).Width(64))
+		in := settingControl(wui.TextInput(c, text).Width(56))
 		if in.Changed() {
 			if x, err := strconv.ParseFloat(strings.TrimSpace(*text), 64); err == nil && x >= lo && x <= hi {
 				set(x)
@@ -708,7 +771,7 @@ func numberBox(c *wui.Context, label string, v *float64, lo, hi, step float64) b
 			text, tip string
 			d         float64
 		}{{"−", i18n.Tf("%s 减小", label), -step}, {"+", i18n.Tf("%s 加大", label), step}} {
-			if wui.Button(c, b.text).Label(b.tip).Disabled(b.d < 0 && *v <= lo || b.d > 0 && *v >= hi).Clicked() {
+			if wui.Button(c, b.text).Label(b.tip).Width(toolSize).Height(toolSize).Padding(0).Disabled(b.d < 0 && *v <= lo || b.d > 0 && *v >= hi).Clicked() {
 				set(*v + b.d)
 				*text = format(*v)
 			}
@@ -729,7 +792,7 @@ func toggle(c *wui.Context, label, desc string, v *bool, done func()) {
 // text 是一项文字输入，desc 写在下面。
 func text(c *wui.Context, label, desc string, v *string, done func()) {
 	settingField(c, label, desc, func() {
-		if settingControl(wui.TextInput(c, v).Width(260)).Changed() {
+		if settingControl(wui.TextInput(c, v).Width(settingCtlW)).Changed() {
 			done()
 		}
 	})
@@ -954,7 +1017,7 @@ func (t toolTable) add(c *wui.Context, done func()) {
 	}
 	sel := opts[0]
 	settingField(c, i18n.T("添加一种语言"), "", func() {
-		if settingControl(wui.Select(c, &sel, opts).MinWidth(220)).Changed() && sel != opts[0] {
+		if settingControl(wui.Select(c, &sel, opts).MinWidth(settingCtlW)).Changed() && sel != opts[0] {
 			if *t.cmds == nil {
 				*t.cmds = map[string]string{}
 			}

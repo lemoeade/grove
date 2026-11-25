@@ -4,6 +4,14 @@ What changed in each version, newest first.
 
 ## Unreleased
 
+- The settings window has a sidebar: the pages (Appearance, Editor, … Shortcuts) are listed on the left with an icon each,
+  under the search box and "More", and the right side shows the page title above its options. The row of ten tabs across
+  the top no longer pushes the search box out of the window at the default size, which happened in English especially.
+  The window opens larger, at 860×640 (a size remembered from the old layout is dropped once), drop-downs and text
+  fields line up on the right, the − / + buttons next to numbers are compact, and each page keeps its own scroll
+  position. Clicking a page while searching now clears the search and opens that page.
+- The settings and About windows open centered on the workbench window you opened them from, instead of where they were
+  last left on screen (their size is still remembered).
 - The interface now defaults to English. Installs that already have a state file from an earlier version keep Chinese
   (the state format moves to version 5 and fills in `"lang": "zh"` for them); Settings → Interface language switches
   between English and 中文 at any time.

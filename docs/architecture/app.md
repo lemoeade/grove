@@ -249,8 +249,12 @@ closed. Canceling partway stops there, and windows already closed are not reopen
 
 Both are opened in `cmd/workbench/main.go`:
 
-- The settings window is 640×480, with `StateKey` `settings`.
+- The settings window is 860×640 (at least 640×400), with `StateKey` `settings-sidebar`. The key changed with the sidebar
+  layout so the size remembered under the old `settings` key (sized for the row of tabs, usually 640×480) isn't reused.
 - The About window is 460×640, with `StateKey` `about`.
+- Both are created `Hidden` and shown by `showOver`, which first moves them to the center of the workbench window that
+  opened them (pushed back inside that display's work area, see `centerIn`). So `StateKey` only brings back the last size:
+  the position is worked out again every time they open.
 
 There is only one of each, belonging to the workbench window that opened it; when that workbench window closes, it closes too
 (`closeAux`). The settings window shares the `App` of its workbench window (`SettingsWin` is kept across workspace switches), so

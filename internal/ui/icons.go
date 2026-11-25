@@ -10,8 +10,9 @@ import (
 // lang-*.svg 是语言的单色图标：Go、C#、Objective-C、Vue、SQL、proto 是自己画的，别的来自 Simple Icons 13.21.0，
 // 四周加了和 Phosphor 差不多的空；各自的许可见 resources/licenses/simple-icons.txt，加新的要先查那个 logo 自己的
 // 许可（Vue 的不许商用，所以是自己画的 V，不是官方那个）。
-// 别的文件名就是 Phosphor 的图标名。不是 Phosphor 原样的只有三个：sidebar-right / sidebar-bottom 是 sidebar-simple
-// 翻过去、转过去的（三个区域开关要一样的画法），spinner-ring 是运行中的转圈，线宽和别的图标一样。
+// 别的文件名就是 Phosphor 的图标名。不是 Phosphor 原样的有这几个：sidebar-right / sidebar-bottom 是 sidebar-simple
+// 翻过去、转过去的（三个区域开关要一样的画法），spinner-ring 是运行中的转圈，线宽和别的图标一样；globe-simple、keyboard
+// （设置窗口侧栏的“语言”“快捷键”）照 Phosphor Regular 的画法用描边自己写的。
 //
 //go:embed icons/*.svg
 var iconFS embed.FS
@@ -38,6 +39,12 @@ var (
 	iconSparkle  = icon("sparkle")
 	iconCloud    = icon("cloud")
 	iconAlert    = icon("warning-circle")
+)
+
+// 设置窗口侧栏上分组的图标（别的分组借用现成的，见 settingsPageIcons）。
+var (
+	iconGlobe    = icon("globe-simple")
+	iconKeyboard = icon("keyboard")
 )
 
 var (

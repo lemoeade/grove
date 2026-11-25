@@ -66,8 +66,13 @@ Settings can be changed in three ways, all of which end up updating the same `Se
 
 `ui/settings.go`, a second `mygo.Window` that shares the `App` that opened it.
 
-- Each option is one row in the `settingRow` table; the search box in the top-right corner filters by name and description
-  (`settingsResults`).
+- The pages are listed in a sidebar on the left (`settingsPages`, one icon each in `settingsPageIcons`, drawn by
+  `settingsNavRow`; the selected row follows the "Faint selected rows" setting). The search box and "More" sit at the top of
+  the sidebar; the right side shows the page title and its options, each page keeping its own scroll position.
+- Each option is one row in the `settingRow` table; the search box filters every page by name and description
+  (`settingsResults`, titled "Search Results"). Clicking a page in the sidebar while searching clears the search and opens
+  that page.
+- Drop-downs and text fields in the right column share one width (`settingCtlW`) so their right edges line up.
 - A page is split into blocks by `settingsGroups` (page number + name of the first option in the block → subheading);
   `settingsCards` draws each block as a rounded card, with a thin line between rows (`settingsSep`).
 - A row is a `settingField`: name and description on the left, control on the right. Inside fn, the control recorded by
